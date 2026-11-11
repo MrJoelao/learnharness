@@ -17,6 +17,7 @@ import type {
 	ImageSnapshot,
 	ChatSettings,
 	ChatSummary,
+	SessionReference,
 	GraphChain,
 	GraphNode,
 	JobKind,
@@ -33,6 +34,7 @@ import type {
 } from "./contracts.ts";
 import type { UserSettings } from "./settings.ts";
 import type { Theme, ThemeFile } from "./themes.ts";
+import type { OpenStudyTimers, StudyInterval } from "./contracts/study.ts";
 
 // ─── Plugin sessions — plugin-owned data, separate from core chats ──────────
 
@@ -56,7 +58,7 @@ export interface ChatStore {
 	/** Create a session record (persisted immediately). */
 	/** Create a session record; kind "practice" marks a practice session
 	 *  (absent = teach, the default). */
-	createChat(title: string, kind?: "practice"): ChatRecord;
+	createChat(title: string, kind?: "practice", sourceDocuments?: import("./contracts.ts").SourceDocumentRef[]): ChatRecord;
 	/** The full record, or null if unknown id / corrupt file. */
 	getChat(id: string): ChatRecord | null;
 	/** All sessions, newest activity first (the sidebar's list view). */
@@ -78,6 +80,8 @@ export interface ChatStore {
 	/** Persist the per-chat model/thinking settings (the model control).
 	 *  Replace-whole: the picker sends the complete settings object. */
 	saveSettings(id: string, settings: ChatSettings): void;
+	saveReferences(id: string, references: SessionReference[]): void;
+	saveNotes(id: string, text: string): boolean;
 	/** Rename a session (the header's click-to-edit title, 2026-09-17).
 	 * Like saveSettings: a rename is NOT conversation activity — updatedAt
 	 * stays put, so sidebar order never churns on a rename. */
@@ -167,6 +171,20 @@ export interface SourceOrganizationStore {
 	read(): import("./source-organization.ts").SourceOrganization;
 	write(state: import("./source-organization.ts").SourceOrganization): void;
 }
+
+/** Chat placement and archive metadata, separate from transcript records. */
+export interface ChatOrganizationStore {
+	read(): import("./chat-organization.ts").ChatOrganization;
+	write(state: import("./chat-organization.ts").ChatOrganization): void;
+}
+
+export interface StudyStore {
+	readIntervals(): StudyInterval[];
+	appendIntervals(list: StudyInterval[]): void;
+	readOpen(): OpenStudyTimers;
+	writeOpen(open: OpenStudyTimers): void;
+}
+
 
 // ─── JobStore — background sub-agent jobs (data/jobs) ─────────────────────────
 

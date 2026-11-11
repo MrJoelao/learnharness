@@ -25,6 +25,7 @@ import type {
 	DictationSettings,
 	GraphSettings,
 	ModelsSettings,
+	StudyTimeSettings,
 	ModelSlot,
 	RoleModelOverride,
 } from "../core/settings.ts";
@@ -439,6 +440,21 @@ export function parseCompactionSettingsBody(body: unknown): SettingsBodyResult<C
 	return { ok: true, settings };
 }
 
+export function parseStudyTimeSettingsBody(body: unknown): SettingsBodyResult<StudyTimeSettings> {
+	const raw = asRecord(body);
+	if (!raw) return { ok: false, error: "Invalid JSON body" };
+	const settings: StudyTimeSettings = {};
+	if (raw.idleMinutes !== undefined) {
+		if (typeof raw.idleMinutes !== "number" || !Number.isInteger(raw.idleMinutes) || raw.idleMinutes < 1 || raw.idleMinutes > 60) return { ok: false, error: "idleMinutes must be a whole number from 1 to 60" };
+		settings.idleMinutes = raw.idleMinutes;
+	}
+	if (raw.weekStart !== undefined) {
+		if (raw.weekStart !== "monday" && raw.weekStart !== "sunday") return { ok: false, error: 'weekStart must be "monday" or "sunday"' };
+		settings.weekStart = raw.weekStart;
+	}
+	return { ok: true, settings };
+}
+
 /** dictation: { language?: one of Nova-3's supported language codes } */
 export function parseDictationSettingsBody(body: unknown): SettingsBodyResult<DictationSettings> {
 	const raw = asRecord(body);
@@ -499,6 +515,7 @@ export const SETTINGS_SECTIONS = {
 	models: parseModelsSettingsBody,
 	dictation: parseDictationSettingsBody,
 	claudeCode: parseClaudeCodeSettingsBody,
+	studyTime: parseStudyTimeSettingsBody,
 } as const;
 
 export type SettingsSectionName = keyof typeof SETTINGS_SECTIONS;

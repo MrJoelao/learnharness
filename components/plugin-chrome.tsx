@@ -9,6 +9,7 @@ import { useSidebar } from "@/components/sidebar";
 import { useInteractionLayers } from "@/components/interaction-layers";
 import { MenuShell } from "@/components/menu-shell";
 import { Hint } from "@/components/ui/hint";
+import { usePluginShortcutRows } from "@/components/plugin-shortcuts";
 
 export interface PlacedPluginAction {
 	key: string;
@@ -42,8 +43,8 @@ export function pluginActionDisabled(action: PluginAction, context: PluginAction
 
 function ActionIcon({ action }: { action: PluginAction }) {
 	return action.icon
-		? <span aria-hidden="true" className="inline-flex size-4 shrink-0 items-center justify-center [&>svg]:size-full" dangerouslySetInnerHTML={{ __html: action.icon }} />
-		: <PuzzleIcon aria-hidden="true" className="size-4 shrink-0" />;
+		? <span aria-hidden="true" className="inline-flex size-3 shrink-0 items-center justify-center [&>svg]:size-full" dangerouslySetInnerHTML={{ __html: action.icon }} />
+		: <PuzzleIcon aria-hidden="true" className="size-3 shrink-0" />;
 }
 
 function ActionButton({ item, context, captureContext, className, iconOnly = false, menuItem = false, onRun }: {
@@ -56,8 +57,12 @@ function ActionButton({ item, context, captureContext, className, iconOnly = fal
 	onRun?: () => void;
 }) {
 	const { manager } = usePlugins();
-	return <Hint label={item.action.name} side={context.placement === "graph" ? "right" : "bottom"}>
-		<button type="button" role={menuItem ? "menuitem" : undefined} data-plugin-action={item.key} title={item.action.name} aria-label={item.action.name}
+	const { rows } = usePluginShortcutRows();
+	const activeShortcut = rows.find(row => row.pluginId === item.pluginId && row.actionId === item.action.id && row.status === "active");
+	const binding = activeShortcut?.binding;
+	return <Hint label={item.action.name} binding={binding} side={context.placement === "sidebar" || context.placement === "graph" ? "right" : "bottom"}>
+		<button type="button" role={menuItem ? "menuitem" : undefined} data-plugin-action={item.key}
+			title={iconOnly ? item.action.name : undefined} aria-label={item.action.name}
 			disabled={item.busy || pluginActionDisabled(item.action, context)} aria-busy={item.busy || undefined}
 			className={`${className} disabled:pointer-events-none disabled:opacity-40`}
 			onClick={() => { void manager?.runAction(item.pluginId, item.action, () => { const captured = captureContext ? captureContext() : context; if (captured) onRun?.(); return captured; }); }}>
@@ -69,7 +74,7 @@ function ActionButton({ item, context, captureContext, className, iconOnly = fal
 
 const SIDEBAR_CONTEXT = { placement: "sidebar", surface: "sidebar" } as const;
 const GRAPH_CONTEXT = { placement: "graph", surface: "graph" } as const;
-const SIDEBAR_BUTTON = "flex min-w-0 w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+const SIDEBAR_BUTTON = "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer";
 const TOP_BUTTON = "flex h-9 min-w-0 max-w-48 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
 
 /** Core teaching/practice children lead the same row-major grid as placed actions. */
@@ -77,9 +82,13 @@ export function PluginSidebarActions({ children }: { children: ReactNode }) {
 	const { snapshot } = usePlugins();
 	const actions = placedPluginActions(snapshot.plugins, SIDEBAR_CONTEXT);
 	const count = Children.count(children) + actions.length;
-	return <div data-testid="sidebar-actions" className={`lh-plugin-scroll mx-3 mb-2 grid max-h-[10.25rem] shrink-0 gap-1.5 overflow-y-auto ${count >= 6 ? "grid-cols-2" : "grid-cols-1"}`}>
+	return <div data-testid="sidebar-actions" className={`lh-plugin-scroll grid max-h-[10.25rem] shrink-0 gap-0 overflow-y-auto ${count >= 6 ? "grid-cols-2" : "grid-cols-1"}`}>
 		{children}
-		{actions.map(item => <ActionButton key={item.key} item={item} context={SIDEBAR_CONTEXT} className={SIDEBAR_BUTTON} />)}
+		{actions.map(item => (
+			<div key={item.key} className="px-2 py-0.5">
+				<ActionButton item={item} context={SIDEBAR_CONTEXT} className={SIDEBAR_BUTTON} />
+			</div>
+		))}
 	</div>;
 }
 
@@ -177,7 +186,7 @@ export function PluginTopBarActions({ context, captureContext }: { context: Extr
 			{actions.map(item => <span key={item.key} className={TOP_BUTTON}><ActionIcon action={item.action} /><span className="min-w-0 truncate">{item.action.name}</span></span>)}
 		</div>
 		{actions.slice(0, count).map(item => <ActionButton key={item.key} item={item} context={context} captureContext={captureContext} className={TOP_BUTTON} />)}
-		{excess.length > 0 && <Hint label="More plugin actions" side="bottom"><button ref={trigger} type="button" title="More plugin actions" aria-label="More plugin actions"
+		{excess.length > 0 && <Hint label="More plugin actions" side="bottom"><button ref={trigger} type="button" aria-label="More plugin actions"
 			aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(open => !open)}
 			className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"><EllipsisIcon className="size-4" /></button></Hint>}
 		{menuOpen && excess.length > 0 && <MenuShell anchorRef={trigger} testid="plugin-top-bar-menu" onClose={(reason) => { setMenuOpen(false); if (reason === "escape") trigger.current?.focus(); return "closed"; }} preferredSide="down" align="right"

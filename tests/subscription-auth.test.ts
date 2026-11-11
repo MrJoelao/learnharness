@@ -22,7 +22,13 @@ async function fixture(options: { login?: (id: string, interaction: ProviderAuth
 		const native = id === "xai" ? xaiProvider() : githubCopilotProvider();
 		return { ...native, auth: { ...native.auth, oauth: { ...native.auth.oauth!, login: (interaction: ProviderAuthInteraction) => options.login?.(id, interaction) ?? Promise.resolve(credential(id)), refresh: async (value: OAuthCredential, signal: AbortSignal) => { refreshes++; return options.refresh?.(id, value, signal) ?? { ...credential(id), refresh: "fixture-rotated" }; } } } };
 	};
-	const sdk = { createModels, githubCopilotProvider: () => factory("github-copilot"), xaiProvider: () => factory("xai") };
+	const sdk = {
+		createModels,
+		githubCopilotProvider: () => factory("github-copilot"),
+		xaiProvider: () => factory("xai"),
+		antigravityProvider: () => factory("google-antigravity"),
+		antigravityCore: {},
+	};
 	const updates: any[] = [], opened: string[] = [];
 	const controller = createSubscriptions({ directory, sdk, stores: options.stores, openExternal: async (url: string) => { opened.push(url); }, onChange: (snapshot: unknown) => updates.push(snapshot) });
 	await controller.ready;

@@ -3,14 +3,39 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 
-const PROVIDERS = ["github-copilot", "xai"];
+const PROVIDERS = ["github-copilot", "xai", "google-antigravity"];
 const failure = (code) => Object.assign(new Error(code), { code });
 const nonempty = (value) => typeof value === "string" && value.length > 0 && !/[\x00-\x20\x7f]/.test(value);
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function validateAntigravityAccount(account) {
+	if (!account || typeof account !== "object") throw failure("storage");
+	if (!nonempty(account.id)) throw failure("storage");
+	if (account.email !== undefined && typeof account.email !== "string") throw failure("storage");
+	if (account.label !== undefined && typeof account.label !== "string") throw failure("storage");
+	const cred = account.credential ?? (account.access && account.refresh ? {
+		type: "oauth",
+		access: account.access,
+		refresh: account.refresh,
+		expires: account.expires ?? 0,
+		availableModelIds: account.availableModelIds,
+		email: account.email,
+		label: account.label,
+		projectId: account.projectId,
+	} : undefined);
+	if (cred) validateCredential("google-antigravity", cred);
+	return account;
+}
 function validateCredential(providerId, credential) {
 	if (!credential || credential.type !== "oauth" || !nonempty(credential.access) || !nonempty(credential.refresh) || !Number.isFinite(credential.expires) || credential.expires < 0) throw failure("storage");
 	if (providerId === "github-copilot") {
 		if (credential.enterpriseUrl !== undefined && !safeDomain(credential.enterpriseUrl)) throw failure("storage");
 		if (credential.availableModelIds !== undefined && (!Array.isArray(credential.availableModelIds) || !credential.availableModelIds.every(nonempty))) throw failure("storage");
+	}
+	if (providerId === "google-antigravity") {
+		if (credential.availableModelIds !== undefined && (!Array.isArray(credential.availableModelIds) || !credential.availableModelIds.every(nonempty))) throw failure("storage");
+		if (credential.email !== undefined && typeof credential.email !== "string") throw failure("storage");
+		if (credential.label !== undefined && typeof credential.label !== "string") throw failure("storage");
+		if (credential.projectId !== undefined && typeof credential.projectId !== "string") throw failure("storage");
 	}
 	return credential;
 }
@@ -26,8 +51,28 @@ function safeHttps(value) {
 }
 function validateState(providerId, state) {
 	if (!PROVIDERS.includes(providerId) || !state || state.version !== 1 || typeof state.allowBackgroundUse !== "boolean") throw failure("storage");
+	if (providerId === "google-antigravity") {
+		if (Array.isArray(state.accounts)) {
+			const activeId = state.activeId ?? state.activeAccountId ?? null;
+			if (!(activeId === null || nonempty(activeId))) throw failure("storage");
+			const ids = new Set();
+			for (const account of state.accounts) {
+				validateAntigravityAccount(account);
+				if (ids.has(account.id)) throw failure("storage");
+				ids.add(account.id);
+			}
+			if (activeId !== null && !ids.has(activeId)) throw failure("storage");
+			if (state.connectionId !== undefined && state.connectionId !== null && !nonempty(state.connectionId)) throw failure("storage");
+			if (state.credential !== undefined) validateCredential("google-antigravity", state.credential);
+			return state;
+		}
+		const hasId = Object.hasOwn(state, "connectionId");
+		if (hasId !== Object.hasOwn(state, "credential") || (hasId && !UUID_REGEX.test(state.connectionId))) throw failure("storage");
+		if (hasId) validateCredential(providerId, state.credential);
+		return state;
+	}
 	const hasId = Object.hasOwn(state, "connectionId");
-	if (hasId !== Object.hasOwn(state, "credential") || (hasId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(state.connectionId))) throw failure("storage");
+	if (hasId !== Object.hasOwn(state, "credential") || (hasId && !UUID_REGEX.test(state.connectionId))) throw failure("storage");
 	if (hasId) validateCredential(providerId, state.credential);
 	return state;
 }
@@ -40,7 +85,14 @@ function fileStore(file, providerId, io = fs) {
 				if (!stat.isFile() || (process.platform !== "win32" && ((stat.mode & 0o077) !== 0 || (typeof process.getuid === "function" && stat.uid !== process.getuid())))) throw failure("storage");
 				return validateState(providerId, JSON.parse(await io.readFile(file, "utf8")));
 			}
-			catch (error) { if (error.code === "ENOENT") return { version: 1, allowBackgroundUse: true }; throw failure("storage"); }
+			catch (error) {
+				if (error.code === "ENOENT") {
+					return providerId === "google-antigravity"
+						? { version: 1, allowBackgroundUse: true, activeId: null, accounts: [] }
+						: { version: 1, allowBackgroundUse: true };
+				}
+				throw failure("storage");
+			}
 		},
 		async write(state) {
 			validateState(providerId, state);
@@ -61,4 +113,4 @@ function fileStore(file, providerId, io = fs) {
 		},
 	};
 }
-module.exports = { PROVIDERS, failure, validateCredential, validateState, safeDomain, safeHttps, fileStore };
+module.exports = { PROVIDERS, failure, validateCredential, validateAntigravityAccount, validateState, safeDomain, safeHttps, fileStore };

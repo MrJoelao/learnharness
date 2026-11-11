@@ -10,12 +10,13 @@
 // back to a plain text send (the settle race). Stranding safety: the
 // registry copy survives a question termination or abort and rides the
 // chat's next run.
-import { ChatInputError, parseUserSteerInput } from "@/src/core";
-import { getChat, prepareAndSteerChat } from "@/src/server";
+import { ChatInputError, isChatArchived, parseUserSteerInput } from "@/src/core";
+import { getChat, prepareAndSteerChat, stores } from "@/src/server";
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
 	const { id } = await ctx.params;
 	if (!getChat(id)) return Response.json({ error: "unknown chat" }, { status: 404 });
+	if (isChatArchived(stores.chatOrganizationStore.read(), id)) return Response.json({ error: "Archived conversations are read-only" }, { status: 400 });
 	let input;
 	try {
 		const body = (await request.json()) as { input?: unknown };

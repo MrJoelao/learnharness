@@ -13,9 +13,11 @@
 - [ExtractionRunUsage](#extractionrunusage) — supporting declaration
 - [ExtractionStageUsage](#extractionstageusage) — supporting declaration
 - [ImageSnapshot](#imagesnapshot) — supporting declaration
+- [SessionReference](#sessionreference) — supporting declaration
 - [SideChatAnchor](#sidechatanchor) — supporting declaration
 - [SideChatMessage](#sidechatmessage) — supporting declaration
 - [SideChatThread](#sidechatthread) — supporting declaration
+- [SourceDocumentRef](#sourcedocumentref) — supporting declaration
 - [TurnUsage](#turnusage) — supporting declaration
 
 ## CallUsage
@@ -158,6 +160,9 @@ export interface ChatRecord {
     messages: LhMessage[];
     imageSnapshots?: Record<string, ImageSnapshot>;
     kind?: ChatKind;
+    notes?: string;
+    references?: SessionReference[];
+    sourceDocuments?: SourceDocumentRef[];
     tree?: PlanTree;
     turns?: TurnUsage[];
     extractions?: ExtractionRunUsage[];
@@ -167,7 +172,7 @@ export interface ChatRecord {
 }
 ```
 
-**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [ExtractionRunUsage](contracts-chat.md#extractionrunusage), [ImageSnapshot](contracts-chat.md#imagesnapshot), [LhMessage](native-messages.md#lhmessage), [PlanTree](contracts-plan.md#plantree), [SideChatThread](contracts-chat.md#sidechatthread), [TurnUsage](contracts-chat.md#turnusage).
+**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [ExtractionRunUsage](contracts-chat.md#extractionrunusage), [ImageSnapshot](contracts-chat.md#imagesnapshot), [LhMessage](native-messages.md#lhmessage), [PlanTree](contracts-plan.md#plantree), [SessionReference](contracts-chat.md#sessionreference), [SideChatThread](contracts-chat.md#sidechatthread), [SourceDocumentRef](contracts-chat.md#sourcedocumentref), [TurnUsage](contracts-chat.md#turnusage).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -178,6 +183,9 @@ export interface ChatRecord {
 - [messages](#chatrecord-messages)
 - [imageSnapshots](#chatrecord-imagesnapshots)
 - [kind](#chatrecord-kind)
+- [notes](#chatrecord-notes)
+- [references](#chatrecord-references)
+- [sourceDocuments](#chatrecord-sourcedocuments)
 - [tree](#chatrecord-tree)
 - [turns](#chatrecord-turns)
 - [extractions](#chatrecord-extractions)
@@ -229,6 +237,30 @@ The session's kind; an absent field reads as teach.
 
 ```ts
 kind?: ChatKind;
+```
+
+### ChatRecord notes
+
+Learner-authored Markdown notes, kept outside model history.
+
+```ts
+notes?: string;
+```
+
+### ChatRecord references
+
+Sources that ground answers in this session.
+
+```ts
+references?: SessionReference[];
+```
+
+### ChatRecord sourceDocuments
+
+Documents selected when this teaching session was created.
+
+```ts
+sourceDocuments?: SourceDocumentRef[];
 ```
 
 ### ChatRecord tree
@@ -625,6 +657,58 @@ width: number;
 height: number;
 ```
 
+## SessionReference
+
+Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
+
+```ts
+export interface SessionReference {
+    id: string;
+    kind: "file" | "url";
+    value: string;
+    name?: string;
+    addedAt: string;
+}
+```
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [id](#sessionreference-id)
+- [kind](#sessionreference-kind)
+- [value](#sessionreference-value)
+- [name](#sessionreference-name)
+- [addedAt](#sessionreference-addedat)
+
+### SessionReference id
+
+```ts
+id: string;
+```
+
+### SessionReference kind
+
+```ts
+kind: "file" | "url";
+```
+
+### SessionReference value
+
+```ts
+value: string;
+```
+
+### SessionReference name
+
+```ts
+name?: string;
+```
+
+### SessionReference addedAt
+
+```ts
+addedAt: string;
+```
+
 ## SideChatAnchor
 
 Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
@@ -873,6 +957,42 @@ context cutoff. Current delivery uses immutable native update entries.
 
 ```ts
 contextSnapshot?: SideChatMessage[];
+```
+
+## SourceDocumentRef
+
+Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
+
+```ts
+export interface SourceDocumentRef {
+    sourceId: string;
+    name: string;
+    path: string;
+}
+```
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [sourceId](#sourcedocumentref-sourceid)
+- [name](#sourcedocumentref-name)
+- [path](#sourcedocumentref-path)
+
+### SourceDocumentRef sourceId
+
+```ts
+sourceId: string;
+```
+
+### SourceDocumentRef name
+
+```ts
+name: string;
+```
+
+### SourceDocumentRef path
+
+```ts
+path: string;
 ```
 
 ## TurnUsage

@@ -33,16 +33,18 @@ import {
 	type ReactNode,
 	type RefObject,
 } from "react";
-import { BotIcon, KeyIcon, KeyboardIcon, PaletteIcon, PlugIcon, PuzzleIcon, SettingsIcon, WaypointsIcon, type LucideIcon } from "lucide-react";
+import { BotIcon, KeyIcon, KeyboardIcon, PaletteIcon, PlugIcon, PuzzleIcon, SettingsIcon, WaypointsIcon, Clock3Icon, type LucideIcon } from "lucide-react";
 import { HostDialog } from "@/components/host-dialog";
 import { useInteractionLayers, type CloseOutcome } from "@/components/interaction-layers";
 import {
 	CURRENT_SETTINGS_VERSION,
+	resolveSettings,
 	type AgentSettings,
 	type AppearanceSettings,
 	type CompactionSettings,
 	type GraphSettings,
 	type UserSettings,
+	type StudyTimeSettings,
 } from "@/src/core";
 import { useAppearance } from "./appearance.tsx";
 import { SettingsSection } from "./controls.tsx";
@@ -60,6 +62,7 @@ import { PluginSettingsPage } from "./plugin-settings-page.tsx";
 import { usePlugins } from "@/components/plugins";
 import { ChatGPTUIProvider } from "./chatgpt-connection.tsx";
 import { NativeSubscriptionUIProvider } from "./subscription-connections.tsx";
+import { StudyTimeSection } from "./study-time-section.tsx";
 
 /** Owner (2026-09-20): hints earn their place — mechanics-explaining
  *  prose is out; only the keyboard note stays (storage location is a
@@ -69,6 +72,7 @@ const SECTIONS = [
 	{ id: "agent", label: "Agent", icon: BotIcon },
 	{ id: "appearance", label: "Appearance", icon: PaletteIcon },
 	{ id: "graph", label: "Graph", icon: WaypointsIcon },
+	{ id: "studyTime", label: "Study time", icon: Clock3Icon },
 	{ id: "keyboard", label: "Keyboard", icon: KeyboardIcon, hint: "Stored on this device" },
 	{ id: "general", label: "General", icon: SettingsIcon },
 ] as const;
@@ -295,7 +299,7 @@ export function SettingsDialogBody({
 	 *  schema mistake caught by the validation surface). */
 	const write = useCallback(
 		async (
-			section: "general" | "agent" | "models" | "appearance" | "graph" | "compaction",
+			section: "general" | "agent" | "models" | "appearance" | "graph" | "compaction" | "studyTime",
 			body: object,
 		): Promise<boolean> => {
 			const ticket = ++writeOrder.current.issued;
@@ -519,6 +523,11 @@ export function SettingsDialogBody({
 									<KeyboardSection />
 								</SettingsSection>
 							)}
+			{active === "studyTime" && (
+				<SettingsSection title="Study time" testid="section-study-time">
+					<StudyTimeSection studyTime={record.studyTime} resolved={resolveSettings(record).studyTime} onSectionChange={(next: StudyTimeSettings) => write("studyTime", next)} />
+				</SettingsSection>
+			)}
 						</div>
 					)}
 				</div>

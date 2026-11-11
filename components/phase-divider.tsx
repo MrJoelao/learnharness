@@ -39,14 +39,16 @@ const CHIP_LABEL: Record<Phase3, string> = {
  *  at all, so it is part of the drag surface instead of a carved-out
  *  target. */
 export function PhaseChip({ phase }: { phase: Phase3 }) {
+	const label = CHIP_LABEL[phase] ?? String(phase);
 	return (
 		<span
 			data-testid="phase-chip"
 			data-phase={phase}
-			aria-hidden="true"
-			className="pointer-events-none flex shrink-0 select-none items-center text-xs font-medium uppercase tracking-wide text-muted-foreground"
+			title={`Session phase: ${label}`}
+			aria-label={`Session phase: ${label}`}
+			className="pointer-events-none flex shrink-0 select-none items-center text-xs font-medium uppercase tracking-wide text-muted-foreground font-mono"
 		>
-			{CHIP_LABEL[phase]}
+			{label}
 		</span>
 	);
 }

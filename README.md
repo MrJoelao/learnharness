@@ -12,9 +12,28 @@
   <a href="https://learnharness.ai">Download</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="docs/README.md">Documentation</a> ·
-  <a href="https://github.com/amosblomqvist/learnharness/issues">Issues</a> ·
+  <a href="https://github.com/MrJoelao/learnharness/issues">Issues</a> ·
   <a href="https://discord.gg/5tCHHQEB2e">Discord</a>
 </p>
+
+> [!NOTE]
+> ### LearnHarness Fork (v0.7.0)
+> This is an independent fork of [LearnHarness](https://github.com/amosblomqvist/learnharness).
+>
+> **Why this fork?**
+> This fork combines new features I added myself alongside several valuable contributions taken from community pull requests:
+> - **Added Features:** Hierarchical folders and subfolders for organizing chats and study sessions.
+> - **Integrated Community Pull Requests:** Archive redesign, session notes panel with live math, study time tracking, session documents and references, Hallmark design harmonization, flashcard refinements, and expanded keyboard shortcuts.
+>
+> **macOS Build Notice (Unsigned):**
+> macOS builds (`.dmg` and `.zip`) are **unsigned and not notarized** because I am not an Apple Developer and do not pay the annual Apple Developer subscription fee.
+> - To launch the app on macOS, **right-click (or Control-click)** `LearnHarness.app` in Finder and select **Open**, or run in Terminal:
+>   ```bash
+>   xattr -cr /Applications/LearnHarness.app
+>   ```
+>
+> **Data Loss Disclaimer:**
+> Because this version introduces extensive new functionality and merges multiple contributions, **the author takes no responsibility or liability for any data loss, corruption, or alterations**. Please keep regular backups of your local data directory.
 
 LearnHarness uses AI agents to plan and teach lessons from your current understanding to your goal. It builds a detailed picture of what you understand and how you reason. That picture is updated as you learn.
 

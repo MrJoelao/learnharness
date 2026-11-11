@@ -678,6 +678,8 @@ export async function handleChatInput(
 		callPurpose,
 		requestCycle,
 		messages: asAgentMessages(agentMessages),
+		references: record.references ?? [],
+		sourceDocuments: record.sourceDocuments ?? [],
 		validateContext: (messages) => {
 			// This is the SDK's ACTUAL request, after both prepared references
 			// and already-drained steering have joined it. A pre-queue estimate

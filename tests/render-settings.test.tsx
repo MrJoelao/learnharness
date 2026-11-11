@@ -59,6 +59,7 @@ describe("SettingsDialog (the designed surface, SSR)", () => {
 			["agent", "Agent", "bot"],
 			["appearance", "Appearance", "palette"],
 			["graph", "Graph", "waypoints"],
+			["studyTime", "Study time", "clock-3"],
 			["keyboard", "Keyboard", "keyboard"],
 			["general", "General", "settings"],
 			["core-plugins", "Core plugins", "plug"],
@@ -145,8 +146,8 @@ describe("Providers settings-label typography", () => {
 			assert.ok(settings.includes(`<span class="font-prose text-(length:--lh-prose-size) text-foreground">${label}</span>`), `${label}: settings sans label`);
 			assert.ok(setup.includes(`<span class="font-ui text-xs text-foreground">${label}</span>`), `${label}: unchanged setup label`);
 		}
-		assert.equal((settings.match(/>Connect<\/button>/g) ?? []).length, 3);
-		assert.equal((setup.match(/>Connect<\/button>/g) ?? []).length, 3);
+		assert.equal((settings.match(/>Connect<\/button>/g) ?? []).length, 4);
+		assert.equal((setup.match(/>Connect<\/button>/g) ?? []).length, 4);
 	});
 });
 

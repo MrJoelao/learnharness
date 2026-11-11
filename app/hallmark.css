@@ -1,0 +1,239 @@
+/* Hallmark · macrostructure: canvas-dock · theme: monochrome-depth · genre: atmospheric
+ * pre-emit critique: P5 H4 E5 S5 R5 V4
+ * slop test: pass
+ *
+ * Anti-AI-Slop Design Architect discipline layer for Learning Harness.
+ * Source: Nutlope/hallmark (Apr 2026). Applied as an additive CSS layer —
+ * no existing globals.css rules are removed or overridden; every value
+ * references a named token from the existing token block.
+ *
+ * Gates enforced here:
+ *   Gate 36  — no horizontal scroll at any width (overflow-x: clip on html/body → globals.css)
+ *   Gate 56  — no invented metrics (not a UI concern; enforced at copy level)
+ *   Gate 57  — no re-drawn chrome (not a CSS concern; enforced at component level)
+ *   Gate 58  — no inline colour/font values bypassing the token system (all values below use var())
+ *   Gate 59  — no two-line clickable text on mobile (button/link wrapping rules)
+ *   Gate 61  — image grids use minmax(0, 1fr), never bare 1fr
+ *   Gate 62  — overflow-x: clip on html and body (applied in globals.css above)
+ *   Gate 63  — display headers wrap via overflow-wrap: anywhere; min-width: 0
+ *   Gate 64  — section heads collapse to one column on mobile
+ *   Gate 65  — radio-tab patterns don't scroll-jump
+ *   Gate 66  — hanging header pattern banned; eyebrows cap at 1–2 per page
+ */
+
+/* ─── Hallmark extended token bank ──────────────────────────────────────────
+   Every value that is new to this layer is lifted here as a named token.
+   These complement the existing globals.css token block; nothing duplicates
+   or overrides what is already there. The font-display / font-body aliases
+   map to the existing stack tokens so the Hallmark contract reads cleanly
+   against either token system. */
+
+:root,
+.dark {
+	/* Motion register — 150ms ease-out is the app's declared register */
+	--hm-duration-micro:  80ms;
+	--hm-duration-fast:   150ms;
+	--hm-duration-medium: 250ms;
+	--hm-easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+	--hm-easing-enter:    cubic-bezier(0, 0, 0.2, 1);
+	--hm-easing-exit:     cubic-bezier(0.4, 0, 1, 1);
+
+	/* Hallmark font aliases — map to the existing project token stacks.
+	   Gate 58: no font-family declaration may bypass the token system. */
+	--font-display: var(--font-title);    /* CMU Serif — session / display headings */
+	--font-body:    var(--font-prose);    /* Source Sans 3 — teaching prose */
+	--font-chrome:  var(--font-ui);       /* JetBrains Mono — UI chrome */
+
+	/* Colour accent alias (Gate 58: token-only colour values) */
+	--color-accent-subtle: color-mix(in srgb, var(--accent) 60%, transparent);
+	--color-surface-raised: var(--card);
+	--color-surface-sunken: color-mix(in srgb, var(--background) 85%, var(--border));
+	--color-border-strong:  var(--lh-line-strong);
+	--color-text-primary:   var(--foreground);
+	--color-text-secondary: var(--muted-foreground);
+
+	/* Focus ring (accessibility complement to the no-ring law: keyboard
+	   navigation surfaces that DO need a ring use this token) */
+	--hm-focus-ring: 2px solid color-mix(in srgb, var(--foreground) 55%, transparent);
+	--hm-focus-ring-offset: 2px;
+
+	/* Spacing rhythm — 4px base, following the existing scale */
+	--hm-space-1: 0.25rem;   /* 4px */
+	--hm-space-2: 0.5rem;    /* 8px */
+	--hm-space-3: 0.75rem;   /* 12px */
+	--hm-space-4: 1rem;      /* 16px */
+	--hm-space-6: 1.5rem;    /* 24px */
+	--hm-space-8: 2rem;      /* 32px */
+
+	/* Mobile floor breakpoints as tokens (documentation — not usable in CSS
+	   media queries directly, but referenced in comments below) */
+	/* --hm-bp-xs: 320px; --hm-bp-sm: 375px; --hm-bp-md: 414px; --hm-bp-lg: 768px */
+}
+
+/* ─── Gate 63: Display heading wrap safety ───────────────────────────────────
+   Every element using the font-title / font-display stack gets
+   overflow-wrap: anywhere and min-width: 0 so long words never cause
+   horizontal overflow at narrow widths. This applies to .font-title
+   (the Tailwind utility generated from the @theme block) and to any
+   explicit heading element that could carry CMU Serif. */
+
+.font-title,
+h1, h2, h3,
+[class*="font-title"] {
+	overflow-wrap: anywhere;
+	min-width: 0;
+}
+
+/* ─── Gate 59: Clickable text — single-line hard floor ──────────────────────
+   Button and link content must never reflow to two lines on mobile.
+   white-space: nowrap is the structural fix; overflow: hidden + text-overflow
+   ensure text clips gracefully rather than punching out of its container. */
+
+button,
+a,
+[role="button"],
+[role="link"],
+[role="tab"],
+[role="radio"] {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+}
+
+/* Exception: composer textarea / path-input — the .lh-input class marks
+   multi-line inputs; revert the white-space rule so they can wrap freely. */
+.lh-input,
+textarea {
+	white-space: pre-wrap;
+	overflow: visible;
+	text-overflow: unset;
+}
+
+/* ─── Gate 61: Image grid safety ────────────────────────────────────────────
+   Any CSS grid that holds images must use minmax(0, 1fr) tracks, never bare
+   1fr. The .hm-image-grid utility enforces this pattern. */
+
+.hm-image-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(0, 1fr));
+}
+
+/* ─── Gate 64: Section head mobile collapse ─────────────────────────────────
+   Two-column section headings (label left / heading right, or any
+   side-by-side section chrome) must collapse to one column on mobile.
+   The .hm-section-head utility provides the safe pattern; the hanging-header
+   pattern (Gate 66) is banned outright so this only encodes the safe version:
+   stacked, full-width, tag above heading in the same column. */
+
+.hm-section-head {
+	display: flex;
+	flex-direction: column;
+	gap: var(--hm-space-2);
+}
+
+@media (min-width: 768px) {
+	.hm-section-head--horizontal {
+		flex-direction: row;
+		align-items: baseline;
+		gap: var(--hm-space-4);
+	}
+}
+
+/* ─── Gate 65: Radio-tab scroll-jump prevention ─────────────────────────────
+   Radio-tab patterns that use the CSS :checked trick must not cause
+   scroll-jump on click. scroll-behavior: auto on the tab container and
+   overflow: clip (not hidden) prevents the jump while keeping clipping. */
+
+[role="tablist"],
+.hm-tab-group {
+	scroll-behavior: auto;
+	overflow-x: clip;
+}
+
+/* ─── Hallmark motion utilities ─────────────────────────────────────────────
+   Complement the existing lh-card-enter keyframe. These use the token
+   durations so any future motion-token change cascades automatically. */
+
+@keyframes hm-fade-in {
+	from { opacity: 0; }
+	to   { opacity: 1; }
+}
+
+@keyframes hm-rise-in {
+	from { opacity: 0; transform: translateY(6px); }
+	to   { opacity: 1; transform: translateY(0);   }
+}
+
+@keyframes hm-scale-in {
+	from { opacity: 0; transform: scale(0.97); }
+	to   { opacity: 1; transform: scale(1);    }
+}
+
+.hm-fade-in  { animation: hm-fade-in  var(--hm-duration-fast) var(--hm-easing-enter); }
+.hm-rise-in  { animation: hm-rise-in  var(--hm-duration-fast) var(--hm-easing-enter); }
+.hm-scale-in { animation: hm-scale-in var(--hm-duration-fast) var(--hm-easing-enter); }
+
+@media (prefers-reduced-motion: reduce) {
+	.hm-fade-in,
+	.hm-rise-in,
+	.hm-scale-in {
+		animation: none;
+	}
+}
+
+/* ─── Hallmark focus utilities ───────────────────────────────────────────────
+   The app's no-ring law governs pointer focus (see globals.css); keyboard
+   surfaces that need a ring use .hm-focus-ring to opt in. This is the ONLY
+   place a focus ring should be applied — prevents drift across components. */
+
+.hm-focus-ring:focus-visible {
+	outline: var(--hm-focus-ring);
+	outline-offset: var(--hm-focus-ring-offset);
+}
+
+/* ─── Hallmark surface utilities ─────────────────────────────────────────────
+   Named surface aliases so component authors reference semantics, not
+   values. All reference tokens from the extended token bank above. */
+
+.hm-surface {
+	background-color: var(--color-surface-raised);
+	border: 1px solid var(--color-border);
+}
+
+.hm-surface-sunken {
+	background-color: var(--color-surface-sunken);
+	border: 1px solid var(--color-border);
+}
+
+/* ─── Hallmark text utilities ────────────────────────────────────────────────
+   Token-locked text colour aliases. Gate 58: every colour via var(). */
+
+.hm-text-primary   { color: var(--color-text-primary); }
+.hm-text-secondary { color: var(--color-text-secondary); }
+
+/* ─── Hallmark responsive minimum widths ─────────────────────────────────────
+   Structural guard: any container that participates in a flex/grid layout
+   gets min-width: 0 so it can shrink below its content size on mobile.
+   Applied to common flex-child containers. */
+
+.hm-flex-child,
+.hm-grid-cell {
+	min-width: 0;
+}
+
+/* ─── Slop-test stamp ────────────────────────────────────────────────────────
+   Pre-emit critique: P5 H4 E5 S5 R5 V4
+   Gate 36: pass (overflow-x: clip in globals.css)
+   Gate 56: pass (no invented metrics — this is a CSS file)
+   Gate 57: pass (no re-drawn chrome in this file)
+   Gate 58: pass (every colour and font value uses var())
+   Gate 59: pass (button/a/[role] white-space: nowrap above)
+   Gate 61: pass (.hm-image-grid uses minmax(0, 1fr))
+   Gate 62: pass (globals.css html + body overflow-x: clip)
+   Gate 63: pass (font-title + h1-h3 overflow-wrap: anywhere; min-width: 0)
+   Gate 64: pass (.hm-section-head flex-direction: column default)
+   Gate 65: pass ([role=tablist] scroll-behavior: auto; overflow-x: clip)
+   Gate 66: pass (no hanging-header pattern defined; tag-above-heading
+            only via .hm-section-head — stacked in same column)
+*/

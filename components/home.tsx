@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SurfaceRegion, usePageSurfaceBoundary, useSurfaceChromeStyle } from "./plugin-surfaces";
-import { CornerDownLeftIcon, DumbbellIcon } from "lucide-react";
+import { Clock3Icon, CornerDownLeftIcon, DumbbellIcon } from "lucide-react";
 import { GraphView } from "@/components/graph-view";
 import { MinimalHome } from "@/components/minimal-home";
 import { SetupDialog } from "@/components/setup-dialog";
@@ -18,8 +18,11 @@ import { StatsBar } from "@/components/stats-bar";
 import { OPENING_PROMPT_FAILURE } from "@/components/opening-prompt";
 import { PathInput } from "@/components/path-input";
 import { AttachFilesButton } from "@/components/attach-files-button";
+import { SourceDocumentsPicker } from "@/components/session-documents";
+import { cn } from "@/lib/utils";
 import { SessionStarter } from "@/components/start-session";
 import type { TurnUsage } from "@/src/core";
+import { StudyTimeOverlay } from "@/components/study-time-overlay";
 
 /**
  * Home — the knowledge graph is the main view, full-bleed edge to edge
@@ -68,6 +71,7 @@ export function Home({
 		},
 	});
 	const [busy, setBusy] = useState(false);
+	const [studyTimeOpen, setStudyTimeOpen] = useState(false);
 	const startingRef = useRef(false);
 	const starterRef = useRef(new SessionStarter());
 	const [startError, setStartError] = useState(false);
@@ -101,6 +105,9 @@ export function Home({
 	 *  the composer opens the picker; the picks seed the opening prompt).
 	 *  Not enforcing any input format — the picks are a convenience. */
 	const [mode, setMode] = useState<"teach" | "practice">("teach");
+	const [documents, setDocuments] = useState<File[]>([]);
+	const documentsRef = useRef<File[]>([]);
+	const applyDocuments = (next: File[]) => { documentsRef.current = next; setDocuments(next); };
 	const [practiceProps, setPracticeProps] = useState<{ id: string; name: string; statement: string }[]>([]);
 	const [chainSelectOpen, setChainSelectOpen] = useState(false);
 	// The chain table is CONTROLLED off this id set (the lifted pick).
@@ -156,7 +163,7 @@ export function Home({
 				title: t,
 				...(mode === "practice" ? { kind: "practice" } : {}),
 				...(practiceProps.length > 0 ? { graphContext: { propositions: practiceProps } } : {}),
-			}, fetch, JSON.stringify(catalog?.slots.strong));
+			}, fetch, JSON.stringify(catalog?.slots.strong), mode === "teach" ? documentsRef.current : []);
 			router.push(target);
 		} catch {
 			startingRef.current = false;
@@ -219,18 +226,22 @@ export function Home({
 					    shows the pick HINT so the affordance is discoverable;
 					    teaching mode with nothing picked renders nothing. */}
 					<ComposerActions
-						picker={(practiceProps.length > 0 || mode === "practice") && (
-							<NodePickerControl
-								count={practiceProps.length}
-								onOpen={() => setChainSelectOpen(true)}
-								onClear={() => setPracticeProps([])}
-							/>
-						)}
+						picker={
+							<div className="flex items-center gap-2">
+								{(practiceProps.length > 0 || mode === "practice") && (
+									<NodePickerControl count={practiceProps.length} onOpen={() => setChainSelectOpen(true)} onClear={() => setPracticeProps([])} />
+								)}
+								{mode === "teach" && <SourceDocumentsPicker documents={documents} onFiles={applyDocuments} />}
+								<button type="button" data-testid="study-time-button" onClick={() => setStudyTimeOpen(true)} className="flex cursor-pointer items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 font-ui text-xs text-foreground transition-colors hover:bg-accent">
+									<Clock3Icon aria-hidden="true" className="size-3.5 text-muted-foreground" />Study time
+								</button>
+							</div>
+						}
 						setup={zeroKeys ? (
 							<ZeroKeysPill inline onOpen={() => setSetupOpen(true)} />
 						) : (
 							!configured && (
-								<button
+											<button
 									type="button"
 									data-testid="setup-cta"
 									onClick={() => setSetupOpen(true)}
@@ -299,24 +310,13 @@ export function Home({
 						dictationSlot={<DictationBar dictation={dictation} />}
 						turns={[] as TurnUsage[]}
 						leadingSlot={
-							<div className="flex items-center gap-0.5 rounded-md border border-border/60 bg-background p-0.5" data-testid="home-mode-switch">
-								{(["teach", "practice"] as const).map((m) => (
-									<button
-										key={m}
-										type="button"
-										data-testid={`home-mode-${m}`}
-										onClick={() => setMode(m)}
-										className={
-											"flex items-center gap-1 rounded-sm px-2 py-0.5 text-[11px] uppercase tracking-wider transition-colors " +
-											(mode === m
-												? "bg-accent text-foreground"
-												: "text-muted-foreground hover:text-foreground")
-										}
-									>
-										{m === "practice" ? <DumbbellIcon aria-hidden="true" className="size-3" /> : null}
-										{m === "teach" ? "Teach" : "Practice"}
-									</button>
-								))}
+							<div className="flex h-7 items-center rounded-full border border-border/80 bg-card/85 p-0.5 shadow-xs backdrop-blur" role="radiogroup" aria-label="Session type" data-testid="home-mode-switch">
+								{(["teach", "practice"] as const).map((m) => {
+									const selected = mode === m;
+									return <button key={m} type="button" role="radio" aria-checked={selected} data-testid={`home-mode-${m}`} onClick={() => { setMode(m); if (m === "practice") applyDocuments([]); }} className={cn("flex h-full items-center justify-center gap-1.5 rounded-full px-2.5 text-[10px] font-medium uppercase tracking-wider transition-all duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", selected ? "bg-accent text-foreground font-semibold shadow-xs" : "text-muted-foreground hover:text-foreground hover:bg-muted/30")}>
+										{m === "practice" ? <DumbbellIcon aria-hidden="true" className="size-3" /> : null}<span>{m === "teach" ? "Teach" : "Practice"}</span>
+									</button>;
+								})}
 							</div>
 						}
 					/>
@@ -346,6 +346,7 @@ export function Home({
 					// Save only saves: the draft waits in the composer.
 				}}
 				/>
+			<StudyTimeOverlay open={studyTimeOpen} onClose={() => setStudyTimeOpen(false)} />
 		</div>
 	);
 }

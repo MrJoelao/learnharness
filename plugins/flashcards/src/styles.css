@@ -7,9 +7,10 @@
 .fc-root .fc-file-name { overflow-wrap: anywhere; }
 .fc-root [hidden] { display: none !important; }
 .fc-root .fc-button, .fc-root .fc-picker { display: inline-flex; }
-.fc-root .fc-input { display: block; width: 100%; border: 1px solid var(--border, #8886); border-radius: 6px; padding: 7px 10px; background: var(--background, transparent); color: inherit; font: inherit; }
+.fc-root .fc-input { display: block; width: 100%; border: 1px solid var(--border); border-radius: 0.375rem; padding: 7px 10px; background: var(--background, transparent); color: inherit; font: inherit; transition: border-color 150ms ease; }
+.fc-root .fc-input:focus-visible { outline: none; border-color: var(--ring); }
 .fc-root textarea.fc-input { min-height: 130px; resize: vertical; }
-.fc-root .fc-deck-panel { border: 1px solid var(--border, #8885); border-radius: 10px; overflow: hidden; }
+.fc-root .fc-deck-panel { border: 1px solid var(--border); border-radius: 0.75rem; overflow: hidden; background: var(--card); }
 .fc-root .fc-deck-toolbar { display: flex; align-items: center; gap: 8px; padding: 12px; }
 .fc-root .fc-search { display: block; flex: 1; min-width: 0; }
 .fc-root .fc-tree > .fc-muted { padding: 12px; }
@@ -43,7 +44,7 @@
 .fc-root .fc-dashboard-slot { margin-top: 24px; }
 .fc-root .fc-dashboard-heading { font-size: 16px; font-weight: 600; margin: 0 0 16px; }
 .fc-root .fc-dashboard h3 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
-.fc-root .fc-state-bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--muted, #8882); }
+.fc-root .fc-state-bar { display: flex; height: 12px; border-radius: 9999px; overflow: hidden; background: var(--muted, #8882); }
 .fc-root [data-state="new"] { --fc-state-shade: var(--fc-blue); }
 .fc-root [data-state="learning"] { --fc-state-shade: var(--fc-amber); }
 .fc-root [data-state="review"] { --fc-state-shade: var(--fc-green); }
@@ -53,7 +54,7 @@
 .fc-root .fc-state-legend li { display: flex; align-items: center; gap: 6px; }
 .fc-root .fc-state-legend li::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--fc-state-shade); }
 .fc-root .fc-chart-grid { display: grid; gap: 16px; margin-top: 16px; }
-.fc-root .fc-chart { display: flex; flex-direction: column; min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--border, #8885); border-radius: 10px; }
+.fc-root .fc-chart { display: flex; flex-direction: column; min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); }
 .fc-root .fc-chart-scroll { flex: none; overflow-x: auto; }
 .fc-root .fc-chart-svg { display: block; width: 100%; min-width: 20rem; max-width: 46rem; height: auto; margin-inline: auto; }
 .fc-root .fc-chart-bar[data-bucket="overdue"] { fill: var(--fc-red); }
@@ -64,13 +65,13 @@
 .fc-root .fc-chart-caption { font-size: 11px; line-height: 1.5; color: var(--muted-foreground, #888); margin: 10px 0 0; }
 .fc-root .fc-chart > .fc-chart-caption { flex: 1; }
 @media (min-width: 1450px) { .fc-root .fc-chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.fc-root .fc-batch { border: 1px solid var(--border, #8885); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.fc-root .fc-batch { border: 1px solid var(--border); border-radius: 0.75rem; padding: 14px; margin-bottom: 14px; background: var(--card); }
 .fc-root.fc-review-surface { box-sizing: border-box; min-height: 100%; height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: 48px 24px; }
 .fc-root.fc-review-surface:focus { outline: none; }
 .fc-root .fc-review-stage { --fc-rating-again: var(--fc-red); --fc-rating-hard: var(--fc-amber); --fc-rating-good: var(--fc-green); --fc-rating-easy: var(--fc-blue); container-type: inline-size; width: 100%; max-width: 44rem; flex: none; margin-block: auto; text-align: center; }
 .fc-root .fc-review-stage:focus { outline: none; }
 /* A width-based minimum keeps short cards 16:9 without constraining long answers. */
-.fc-root .fc-review-card { box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; width: 100%; min-height: 56.25cqw; padding: 32px; border: 1px solid var(--border, #8885); border-radius: 12px; background: var(--card, var(--background, transparent)); }
+.fc-root .fc-review-card { box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; width: 100%; min-height: 56.25cqw; padding: 32px; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card, var(--background, transparent)); }
 .fc-root .fc-review-title { font-size: 16px; font-weight: 600; margin: 0 0 16px; line-height: 1.5; }
 .fc-root .fc-review-title:focus { outline: none; }
 .fc-root .fc-review-footer { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px; }

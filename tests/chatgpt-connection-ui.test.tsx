@@ -73,10 +73,10 @@ async function confirmDisconnect() { await click(byTest("chatgpt-disconnect")); 
 afterEach(async () => { await act(async () => root?.unmount()); host?.remove(); root = undefined; host = undefined; delete window.lh; globalThis.fetch = originalFetch; });
 
 test("Providers is the first/default page; General closes the native group before Core/Community plugins", () => {
- const html = renderToStaticMarkup(<SettingsDialogBody onClose={() => {}} />);
- const ids = [...html.matchAll(/data-testid="settings-nav-([^"]+)"/g)].map((m) => m[1]);
- assert.deepEqual(ids, ["keys", "agent", "appearance", "graph", "keyboard", "general", "core-plugins", "plugins"]);
- assert.match(html, /settings-nav-keys[^>]*aria-current="true"/);
+	const html = renderToStaticMarkup(<SettingsDialogBody onClose={() => {}} />);
+	const ids = [...html.matchAll(/data-testid="settings-nav-([^"]+)"/g)].map((m) => m[1]);
+	assert.deepEqual(ids, ["keys", "agent", "appearance", "graph", "studyTime", "keyboard", "general", "core-plugins", "plugins"]);
+	assert.match(html, /settings-nav-keys[^>]*aria-current="true"/);
  assert.equal(parseHTML(html).document.querySelector('[data-testid="settings-nav-keys"]')?.textContent, "Providers");
 });
 

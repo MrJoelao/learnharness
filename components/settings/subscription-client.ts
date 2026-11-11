@@ -58,11 +58,13 @@ export function createWebNativeBridge(hub: Hub): NativeSubscriptionControlBridge
 	const call = async (providerId: NativeSubscriptionProviderId, op: string, fields?: Record<string, unknown>) => { await control(providerId, op, fields); };
 	return {
 		status: async () => (await status()).native,
-		login: (providerId, enabled) => call(providerId, "login", { enabled }),
+		login: (providerId, enabled, accountId) => call(providerId, "login", { enabled, ...(accountId ? { accountId } : {}) }),
 		cancel: (providerId) => call(providerId, "cancel"),
 		respond: (providerId, attemptId, promptId, value) => call(providerId, "respond", { attemptId, promptId, value }),
 		open: async (providerId, attemptId, actionId) => { await withBrowser(() => control(providerId, "open", { attemptId, actionId })); },
-		retry: (providerId) => call(providerId, "retry"), disconnect: (providerId) => call(providerId, "disconnect"),
+		retry: (providerId) => call(providerId, "retry"),
+		select: (providerId, accountId) => call(providerId, "select", { accountId }),
+		disconnect: (providerId, accountId) => call(providerId, "disconnect", accountId ? { accountId } : undefined),
 		consent: (providerId, enabled) => call(providerId, "consent", { enabled }),
 		onChange: (listener) => onChange(hub, listener),
 	};

@@ -31,6 +31,12 @@ export interface ChatRecord {
 	imageSnapshots?: Record<string, ImageSnapshot>;
 	/** The session's kind; an absent field reads as teach. */
 	kind?: ChatKind;
+	/** Learner-authored Markdown notes, kept outside model history. */
+	notes?: string;
+	/** Sources that ground answers in this session. */
+	references?: SessionReference[];
+	/** Documents selected when this teaching session was created. */
+	sourceDocuments?: SourceDocumentRef[];
 	/** The session's plan tree, written by the native plan tools. */
 	tree?: PlanTree;
 	/** Append-only usage log, separate from message history: one entry per billed
@@ -51,6 +57,20 @@ export interface ChatRecord {
 	 * supported version. Reads refuse records stamped newer than this build
 	 * so a downgraded app cannot rewrite an unsupported record. */
 	version?: number;
+}
+
+export interface SessionReference {
+	id: string;
+	kind: "file" | "url";
+	value: string;
+	name?: string;
+	addedAt: string;
+}
+
+export interface SourceDocumentRef {
+	sourceId: string;
+	name: string;
+	path: string;
 }
 
 /** The chat record format this build writes and understands. */

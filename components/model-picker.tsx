@@ -9,12 +9,12 @@ import { composeSlotModel } from "@/components/settings/agent-section";
 import { MenuShell } from "@/components/menu-shell";
 import { useInteractionLayers } from "@/components/interaction-layers";
 import { isInputShortcutScopeEligible } from "@/components/plugin-input-focus";
-import { ModelPickerPill } from "@/components/model-picker-pill";
 import { Hint } from "@/components/ui/hint";
 import { notifySettingsSaved, useSettingsSaved } from "@/components/settings-signal";
 import { useModelCatalog } from "@/components/model-catalog";
 export { useModelCatalog } from "@/components/model-catalog";
 import { defaultOrderLevel, populateLevel, THINKING_LABEL } from "@/components/thinking-default";
+import { cn } from "@/lib/utils";
 
 /** provider:id → known contextWindow over the cached catalog, mirroring
  * the server's catalogContextLimits join. CLI aliases have no global
@@ -271,34 +271,30 @@ export function ModelControl({ chatId, onModelChange }: { chatId?: string; onMod
 	};
 
 	return (
-		<div ref={containerRef} className="relative flex items-center gap-1.5" data-testid="model-control">
+		<div ref={containerRef} className="relative flex h-7 items-center rounded-full border border-border/80 bg-card/85 p-0.5 shadow-xs backdrop-blur" data-testid="model-control">
 			<Hint
 				label={effectiveId ? `${effectiveProvider ? `${effectiveProvider}:` : ""}${effectiveId}` : "Model selector"}
 				action="open-model-picker"
-				side="bottom"
+				side="top"
 			>
-				<ModelPickerPill
-					data-testid="stats-model"
-					onClick={() => openMenu("model")}
-					aria-expanded={open === "model"}
-				>{effectiveId ? prettyModel(effectiveId) : "—"}</ModelPickerPill>
+				<button type="button" data-testid="stats-model" onClick={() => openMenu("model")} aria-expanded={open === "model"} className={cn("flex h-full items-center gap-1 rounded-full px-2 text-xs font-medium transition-all duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", open === "model" ? "bg-accent text-foreground shadow-xs" : "text-card-foreground hover:bg-muted/50 hover:text-foreground")}>
+					<span className="truncate max-w-[140px]">{effectiveId ? prettyModel(effectiveId) : "—"}</span>
+					<span aria-hidden className="text-[10px] text-muted-foreground/80">▾</span>
+				</button>
 			</Hint>
+			<span className="h-3 w-px bg-border/60 mx-0.5" aria-hidden="true" />
 			<Hint
 				// "Thinking" + its real shortcut via the registry (owner interlude
 				// 2026-09-25): ⇧⇥ cycles the level, so "Thinking (⇧⇥)" —
 				// rebind-live like every Hint suffix.
 				label="Thinking"
 				action="cycle-thinking"
-				side="bottom"
+				side="top"
 			>
-				<ModelPickerPill
-					data-testid="stats-thinking"
-					onClick={() => {
-						if (entry === undefined) return;
-						openMenu("thinking");
-					}}
-					aria-expanded={open === "thinking"}
-				>{effectiveLevel === undefined ? "—" : (THINKING_LABEL[effectiveLevel] ?? effectiveLevel)}</ModelPickerPill>
+				<button type="button" data-testid="stats-thinking" onClick={() => { if (entry === undefined) return; openMenu("thinking"); }} aria-expanded={open === "thinking"} className={cn("flex h-full items-center gap-1 rounded-full px-2 text-xs font-medium transition-all duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", open === "thinking" ? "bg-accent text-foreground shadow-xs" : "text-card-foreground hover:bg-muted/50 hover:text-foreground")}>
+					<span>{effectiveLevel === undefined ? "—" : (THINKING_LABEL[effectiveLevel] ?? effectiveLevel)}</span>
+					<span aria-hidden className="text-[10px] text-muted-foreground/80">▾</span>
+				</button>
 			</Hint>
 
 			{/* The shared dropdown body (extracted 2026-09-20): the agent

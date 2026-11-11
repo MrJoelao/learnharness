@@ -21,6 +21,8 @@ export interface ServerEvents {
 	"activity-changed": Record<string, never>;
 	/** The session list changed (create, delete, title). */
 	"chats-changed": Record<string, never>;
+	/** Chat folders, placements, and archive state changed. */
+	"chat-organization-changed": Record<string, never>;
 	/** Source inventory, display names, or organizational folders changed. */
 	"sources-changed": Record<string, never>;
 	/** Web subscription state changed. No account or credential data on the bus. */
@@ -53,6 +55,7 @@ export const SERVER_EVENT_TYPES = [
 	"jobs-changed",
 	"activity-changed",
 	"chats-changed",
+	"chat-organization-changed",
 	"sources-changed",
 	"subscriptions-changed",
 	"record-changed",

@@ -9,13 +9,14 @@
  * Guards: 404 unknown chat, 400 for a body that isn't
  * { input: { messageId, inverted } } or targets no demo/visual steer.
  */
-import { setSteerUiInverted, type SteerDetails } from "@/src/core";
+import { isChatArchived, setSteerUiInverted, type SteerDetails } from "@/src/core";
 import { getChat, stores } from "@/src/server";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
 	const { id } = await ctx.params;
 	const chat = getChat(id);
 	if (!chat) return Response.json({ error: "Unknown chat" }, { status: 404 });
+	if (isChatArchived(stores.chatOrganizationStore.read(), id)) return Response.json({ error: "Archived conversations are read-only" }, { status: 400 });
 
 	const body = (await req.json().catch(() => null)) as { input?: unknown } | null;
 	const input = body?.input as { messageId?: unknown; inverted?: unknown } | null | undefined;

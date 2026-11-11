@@ -16,10 +16,12 @@
  */
 
 export * from "./contracts.ts";
+export * from "./notes.ts";
 export { embedLearnerImage } from "./learner-image-svg.ts";
 export * from "./ports.ts";
 export * from "./chains.ts";
 export * from "./source-organization.ts";
+export * from "./chat-organization.ts";
 export * from "./source-selection.ts";
 export * from "./source-label.ts";
 export * from "./render-settings.ts";
@@ -102,6 +104,7 @@ export * from "./session-markdown.ts";
 // thread lookup and the side model's lesson document. Pure, browser-safe.
 export * from "./side-chat.ts";
 export * from "./plugins.ts";
+export * from "./study-time.ts";
 export * from "./plugin-questions.ts";
 export * from "./plugin-problems.ts";
 export * from "./plugin-view-context.ts";

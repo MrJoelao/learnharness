@@ -127,4 +127,22 @@ describe("explicit plugin chrome", () => {
 			assert.equal(f.document.querySelector('[aria-label="More plugin actions"]'), null, "wide header restores inline action");
 		} finally { await f.close(); }
 	});
+
+	it("sidebar action button omits native title and positions hint to the right with active shortcut", async () => {
+		const f = await mountPluginChrome({ activate(ctx) {
+			ctx.registerAction({
+				id: "open",
+				name: "Flashcards",
+				shortcut: { scope: "app", defaultBinding: "mod+shift+l" },
+				run() {},
+			});
+			ctx.placeAction({ id: "open-sidebar", actionId: "open", location: "sidebar" });
+		} }, <PluginSidebarActions><button>Teaching</button></PluginSidebarActions>);
+		try {
+			const button = f.document.querySelector<HTMLButtonElement>('[data-plugin-action="fixture/open-sidebar"]')!;
+			assert.ok(button, "renders placed flashcards action in sidebar");
+			assert.equal(button.getAttribute("title"), null, "does not set native title which would show unstyled browser tooltip below");
+			assert.equal(button.getAttribute("aria-label"), "Flashcards");
+		} finally { await f.close(); }
+	});
 });

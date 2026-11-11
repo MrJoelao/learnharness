@@ -136,7 +136,7 @@ export function ThemeCards({
 					type="button"
 					data-testid="theme-export"
 					onClick={() => downloadJson(`${active.id}.json`, exportThemeFile(active, appearance))}
-					className="flex h-7 shrink-0 items-center gap-2 rounded-sm border border-border bg-background px-2 font-ui text-xs text-foreground transition-colors hover:border-muted-foreground/50"
+					className="flex h-7 shrink-0 items-center gap-2 rounded-md border border-border bg-background px-2.5 font-ui text-xs text-foreground transition-colors hover:border-muted-foreground/50 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none cursor-pointer"
 				>
 					<DownloadIcon className="size-3.5" />
 					Export JSON

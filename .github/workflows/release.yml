@@ -135,22 +135,7 @@ jobs:
       - run: node scripts/smoke-provider-runtime.mjs
       - run: node scripts/build-server.mjs
       - run: node scripts/smoke-server.mjs --electron
-      - name: Validate macOS release secrets
-        if: github.event_name == 'push' && runner.os == 'macOS'
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-            if [[ -z "${!name}" ]]; then
-              echo "::error::Missing signing/notarization secret: $name"
-              exit 1
-            fi
-          done
-      - name: Signed and notarized macOS release → draft
+      - name: macOS release → draft
         if: github.event_name == 'push' && runner.os == 'macOS'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -159,7 +144,15 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npx electron-builder ${{ matrix.builder_args }} --publish always -c.forceCodeSigning=true
+        run: |
+          if [[ -n "$CSC_LINK" && -n "$APPLE_ID" ]]; then
+            echo "Building signed and notarized macOS release..."
+            npx electron-builder ${{ matrix.builder_args }} --publish always -c.forceCodeSigning=true
+          else
+            echo "::warning::Apple Developer secrets not configured; building unsigned macOS release without notarization."
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            npx electron-builder ${{ matrix.builder_args }} --publish always -c.mac.notarize=false -c.mac.identity=null -c.forceCodeSigning=false
+          fi
       - name: Windows/Linux release → draft
         if: github.event_name == 'push' && runner.os != 'macOS'
         env:

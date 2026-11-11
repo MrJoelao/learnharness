@@ -62,13 +62,19 @@ import {
 	type ChatSettings,
 	type LhMessage,
 	type ModelSlotName,
+	chatHasStarted,
 } from "@/src/core";
 import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
 import { MermaidOverlay, SessionMermaidContext, type SessionImage } from "@/components/session-overlay";
 import { AbortTurnDialog, type AbortMode } from "@/components/abort-turn-dialog";
-import { ArrowRightIcon, DumbbellIcon, MessageCircleQuestionIcon, WaypointsIcon } from "lucide-react";
+import { ArchiveIcon, ArrowRightIcon, DumbbellIcon, MessageCircleQuestionIcon, WaypointsIcon } from "lucide-react";
 import type { PlanBlockData } from "@/src/core";
+import type { SessionReference, SourceDocumentRef } from "@/src/core";
+import { SourcesChip } from "@/components/sources-panel";
+import { NotesChip, NotesPanel } from "@/components/notes-panel";
+import { NotesController, NotesProvider } from "@/components/notes-state";
+import { useStudyTracker } from "@/components/use-study-tracker";
 import { QuestionDock } from "@/components/question-dock";
 import { PluginQuestionDock } from "./plugin-question-dock";
 import { PluginQuestionPart } from "./plugin-question-part";
@@ -132,7 +138,7 @@ import { currentUserThinkingOpen, setAllUserThinkingOpen } from "@/components/th
  * deliberately narrower (~46rem centered) per the reference. Same ELEMENT,
  * same place — width polish only.
  */
-const COLUMN = "mx-auto w-full max-w-none px-6";
+const COLUMN = "mx-auto w-full max-w-5xl px-6";
 const DOCK = "mx-auto w-full max-w-[46rem] px-4";
 // The DOCK container's fixed width (46rem) and the plan marginalia's
 // geometry (owner, plan-placement round): the bare diagram sits in the
@@ -252,6 +258,21 @@ function isSubagentSteer(m: LhViewMessage): boolean {
 	return (m.metadata as { subagentResult?: unknown } | undefined)?.subagentResult != null;
 }
 
+function useSafeRouter() {
+	try {
+		return useRouter();
+	} catch {
+		return {
+			push: (url: string) => { if (typeof window !== "undefined") window.location.href = url; },
+			back: () => { if (typeof window !== "undefined") window.history.back(); },
+			forward: () => { if (typeof window !== "undefined") window.history.forward(); },
+			refresh: () => {},
+			replace: (url: string) => { if (typeof window !== "undefined") window.location.replace(url); },
+			prefetch: () => {},
+		};
+	}
+}
+
 /**
  * The teaching session. All chat state lives in useChat; the server persists
  * the canonical transcript after every turn.
@@ -271,6 +292,10 @@ export function Chat({
 	initiallyCompacting = false,
 	initialConfigured = false,
 	kind = "teach",
+	isArchived: initialIsArchived = false,
+	initialNotes = "",
+	initialReferences = [],
+	sourceDocuments,
 }: {
 	chatId: string;
 	title: string;
@@ -294,7 +319,31 @@ export function Chat({
 	 *  it (BYOK, owner 2026-09-22). The server gate stays the truth; this
 	 *  only decides whether the pill rides the composer. */
 	initialConfigured?: boolean;
+	isArchived?: boolean;
+	initialNotes?: string;
+	initialReferences?: SessionReference[];
+	sourceDocuments?: readonly SourceDocumentRef[];
 }) {
+	const router = useSafeRouter();
+	const [isArchived, setIsArchived] = useState(initialIsArchived);
+	const [restoring, setRestoring] = useState(false);
+	const [notes] = useState(() => new NotesController(chatId, initialNotes));
+	const restoreArchivedChat = async () => {
+		setRestoring(true);
+		try {
+			const response = await fetch("/api/chats/organization", {
+				method: "POST", headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "restore", kind: "chat", id: chatId }),
+			});
+			if (!response.ok) return;
+			setIsArchived(false);
+			window.dispatchEvent(new CustomEvent("lh:chat-restored", { detail: { id: chatId } }));
+			window.dispatchEvent(new CustomEvent("lh:chat-organization-changed"));
+			const params = new URLSearchParams(window.location.search);
+			params.delete("from"); params.delete("folder"); params.delete("view");
+			router.replace(`/chat/${chatId}${params.size ? `?${params}` : ""}`);
+		} finally { setRestoring(false); }
+	};
 	// Reattach plumbing (background-turn runner wave): the hook holds the
 	// settled terminal's callback — a stable ref assigned below, once
 	// syncFromServer exists (refs, not closures: no stale capture).
@@ -308,6 +357,7 @@ export function Chat({
 	// turn stream is the VERBATIM AgentEvent passthrough the server emits.
 	const { canonicalMessages, reconciliation, reconcile, pluginQuestionAvailability, pluginQuestionDraft, pluginProblemAvailability, pluginProblemDraft, dismissPluginQuestion, readRecord, messages, nativeMessages, hasConfirmedConversation, contextTokens, send, continueIfOwed, steer, steerQueue, submitAnswer, dismissQuestion, dismissProblem, questionDraft, saveQuestionDraft, status, evaluating, error, stop, clearError, resumeStream, setReattachSettled } =
 		useChatSession({ chatId, initialMessages, initialError, initiallyInFlight });
+	useStudyTracker(chatId, !isArchived && chatHasStarted(nativeMessages));
 
 	const controller = useOptionalInteractionLayers();
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
@@ -321,7 +371,7 @@ export function Chat({
 	const submissionMounted = useRef(true);
 	useEffect(() => { submissionMounted.current = true; return () => { submissionMounted.current = false; submissionRunner.dispose(); }; }, [submissionRunner]);
 	useEffect(() => () => submissionRunner.dispose(), [surfaceTarget, submissionRunner]);
-	const inputViewReader = useRef<(() => PluginSessionViewInput) | null>(null) as SessionInputViewReader;
+	const inputViewReader = useRef<SessionInputViewReader>({ current: null }).current;
 	const [, refreshViewContext] = useState(0);
 	const notifyViewChanged = useCallback(() => { if (submissionMounted.current) refreshViewContext(value => value + 1); }, []);
 	inputViewReader.changed = notifyViewChanged;
@@ -1054,7 +1104,6 @@ export function Chat({
 	// Advancing the lesson does not close or disable an old conversation.
 	const sideActions = useMemo(() => createSideQuestionActions({ open: openSideThread }), [openSideThread]);
 	const selectionActions = useMemo(() => [citeAction, ...sideActions], [citeAction, sideActions]);
-	const router = useRouter();
 	const transcriptElementRef = useRef<HTMLElement | null>(null);
 	transcriptElementRef.current = transcriptElement;
 	const citationActions = useMemo<CitationActions>(() => ({
@@ -1106,7 +1155,7 @@ export function Chat({
 	// recovers from it. Later compaction requires new input instead.
 	const retryable = !pluginOwnsDock && (status === "ready" || status === "error") && !busy && !compacting && endsInFailedTurn(nativeMessages);
 	const retryFailedTurn = () => retryFailedResponse(send, draftRef);
-	const sendAllowed = !pluginOwnsDock && reconciliation === "ready" && !pending && !activeProblem && !compacting && !submissionRunner.occupied;
+	const sendAllowed = !isArchived && !pluginOwnsDock && reconciliation === "ready" && !pending && !activeProblem && !compacting && !submissionRunner.occupied;
 	const pendingTextTarget = textTarget();
 	const pendingTextInput = !!pendingTextTarget && !!pluginManager?.hasPendingSubmissionInput(pendingTextTarget);
 	const pendingThinkingTarget = thinkingTarget();
@@ -1594,6 +1643,7 @@ export function Chat({
 	usePluginShortcutPage(`/chat/${encodeURIComponent(chatId)}`, captureActionContext);
 
 	return (
+		<NotesProvider controller={notes}>
 		<ChatActionsContext.Provider
 			value={{
 				chatId,
@@ -1701,15 +1751,17 @@ export function Chat({
 					    structure beside the phase chip — access to the full-DAG popup
 					    at every width; the marginalia is the wide-screen glance view. */}
 					{planTree && (
-						<Hint label="Open the full plan" side="bottom">
+						<Hint label={planOpen ? "Close plan" : "Open the full plan"} side="bottom">
 <button
 							type="button"
 							data-testid="plan-chip"
+							aria-haspopup="dialog"
+							aria-expanded={planOpen}
 							onClick={(e) => {
 								blurAfterPointerClick(e);
-								setPlanOpen(true);
+								setPlanOpen(!planOpen);
 							}}
-							className="lh-no-drag flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border/80 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:border-border hover:text-foreground"
+							className={"lh-no-drag flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide transition-colors focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none " + (planOpen ? "border-primary/60 bg-accent text-foreground shadow-xs" : "border-border/80 text-muted-foreground hover:border-border hover:text-foreground hover:bg-muted/30")}
 						>
 							<WaypointsIcon className="size-3.5 text-primary" aria-hidden />
 							Plan
@@ -1730,17 +1782,28 @@ export function Chat({
 						<span
 							data-testid="phase-chip"
 							data-phase="practice"
-							aria-hidden="true"
-							className="pointer-events-none flex shrink-0 select-none items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+							title="Session phase: Practice"
+							aria-label="Session phase: Practice"
+							className="pointer-events-none flex shrink-0 select-none items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground font-mono"
 						>
-							<DumbbellIcon className="size-3" />
+							<DumbbellIcon className="size-3" aria-hidden="true" />
 							Practice
 						</span>
 					) : (
 						<PhaseChip phase={phases.at(-1) ?? "probe"} />
 					)}
+					<SourcesChip chatId={chatId} sourceDocuments={sourceDocuments} initialReferences={initialReferences} disabled={isArchived} />
+					<NotesChip />
 					{renderedActionContext && <PluginTopBarActions context={renderedActionContext} captureContext={captureActionContext} />}
 				</TopBar>
+				{isArchived && (
+					<div data-testid="archived-chat-banner" className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+						<span className="flex items-center gap-2"><ArchiveIcon className="size-4" />This session is archived and read-only.</span>
+						<button type="button" data-testid="restore-chat-banner-button" disabled={restoring} onClick={() => void restoreArchivedChat()} className="rounded-md px-2.5 py-1 text-foreground hover:bg-accent disabled:opacity-50">
+							{restoring ? "Restoring…" : "Restore"}
+						</button>
+					</div>
+				)}
 
 				<SessionFind scopeRef={sessionFindScopeRef} scrollContextRef={scrollContextRef} />
 				<div ref={sessionFindScopeRef} className="relative flex min-h-0 flex-1">
@@ -2221,6 +2284,7 @@ export function Chat({
 				<AbortTurnDialog mode={abortAsk} onClose={closeAbortAsk} onConfirm={confirmAbort} busy={busy} />
 				</div>
 			</div>
+			<NotesPanel />
 		</div>
 		</CitationActionsContext.Provider>
 		</JobsContext.Provider>
@@ -2241,6 +2305,7 @@ export function Chat({
 			}}
 		/>
 		</ChatActionsContext.Provider>
+		</NotesProvider>
 	);
 }
 
@@ -2502,9 +2567,10 @@ export function DockOverlay({
 	const readingInputRef = useRef<HTMLDivElement>(null);
 	const ownsDock = !!pending || !!pluginQuestion || unreadablePlugin || !!practice;
 	const initialPendingRef = useRef(pendingId);
-	const nativeViewReader = useRef<(() => NativeQuestionViewState) | null>(null) as ViewReaderRef<NativeQuestionViewState>;
-	const practiceViewReader = useRef<(() => string) | null>(null) as ViewReaderRef<string>;
-	const customViewReader = useRef<(() => { available: boolean }) | null>(null) as ViewReaderRef<{ available: boolean }>;
+	const nativeViewReader = useRef<ViewReaderRef<NativeQuestionViewState>>({ current: null }).current;
+	const practiceViewReader = useRef<ViewReaderRef<string>>({ current: null }).current;
+	const customViewReader = useRef<ViewReaderRef<{ available: boolean }>>({ current: null }).current;
+	nativeViewReader.changed = practiceViewReader.changed = customViewReader.changed = viewReader?.changed;
 	nativeViewReader.changed = practiceViewReader.changed = customViewReader.changed = viewReader?.changed;
 
 	// Teach-question ARRIVAL state, applied during render — BEFORE the

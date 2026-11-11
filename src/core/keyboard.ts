@@ -27,6 +27,7 @@ export type KeyAction =
 	| "sessions-search"
 	| "jump-graph"
 	| "new-session"
+	| "toggle-archive"
 	| "rename-session"
 	| "cheat-sheet"
 	| "find"
@@ -68,6 +69,7 @@ export const KEYBOARD_ACTIONS: readonly KeyActionDef[] = [
 	// walked) — see sidebar.tsx's search input.)
 	{ id: "jump-graph", label: "Graph view", scope: "global", binding: "mod+g" },
 	{ id: "new-session", label: "New session", scope: "global", binding: "mod+n" },
+	{ id: "toggle-archive", label: "Toggle archive view", scope: "global", binding: "mod+shift+a" },
 	{ id: "rename-session", label: "Rename session", scope: "chat", binding: "f2" },
 	{ id: "toggle-user-thinking", label: "Toggle all your thinking", scope: "chat", binding: "mod+t" },
 	{ id: "toggle-question-thread", label: "Question · ask for a nudge (side thread)", scope: "chat", binding: "mod+j" },

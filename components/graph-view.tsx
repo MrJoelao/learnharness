@@ -833,15 +833,15 @@ export function GraphChromeRow({
 	return (
 		<>
 			{!isEmpty && (
-				<div className="graph-chrome-fade-in w-56 min-w-0 shrink rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
+				<div className="graph-chrome-fade-in w-56 min-w-0 shrink rounded-xl border bg-card/85 px-2 py-[3px] shadow-lg backdrop-blur focus-within:border-ring transition-colors">
 					<Hint
 						// ⌘F focuses node search (surface-scoped registry action).
 						label="Search nodes"
 						action="find"
 						side="bottom"
 					>
-					<div className="relative">
-						<SearchIcon className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+					<div className="relative flex items-center">
+						<SearchIcon className="pointer-events-none absolute left-0.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
 						<input
 							ref={searchInputRef}
 							value={query}
@@ -849,12 +849,12 @@ export function GraphChromeRow({
 							placeholder="Search nodes…"
 							aria-label="Search nodes"
 							spellCheck={false}
-							className="h-7 w-full rounded-lg border bg-background pl-8 text-xs outline-none placeholder:text-muted-foreground focus:border-ring"
+							className="h-7 w-full bg-transparent pl-6 pr-1 text-xs outline-none placeholder:text-muted-foreground"
 						/>
 					</div>
 					</Hint>
 					{noMatch && (
-						<div className="px-1.5 pt-1 text-[11px] text-muted-foreground">No matching nodes.</div>
+					<div className="px-1 pb-1 pt-0.5 text-[11px] text-muted-foreground">No matching nodes.</div>
 					)}
 				</div>
 			)}

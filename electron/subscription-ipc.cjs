@@ -31,12 +31,21 @@ async function subscriptionControl(command, controller) {
 		if (!PROVIDERS.includes(command.providerId)) throw new Error();
 		const id = command.providerId;
 		switch (command.op) {
-			case "login": return await controller.login(id, command.enabled);
+			case "login": return await controller.login(id, command.enabled, command.accountId);
 			case "cancel": return controller.cancel(id);
 			case "respond": return await controller.respond(id, command.attemptId, command.promptId, command.value);
 			case "open": return await controller.open(id, command.attemptId, command.actionId);
 			case "retry": return await controller.retry(id);
-			case "disconnect": return await controller.disconnect(id);
+			case "select":
+				if (id !== "google-antigravity" || typeof command.accountId !== "string" || !command.accountId) throw new Error();
+				if (typeof controller.select !== "function") throw new Error();
+				return await controller.select(id, command.accountId);
+			case "disconnect":
+				if (command.accountId !== undefined) {
+					if (id !== "google-antigravity" || typeof command.accountId !== "string" || !command.accountId) throw new Error();
+					return await controller.disconnect(id, command.accountId);
+				}
+				return await controller.disconnect(id);
 			case "consent": return await controller.consent(id, command.enabled);
 			default: throw new Error();
 		}

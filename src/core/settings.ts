@@ -488,6 +488,11 @@ export interface CompactionSettings {
 	includeReasoning?: boolean;
 }
 
+export interface StudyTimeSettings {
+	idleMinutes?: number;
+	weekStart?: "monday" | "sunday";
+}
+
 /** THE record. Every section optional (delta); unknown top-level keys are
  *  preserved verbatim by the sanitizer (forward-compat with newer records). */
 export interface UserSettings {
@@ -504,6 +509,7 @@ export interface UserSettings {
 	appearance?: AppearanceSettings;
 	graph?: GraphSettings;
 	compaction?: CompactionSettings;
+	studyTime?: StudyTimeSettings;
 	[key: string]: unknown;
 }
 
@@ -533,6 +539,7 @@ export interface FactorySettings {
 	};
 	graph: Required<GraphSettings>;
 	compaction: Required<CompactionSettings>;
+	studyTime: Required<StudyTimeSettings>;
 }
 
 export const FACTORY_SETTINGS: FactorySettings = {
@@ -552,6 +559,7 @@ export const FACTORY_SETTINGS: FactorySettings = {
 	},
 	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
 	compaction: { thresholdTokens: 150_000, includeReasoning: false },
+	studyTime: { idleMinutes: 5, weekStart: "monday" },
 };
 
 /** The chunk budget's validated floor (GraphSettings.extractionChunkTokens
@@ -850,6 +858,16 @@ function sanitizeCompaction(raw: Record<string, unknown>): CompactionSettings {
 	return out;
 }
 
+export const STUDY_IDLE_MINUTES_MIN = 1;
+export const STUDY_IDLE_MINUTES_MAX = 60;
+
+function sanitizeStudyTime(raw: Record<string, unknown>): StudyTimeSettings {
+	const out: StudyTimeSettings = {};
+	if (typeof raw.idleMinutes === "number" && Number.isFinite(raw.idleMinutes)) out.idleMinutes = Math.min(STUDY_IDLE_MINUTES_MAX, Math.max(STUDY_IDLE_MINUTES_MIN, Math.round(raw.idleMinutes)));
+	if (raw.weekStart === "monday" || raw.weekStart === "sunday") out.weekStart = raw.weekStart;
+	return out;
+}
+
 /**
  * Coerce arbitrary JSON (disk file, network body) into a valid delta record:
  * known fields validated strictly (invalid ones drop/clamp per module doc),
@@ -897,6 +915,7 @@ export function sanitizeUserSettings(raw: unknown): UserSettings | null {
 	if (r.compaction !== undefined && r.compaction !== null && typeof r.compaction === "object") {
 		out.compaction = sanitizeCompaction(r.compaction as Record<string, unknown>);
 	}
+	if (r.studyTime !== undefined && r.studyTime !== null && typeof r.studyTime === "object" && !Array.isArray(r.studyTime)) out.studyTime = sanitizeStudyTime(r.studyTime as Record<string, unknown>);
 	// Unknown top-level keys ride along untouched (forward-compat). One
 	// known-DEAD key is stripped instead of riding: `chat` (the old
 	// default-settings section) died with per-session models (owner,

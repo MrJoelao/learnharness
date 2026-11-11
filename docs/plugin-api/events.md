@@ -50,6 +50,7 @@ export interface ServerEvents {
     };
     "activity-changed": Record<string, never>;
     "chats-changed": Record<string, never>;
+    "chat-organization-changed": Record<string, never>;
     "sources-changed": Record<string, never>;
     "subscriptions-changed": Record<string, never>;
     "record-changed": {
@@ -81,6 +82,7 @@ export interface ServerEvents {
 - ["jobs-changed".chatId](#serverevents-jobs-changedchatid)
 - ["activity-changed"](#serverevents-activity-changed)
 - ["chats-changed"](#serverevents-chats-changed)
+- ["chat-organization-changed"](#serverevents-chat-organization-changed)
 - ["sources-changed"](#serverevents-sources-changed)
 - ["subscriptions-changed"](#serverevents-subscriptions-changed)
 - ["record-changed"](#serverevents-record-changed)
@@ -161,6 +163,14 @@ The session list changed (create, delete, title).
 
 ```ts
 "chats-changed": Record<string, never>;
+```
+
+### ServerEvents "chat-organization-changed"
+
+Chat folders, placements, and archive state changed.
+
+```ts
+"chat-organization-changed": Record<string, never>;
 ```
 
 ### ServerEvents "sources-changed"

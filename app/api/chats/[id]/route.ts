@@ -1,5 +1,5 @@
-import { compactionInFlight, deleteChatSession, getChat, isTurnRunning, sessionCoverage, sessionCost, stores, turnFailure, type ChatDeleteMode, pluginQuestionAvailabilityOf, reconcilePluginQuestionCompatibility, type QuestionTypeResolver, getPluginQuestionTypeResolver, getPluginHost, pluginProblemAvailabilityOf, type ProblemTypeResolver } from "@/src/server";
-import { pendingPluginQuestionOf, activeProblemOf } from "@/src/core";
+import { chatDirectory, compactionInFlight, deleteChatSession, getChat, isTurnRunning, sessionCoverage, sessionCost, stores, turnFailure, type ChatDeleteMode, pluginQuestionAvailabilityOf, reconcilePluginQuestionCompatibility, type QuestionTypeResolver, getPluginQuestionTypeResolver, getPluginHost, pluginProblemAvailabilityOf, type ProblemTypeResolver } from "@/src/server";
+import { pendingPluginQuestionOf, activeProblemOf, isChatArchived } from "@/src/core";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
 	const { id } = await params;
@@ -42,6 +42,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 		turnError: turnFailure(id),
 		compacting: compactionInFlight(id),
 		coverage: sessionCoverage(id),
+		isArchived: isChatArchived(stores.chatOrganizationStore.read(), id),
 	});
 }
 
@@ -55,6 +56,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	const { id } = await params;
 	if (!getChat(id)) return Response.json({ error: "Not found" }, { status: 404 });
+	if (isChatArchived(stores.chatOrganizationStore.read(), id)) {
+		return Response.json({ error: "Archived conversations are read-only" }, { status: 400 });
+	}
 	const body = (await req.json().catch(() => null)) as { title?: unknown } | null;
 	if (typeof body?.title !== "string" || body.title.trim() === "") {
 		return Response.json({ error: "title must be a non-empty string" }, { status: 400 });
@@ -107,6 +111,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 			{ status: outcome.status },
 		);
 	}
+	chatDirectory.removeChatPlacement(id);
 	return Response.json({
 		ok: true,
 		mode: outcome.mode,

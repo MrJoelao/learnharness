@@ -6,10 +6,15 @@ import {
 	type CacheRetention,
 	type Model,
 	type Models,
+	type Provider,
 	type MutableModels,
 	type StreamFunction,
 } from "@earendil-works/pi-ai";
+import * as piAi from "@earendil-works/pi-ai";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
+import * as antigravityCore from "@cortexkit/antigravity-auth-core";
+import { createRequire } from "node:module";
 import { lazyApi, lazyStream } from "@earendil-works/pi-ai/api/lazy";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { type ModelRole } from "../../config.ts";
@@ -22,6 +27,9 @@ import { createClaudeCodeProvider } from "./claude-code/provider.ts";
 import { streamClaudeCode } from "./claude-code/stream.ts";
 import { nativeSubscriptionId, nativeSubscriptionModel } from "./subscription-bridge.ts";
 import { nativeSubscriptionStream } from "./subscription-stream.ts";
+
+const require = createRequire(import.meta.url);
+const createAntigravityProvider = require("./antigravity-provider.cjs").createProvider as (sdk: object, core: object, options: { authEnabled: boolean }) => Provider<Api>;
 
 /** App identity is immutable and shared by Models and every native Agent.
  * Agent's default Pi attribution otherwise overrides the Models identity. */
@@ -92,6 +100,7 @@ export function piModels() {
 				: provider);
 		}
 		collection.setProvider(createClaudeCodeProvider(streamClaudeCode));
+		collection.setProvider(createAntigravityProvider({ ...piAi, createAssistantMessageEventStream }, antigravityCore, { authEnabled: false }));
 	}
 	providerSource?.sync(collection);
 	return collection;

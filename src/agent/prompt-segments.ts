@@ -31,6 +31,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { PATHS, PROMPTS_OVERRIDE_DIR } from "../../config.ts";
 import { FRAGMENT_RE, isValidSegmentPath, type PromptAgent, type PromptSegmentInfo } from "../core/prompt-segments.ts";
+import type { SessionReference } from "../core/contracts/chat.ts";
 
 const PROMPTS_DIR = path.join(PATHS.root, "src", "agent", "prompts");
 
@@ -131,4 +132,19 @@ export function allSegmentPaths(): string[] {
 		for (const segment of listSourceSegments(agent)) paths.add(segment.path);
 	}
 	return [...paths].sort();
+}
+
+export function sessionReferencesSegment(references: readonly SessionReference[]): string | null {
+	if (references.length === 0) return null;
+	const lines = references.map((reference) => {
+		const label = reference.name ? `${reference.name} — ${reference.value}` : reference.value;
+		return reference.kind === "file"
+			? `- ${label} (use the read tool for text and image files; use the pdf tool for PDFs)`
+			: `- ${label} (ask the research tool to consult this page; the conversation agent has no direct web-fetch tool)`;
+	});
+	return [
+		"Reference materials for this session (consult them when precision matters; cite the source when you use them):",
+		...lines,
+		"These ground your explanations in the learner's chosen sources; the learner's goal still sets the direction. Ordinary file-access guards apply to file reads.",
+	].join("\n");
 }

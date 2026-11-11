@@ -29,9 +29,16 @@ export const PATHS = {
 	/** Chat sessions (AI SDK UIMessage transcripts, one JSON file per chat). */
 	chats: path.join(/* turbopackIgnore: true */ DATA_ROOT, "chats"),
 	graph: path.join(/* turbopackIgnore: true */ DATA_ROOT, "graph"),
+	materials: path.join(/* turbopackIgnore: true */ DATA_ROOT, "graph", "materials"),
+	study: path.join(/* turbopackIgnore: true */ DATA_ROOT, "study"),
 	/** Debug artifacts (env-gated): data/debug/provider-events/<chatId>.jsonl
 	 * raw provider stream recordings (src/agent/provider-events.ts). */
 	debug: path.join(/* turbopackIgnore: true */ DATA_ROOT, "debug"),
+} as const;
+
+export const STUDY_FILES = {
+	intervals: path.join(/* turbopackIgnore: true */ PATHS.study, "intervals.jsonl"),
+	open: path.join(/* turbopackIgnore: true */ PATHS.study, "open.json"),
 } as const;
 
 // ─── Models ────────────────────────────────────────────────────────────────
@@ -73,6 +80,7 @@ export const LEDGER_FILES = {
 	coverage: path.join(/* turbopackIgnore: true */ PATHS.graph, "coverage.jsonl"),
 } as const;
 
+
 /**
  * Notes-import bookkeeping (NOT a ledger): one JSON map, src-id → NotesSource
  * record (contracts/graph.ts) — the file path + import time + the run's usage
@@ -81,6 +89,8 @@ export const LEDGER_FILES = {
 export const SOURCES_FILE = path.join(/* turbopackIgnore: true */ PATHS.graph, "sources.json");
 /** Presentation-only source names/folder placement; never extraction identity. */
 export const SOURCE_ORGANIZATION_FILE = path.join(/* turbopackIgnore: true */ PATHS.graph, "source-organization.json");
+/** Chat folder organization, ordering, and archive metadata. */
+export const CHAT_ORGANIZATION_FILE = path.join(/* turbopackIgnore: true */ DATA_ROOT, "chat-organization.json");
 /** The layout ledger (read-modify-write like sources.json): nodeId →
  *  {x,y} resting positions from the incremental settle (core/layout.ts).
  *  Carries an updatedAt stamp for future live-physics conflict handling. */

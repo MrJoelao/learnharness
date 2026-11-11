@@ -3,6 +3,7 @@ import { clearOpeningPrompt, OPENING_PROMPT_FAILURE, stashOpeningPrompt } from "
 interface SessionCreation {
 	title: string;
 	kind?: "practice";
+	folderId?: string;
 	graphContext?: { propositions: readonly { id: string; name: string; statement: string }[] };
 }
 
@@ -13,15 +14,20 @@ interface SessionCreation {
 export class SessionStarter {
 	private created?: { identity: string; id: string };
 
-	async start(body: SessionCreation, fetchLike: typeof fetch, settingsIdentity?: string): Promise<string> {
-		const identity = JSON.stringify([body, settingsIdentity]);
+	async start(body: SessionCreation, fetchLike: typeof fetch, settingsIdentity?: string, files: readonly File[] = []): Promise<string> {
+		const identity = JSON.stringify([body, settingsIdentity, files.map((file) => [file.name, file.size, file.lastModified])]);
 		if (this.created?.identity !== identity) {
 			if (this.created) clearOpeningPrompt(this.created.id);
 			this.created = undefined;
+			const form = files.length ? new FormData() : null;
+			if (form) {
+				form.set("request", JSON.stringify(body));
+				for (const file of files) form.append("files", file, file.name);
+			}
 			const res = await fetchLike("/api/chats", {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body),
+				...(form ? {} : { headers: { "Content-Type": "application/json" } }),
+				body: form ?? JSON.stringify(body),
 			});
 			if (!res.ok) throw new Error(OPENING_PROMPT_FAILURE);
 			const result = await res.json() as { id?: unknown };

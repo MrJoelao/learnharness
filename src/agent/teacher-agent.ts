@@ -5,7 +5,9 @@ import { providerEventObserver } from "./provider-events.ts";
 import type { Usage } from "@earendil-works/pi-ai";
 import { PATHS } from "../../config.ts";
 import { APP_IDENTITY, piEngineFor, type PiEngine } from "./models.ts";
-import { effectivePromptSegments } from "./prompt-segments.ts";
+import { effectivePromptSegments, sessionReferencesSegment } from "./prompt-segments.ts";
+import { sourceDocumentsSegment } from "./source-documents.ts";
+import type { SessionReference } from "../core/contracts/chat.ts";
 import {
 	askUserQuestionTool,
 	createProberTools,
@@ -155,6 +157,8 @@ export interface AgentBuildOptions {
 	 *  <chatId>.jsonl via providerEventObserver — the GLM-truncation /
 	 *  DeepSeek-id incident layer. Absent or env-off → no observer. */
 	chatId?: string;
+	references?: readonly SessionReference[];
+	sourceDocuments?: import("../core/contracts/chat.ts").SourceDocumentRef[];
 }
 
 /**
@@ -214,7 +218,10 @@ function baseAgentOptions(kind: AgentKind, opts: AgentBuildOptions, tools: Agent
 	const composedPrompt = opts.promptSwitches
 		? composeInstructions(kind, opts.promptSwitches)
 		: composedInstructions[kind]!;
-	const builtinPrompt = narrationGuard ? `${composedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : composedPrompt;
+	const basePrompt = narrationGuard ? `${composedPrompt}\n\n---\n\n${SEND_TO_USER_DELIVERY_RULE}` : composedPrompt;
+	const references = sessionReferencesSegment(opts.references ?? []);
+	const sources = sourceDocumentsSegment(opts.sourceDocuments);
+	const builtinPrompt = [basePrompt, references, sources].filter(Boolean).join("\n\n---\n\n");
 	// Bind native read and preserve the kind/model-aware Claude output gate
 	// before resolving additive plugins. Explicit registries remain caller-owned.
 	const builtinTools = [

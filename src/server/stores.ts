@@ -9,9 +9,11 @@
 import { chatStore } from "../store/chats.ts";
 import { graphStore } from "../store/graph.ts";
 import { sourceOrganizationStore } from "../store/source-organization.ts";
+import { chatOrganizationStore } from "../store/chat-organization.ts";
 import { jobStore } from "../store/jobs.ts";
 import { settingsStore } from "../store/settings.ts";
 import { themeStore } from "../store/themes.ts";
+import { studyStore } from "../store/study.ts";
 import { resolveSettings, type EffectiveSettings } from "../core/settings-resolution.ts";
 import { syncCustomProvider } from "./custom-provider.ts";
 import { configureWorkerRequestAdmission } from "../agent/worker-request-admission.ts";
@@ -20,9 +22,11 @@ export const stores = {
 	chatStore,
 	graphStore,
 	sourceOrganizationStore,
+	chatOrganizationStore,
 	jobStore,
 	settingsStore,
 	themeStore,
+	studyStore,
 };
 
 export type Stores = typeof stores;
