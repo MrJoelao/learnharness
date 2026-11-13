@@ -73,7 +73,13 @@ contextBridge.exposeInMainWorld("lh", {
 		respond: (providerId, attemptId, promptId, value) => ipcRenderer.invoke("lh:subscriptions:control", { op: "respond", providerId, attemptId, promptId, value }),
 		open: (providerId, attemptId, actionId) => ipcRenderer.invoke("lh:subscriptions:control", { op: "open", providerId, attemptId, actionId }),
 		retry: (providerId) => ipcRenderer.invoke("lh:subscriptions:control", { op: "retry", providerId }),
-		disconnect: (providerId) => ipcRenderer.invoke("lh:subscriptions:control", { op: "disconnect", providerId }),
+		select: (providerId, accountId) => ipcRenderer.invoke("lh:subscriptions:control", { op: "select", providerId, accountId }),
+		switchAccount: (providerId, accountId) => ipcRenderer.invoke("lh:subscriptions:control", { op: "select", providerId, accountId }),
+		removeAccount: (providerId, accountId) => {
+			if (providerId !== "google-antigravity" || typeof accountId !== "string" || !accountId) throw new Error("An Antigravity account ID is required.");
+			return ipcRenderer.invoke("lh:subscriptions:control", { op: "disconnect", providerId, accountId });
+		},
+		disconnect: (providerId, accountId) => ipcRenderer.invoke("lh:subscriptions:control", { op: "disconnect", providerId, ...(accountId === undefined ? {} : { accountId }) }),
 		consent: (providerId, enabled) => ipcRenderer.invoke("lh:subscriptions:control", { op: "consent", providerId, enabled }),
 		onChange: (cb) => {
 			const listener = () => cb();

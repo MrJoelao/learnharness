@@ -95,7 +95,7 @@ export interface EffectiveSettings {
 	 *  picker captions and the per-need refusal gates read. */
 	models: Record<ModelSlotName, EffectiveSlot | null>;
 	appearance: EffectiveAppearance;
-	graph: Required<GraphSettings>;
+	graph: Required<Omit<GraphSettings, "topics">> & { topics: Required<import("./settings.ts").TopicSettings> };
 	/** Compaction (owner round 14): resolved concrete — absent record
 	 *  section resolves to the factory 150k. */
 	compaction: Required<CompactionSettings>;
@@ -241,6 +241,12 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 			// (pre-redesign record, fresh install) resolves to the factory
 			// 4096; the sanitizer has already clamped/floored any stored value.
 			extractionChunkTokens: graph.extractionChunkTokens ?? FACTORY_SETTINGS.graph.extractionChunkTokens,
+			topics: {
+				granularity: graph.topics?.granularity ?? FACTORY_SETTINGS.graph.topics.granularity,
+				unification: graph.topics?.unification ?? FACTORY_SETTINGS.graph.topics.unification,
+				customPrompt: graph.topics?.customPrompt ?? FACTORY_SETTINGS.graph.topics.customPrompt,
+				reviewBeforeApply: graph.topics?.reviewBeforeApply ?? FACTORY_SETTINGS.graph.topics.reviewBeforeApply,
+			},
 		},
 		compaction: {
 			thresholdTokens: record?.compaction?.thresholdTokens ?? FACTORY_SETTINGS.compaction.thresholdTokens,

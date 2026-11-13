@@ -351,6 +351,46 @@ describe("GraphSection — master switch + chunk budget (wave 7 + 2026-10-02)", 
 		assert.ok(tagOf(html, "input-chunk-tokens").includes('value="6000"'));
 		assert.ok(html.includes(">6000 tok</"));
 	});
+
+	it("renders the Topic Organization group with granularity and visual unification selector", () => {
+		const html = renderToStaticMarkup(<GraphSection graph={undefined} onSectionChange={() => true} />);
+		assert.ok(html.includes('data-testid="group-topics"'));
+		assert.ok(html.includes('data-testid="graph-row-topic-granularity"'));
+		assert.ok(html.includes('data-testid="graph-row-topic-unification"'));
+		assert.ok(html.includes('data-testid="topic-unification-folder"'));
+		assert.ok(html.includes('data-testid="topic-unification-global"'));
+		assert.ok(html.includes('data-testid="topic-unification-strict"'));
+		assert.ok(tagOf(html, "topic-unification-folder").includes('aria-checked="true"'));
+		assert.ok(tagOf(html, "topic-unification-global").includes('aria-checked="false"'));
+		assert.ok(tagOf(html, "topic-unification-strict").includes('aria-checked="false"'));
+	});
+
+	it("renders stored topic unification selection correctly", () => {
+		const html = renderToStaticMarkup(
+			<GraphSection
+				graph={{ topics: { unification: "strict" } }}
+				onSectionChange={() => true}
+			/>,
+		);
+		assert.ok(tagOf(html, "topic-unification-folder").includes('aria-checked="false"'));
+		assert.ok(tagOf(html, "topic-unification-strict").includes('aria-checked="true"'));
+	});
+
+	it("renders the advanced prompt directives disclosure collapsed by default", () => {
+		const html = renderToStaticMarkup(<GraphSection graph={undefined} onSectionChange={() => true} />);
+		assert.ok(html.includes('data-testid="disclosure-topic-custom-prompt"'));
+		assert.ok(html.includes('aria-expanded="false"'));
+		assert.ok(html.includes("Optional"));
+		assert.ok(html.includes("Advanced prompt directives"));
+
+		const configuredHtml = renderToStaticMarkup(
+			<GraphSection
+				graph={{ topics: { customPrompt: "Custom grouping rule" } }}
+				onSectionChange={() => true}
+			/>,
+		);
+		assert.ok(configuredHtml.includes("Configured"));
+	});
 });
 
 describe("KeysSection (thin SSR)", () => {

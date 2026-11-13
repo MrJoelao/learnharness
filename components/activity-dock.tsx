@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIcon, BotIcon, FileTextIcon, PenToolIcon, PlayIcon, SearchIcon, SquareIcon, WaypointsIcon } from "lucide-react";
+import { ActivityIcon, BotIcon, FileTextIcon, Loader2Icon, PenToolIcon, PlayIcon, SearchIcon, SquareIcon, WaypointsIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CallUsage, JobKind, JobRecord } from "@/src/core";
 import { isModelsRefusal, isProviderKeyRefusal, subscriptionLabel, subscriptionLabels } from "@/src/core";
@@ -94,9 +94,24 @@ const EMPTY_FEED: ActivityFeed = { jobs: [], pluginWorkers: [], extractions: [] 
 
 // ─── The activity feed (composition root: the root layout) ───────────────────
 
-const ActivityContext = createContext<{ feed: ActivityFeed; refresh: () => void }>({
+interface TopicOrganizationActivity { startedAt: number; operationId: string; canceling: boolean }
+
+const ActivityContext = createContext<{
+	feed: ActivityFeed;
+	refresh: () => void;
+	topicOrganization: TopicOrganizationActivity | null;
+	topicOrganizationError: string | null;
+	clearTopicOrganizationError: () => void;
+	startTopicOrganization: () => { operationId: string; finish: (error?: string) => void };
+	cancelTopicOrganization: (operationId: string) => Promise<void>;
+}>({
 	feed: EMPTY_FEED,
 	refresh: () => {},
+	topicOrganization: null,
+	topicOrganizationError: null,
+	clearTopicOrganizationError: () => {},
+	startTopicOrganization: () => ({ operationId: "", finish: () => {} }),
+	cancelTopicOrganization: async () => {},
 });
 
 /**
@@ -113,8 +128,37 @@ const ActivityContext = createContext<{ feed: ActivityFeed; refresh: () => void 
  */
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
 	const [feed, setFeed] = useState<ActivityFeed>(EMPTY_FEED);
+	const [topicOrganization, setTopicOrganization] = useState<TopicOrganizationActivity | null>(null);
+	const [topicOrganizationError, setTopicOrganizationError] = useState<string | null>(null);
 	const [nonce, setNonce] = useState(0);
 	const refresh = useCallback(() => setNonce((n) => n + 1), []);
+	const startTopicOrganization = useCallback(() => {
+		const operationId = crypto.randomUUID();
+		setTopicOrganizationError(null);
+		setTopicOrganization({ startedAt: Date.now(), operationId, canceling: false });
+		return {
+			operationId,
+			finish: (error?: string) => {
+				setTopicOrganization((current) => current?.operationId === operationId ? null : current);
+				if (error) setTopicOrganizationError(error);
+			},
+		};
+	}, []);
+	const clearTopicOrganizationError = useCallback(() => setTopicOrganizationError(null), []);
+	const cancelTopicOrganization = useCallback(async (operationId: string) => {
+		setTopicOrganization((current) => current?.operationId === operationId ? { ...current, canceling: true } : current);
+		try {
+			const res = await fetch("/api/graph/topics/refresh", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "cancel", operationId }),
+			});
+			if (!res.ok && res.status !== 409) throw new Error(`Cancel failed (${res.status})`);
+		} catch (err) {
+			console.error("[topics] cancel failed:", err);
+			setTopicOrganization((current) => current?.operationId === operationId ? { ...current, canceling: false } : current);
+		}
+	}, []);
 	const refreshRef = useRef(refresh);
 	refreshRef.current = refresh;
 	const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -169,14 +213,22 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
 		[],
 	);
 
-	return <ActivityContext.Provider value={{ feed, refresh }}>{children}</ActivityContext.Provider>;
+	return <ActivityContext.Provider value={{ feed, refresh, topicOrganization, topicOrganizationError, clearTopicOrganizationError, startTopicOrganization, cancelTopicOrganization }}>{children}</ActivityContext.Provider>;
 }
 
 /** The activity feed seam for the rest of the shell: the dock's data +
  *  its refresh nudge. The remaining nudgers are client-visible causes
  *  (the extract/import buttons — extraction-coverage, graph-view); every
  *  server-side cause announces itself on the events channel now. */
-export function useActivity(): { feed: ActivityFeed; refresh: () => void } {
+export function useActivity(): {
+	feed: ActivityFeed;
+	refresh: () => void;
+	topicOrganization: TopicOrganizationActivity | null;
+	topicOrganizationError: string | null;
+	clearTopicOrganizationError: () => void;
+	startTopicOrganization: () => { operationId: string; finish: (error?: string) => void };
+	cancelTopicOrganization: (operationId: string) => Promise<void>;
+} {
 	return useContext(ActivityContext);
 }
 
@@ -328,7 +380,9 @@ export function ActivitySection({ feed: feedProp }: { feed?: ActivityFeed }) {
 	const blobs = useMemo(() => toBlobs(feed), [feed]);
 	const [openBlob, setOpenBlob] = useState<string | null>(null); // detail, inline-expanded
 	const [abortStates, setAbortStates] = useState<Record<string, AbortState>>({});
-	const now = useNow(blobs.length > 0);
+	const topicOrganization = ctx.topicOrganization;
+	const topicOrganizationError = ctx.topicOrganizationError;
+	const now = useNow(blobs.length > 0 || topicOrganization !== null);
 	// Refs for stable abort handlers (no re-created closures per tick).
 	const abortRef = useRef({ blobs, refresh, setAbortStates });
 	abortRef.current = { blobs, refresh, setAbortStates };
@@ -401,6 +455,26 @@ export function ActivitySection({ feed: feedProp }: { feed?: ActivityFeed }) {
 						/>
 					))}
 			</div>
+			)}
+			{topicOrganization && (
+				<div data-testid="activity-topic-organization" className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs">
+					<Loader2Icon className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+					<span className="min-w-0 flex-1 truncate">
+						<span className="block truncate font-medium text-card-foreground">{topicOrganization.canceling ? "Cancelling topic organization…" : "Auto-organize topics"}</span>
+					</span>
+					<span className="shrink-0 tabular-nums text-muted-foreground">{formatElapsed(now - topicOrganization.startedAt)}</span>
+					<button type="button" aria-label="Cancel topic organization" title={topicOrganization.canceling ? "Cancelling topic organization" : "Cancel topic organization"} disabled={topicOrganization.canceling} onClick={() => void ctx.cancelTopicOrganization(topicOrganization.operationId)} className="rounded-md p-1 text-muted-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50">
+						<SquareIcon className="size-3" />
+					</button>
+				</div>
+			)}
+			{topicOrganizationError && (
+				<div role="alert" data-testid="activity-topic-organization-error" className="mt-1 flex items-start gap-2 rounded-lg bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+					<span className="min-w-0 flex-1 break-words">Auto-organize failed: {topicOrganizationError}</span>
+					<button type="button" aria-label="Dismiss topic organization error" onClick={ctx.clearTopicOrganizationError} className="shrink-0 rounded p-0.5 hover:bg-destructive/10">
+						<XIcon className="size-3" />
+					</button>
+				</div>
 			)}
 		</section>
 	);

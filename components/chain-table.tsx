@@ -60,14 +60,23 @@ import {
 	ChevronUpIcon,
 	BookIcon,
 	BookOpenIcon,
+	FolderIcon,
 	FolderPlusIcon,
+	FolderTreeIcon,
 	Trash2Icon,
 	ListTreeIcon,
+	RefreshCwIcon,
+	SettingsIcon,
+	PlusIcon,
 	SearchIcon,
 	XIcon,
+	ArrowRightIcon,
 } from "lucide-react";
 import { chainsForSelection, chainSourceDirectory, folderEntryCheck, toggleSourceEntries, formatChainLine, fuzzyScore, sourceFileLabel } from "@/src/core";
 import type { GraphChain, GraphNode, SourceDirectory, SourceEntry, SourceFolder, SourceEntrySelection } from "@/src/core";
+import type { TopicOrganization, TopicAction } from "@/src/core";
+import { useSettingsDialog } from "@/components/settings/settings-dialog";
+import { cn } from "@/lib/utils";
 import { EditableSourceName, SourceDragRow, sourceNameMatches, SourceFolderTree, type OrganizationChange } from "./source-folder-tree";
 import { chainRow, useChainNavigation } from "./chain-navigation";
 import { useServerEvent, useServerResync } from "./server-events";
@@ -75,7 +84,27 @@ import { TopBar } from "@/components/top-bar";
 import { InteractionLayerOwner, useInteractionLayer } from "./interaction-layers";
 import { DeleteSourceDialog } from "@/components/delete-source-dialog";
 import { LatexGlyph } from "@/components/latex-glyph";
+import { ToolContentResponse } from "@/components/ai-elements/message";
 import { TreeCell, TreeCheckbox, TreeDisclosure, TreeGuide, TreeHeader, TreeSelectionSpacer, TreeSeparator, treeBranchLayout, treeColumnLayout, treeRowLayout } from "./tree-presentation";
+import { OrganizationFeedbackToast, type OrganizationFeedback } from "./chat-organization-interactions";
+
+interface TopicPreviewResponse {
+	cancelled?: boolean;
+	base: TopicOrganization;
+	proposed: TopicOrganization;
+	propositions: { id: string; name: string }[];
+	reviewBeforeApply: boolean;
+}
+
+function topicLabelForNode(organization: TopicOrganization, nodeId: string): string {
+	return organization.topics.find((topic) => topic.members.includes(nodeId))?.label ?? "Unassigned";
+}
+
+function changedPropositions(preview: TopicPreviewResponse): TopicPreviewResponse["propositions"] {
+	return preview.propositions.filter((node) =>
+		topicLabelForNode(preview.base, node.id) !== topicLabelForNode(preview.proposed, node.id),
+	);
+}
 
 /** The sortable columns (owner ruling: all three — consistency). */
 export type ChainSortCol = "name" | "props" | "created";
@@ -95,6 +124,7 @@ interface ClusterGroup {
 	chains: ReturnType<typeof chainsForSelection>;
 	nodeIds: string[];
 	newestCreatedAt: string;
+	rawTopicId?: string;
 }
 
 /** The table's pure body — exported for SSR pins (the render-suite
@@ -129,7 +159,14 @@ export function ChainTableBody({
 	keyboardActive = true,
 	sourceInventoryPending = false,
 	pickerChrome = false,
+	topicOrg: propTopicOrg,
+	initialGroupBy,
+	initialCreatingTopic,
+	onTopicOrganizationStart,
 }: {
+	initialCreatingTopic?: boolean;
+	topicOrg?: TopicOrganization | null;
+	initialGroupBy?: "sources" | "topics";
 	sourceInventoryPending?: boolean;
 	pickerChrome?: boolean;
 	keyboardActive?: boolean;
@@ -164,8 +201,113 @@ export function ChainTableBody({
 	 *  selection becomes. */
 	selectMode?: boolean;
 	onSelect?: () => void;
+	onTopicOrganizationStart?: () => { operationId: string; finish: (error?: string) => void };
 }) {
 	const [creatingFolder, setCreatingFolder] = useState(false);
+	const [creatingTopic, setCreatingTopic] = useState(initialCreatingTopic ?? false);
+	const [refreshingTopics, setRefreshingTopics] = useState(false);
+	const [topicStatusMsg, setTopicStatusMsg] = useState<string | null>(null);
+	const [topicPreview, setTopicPreview] = useState<TopicPreviewResponse | null>(null);
+	const [topicPreviewError, setTopicPreviewError] = useState<string | null>(null);
+	const [topicFeedback, setTopicFeedback] = useState<OrganizationFeedback | null>(null);
+	const { open: openSettings } = useSettingsDialog();
+
+	const postTopicAction = async (action: TopicAction) => {
+		try {
+			const res = await fetch("/api/graph/topics", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(action),
+			});
+			if (res.ok) {
+				const next = (await res.json()) as TopicOrganization;
+				setFetchedTopicOrg(next);
+			}
+		} catch (err) {
+			console.error("[topics] action failed:", err);
+		}
+	};
+
+	const runAutoOrganize = async () => {
+		const activity = onTopicOrganizationStart?.();
+		setRefreshingTopics(true);
+		setTopicPreview(null);
+		setTopicPreviewError(null);
+		setTopicFeedback(null);
+		setTopicStatusMsg(null);
+		let activityError: string | undefined;
+		try {
+			const res = await fetch("/api/graph/topics/refresh", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "preview", operationId: activity?.operationId ?? crypto.randomUUID() }),
+			});
+			const data = await res.json() as TopicPreviewResponse & { error?: string };
+			if (data.cancelled) {
+				setTopicStatusMsg("Topic organization cancelled");
+			} else if (!res.ok || data.error) {
+				activityError = data.error || "Failed to organize topics";
+				if (!activity) setTopicStatusMsg(activityError);
+			} else if (changedPropositions(data).length > 0 && data.reviewBeforeApply) {
+				setTopicPreview(data);
+			} else if (changedPropositions(data).length > 0) {
+				await applyGeneratedPreview(data);
+			} else {
+				setTopicStatusMsg("No topic titles changed");
+			}
+		} catch (err) {
+			activityError = err instanceof Error ? err.message : "Error connecting to server";
+			if (!activity) setTopicStatusMsg(activityError);
+		} finally {
+			setRefreshingTopics(false);
+			activity?.finish(activityError);
+		}
+	};
+	const undoTopicPreview = async (preview: TopicPreviewResponse) => {
+		try {
+			const res = await fetch("/api/graph/topics/refresh", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ action: "undo", expected: preview.proposed, restore: preview.base, propositionIds: preview.propositions.map((node) => node.id) }),
+			});
+			const data = await res.json() as { error?: string };
+			if (!res.ok) throw new Error(data.error || "Could not undo topic organization.");
+			setFetchedTopicOrg(preview.base);
+			setTopicStatusMsg("Previous topic assignments restored");
+		} catch (err) {
+			setTopicFeedback({ type: "error", message: err instanceof Error ? err.message : "Could not undo topic organization." });
+		}
+	};
+	const applyGeneratedPreview = async (preview: TopicPreviewResponse) => {
+		setRefreshingTopics(true);
+		setTopicPreviewError(null);
+		try {
+			const res = await fetch("/api/graph/topics/refresh", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ action: "apply", base: preview.base, proposed: preview.proposed, propositionIds: preview.propositions.map((node) => node.id) }),
+			});
+			const data = await res.json() as { topics?: number; error?: string };
+			if (!res.ok) throw new Error(data.error || "Could not apply topic organization.");
+			setFetchedTopicOrg(preview.proposed);
+			setTopicPreview(null);
+			setTopicStatusMsg(`Organized into ${data.topics ?? 0} topics`);
+			setTopicFeedback({
+				type: "success",
+				message: `Auto-organized into ${data.topics ?? 0} topics`,
+				onUndo: () => { void undoTopicPreview(preview); },
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "Could not apply topic organization.";
+			if (preview.reviewBeforeApply) setTopicPreviewError(message);
+			else setTopicStatusMsg(message);
+		} finally {
+			setRefreshingTopics(false);
+		}
+	};
+	const applyTopicPreview = () => {
+		if (topicPreview) void applyGeneratedPreview(topicPreview);
+	};
 	const tableRef = useRef<HTMLDivElement>(null);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const navigation = useChainNavigation(tableRef, searchRef, keyboardActive);
@@ -301,11 +443,279 @@ export function ChainTableBody({
 		return chainsForSelection(selectedNodes, storedChains);
 	}, [selection, byId, storedChains]);
 
+	const [groupBy, setGroupBy] = useState<"sources" | "topics">(initialGroupBy ?? "sources");
+	const [fetchedTopicOrg, setFetchedTopicOrg] = useState<TopicOrganization | null>(propTopicOrg ?? null);
+	const topicOrg = fetchedTopicOrg ?? propTopicOrg;
+	const changedTopicPropositions = useMemo(() => topicPreview ? changedPropositions(topicPreview) : [], [topicPreview]);
+
+	useEffect(() => {
+		if (propTopicOrg) setFetchedTopicOrg(propTopicOrg);
+	}, [propTopicOrg]);
+
+	useEffect(() => {
+		if (!topicStatusMsg) return;
+		const timer = setTimeout(() => setTopicStatusMsg(null), 4000);
+		return () => clearTimeout(timer);
+	}, [topicStatusMsg]);
+
+	useEffect(() => {
+		if (!topicFeedback) return;
+		const timer = setTimeout(() => setTopicFeedback(null), 6000);
+		return () => clearTimeout(timer);
+	}, [topicFeedback]);
+
+	useEffect(() => {
+		if (groupBy === "topics" && !topicOrg) {
+			void fetch("/api/graph/topics", { cache: "no-store" })
+				.then((r) => (r.ok ? (r.json() as Promise<TopicOrganization>) : null))
+				.then((data) => { if (data) setFetchedTopicOrg(data); })
+				.catch(() => {});
+		}
+	}, [groupBy, topicOrg]);
+
+	const { topicByNode, topicLabelById } = useMemo(() => {
+		const byNode = new Map<string, string>();
+		const labelById = new Map<string, string>();
+		if (!topicOrg?.topics) return { topicByNode: byNode, topicLabelById: labelById };
+		for (const t of topicOrg.topics) {
+			labelById.set(t.id, t.label);
+			for (const m of t.members) {
+				byNode.set(m, t.id);
+			}
+		}
+		return { topicByNode: byNode, topicLabelById: labelById };
+	}, [topicOrg]);
+
+	const chainTopicLabel = useCallback((chain: (typeof visibleChains)[number]) => {
+		const tid = topicByNode.get(chain.conclusion);
+		if (tid) return topicLabelById.get(tid) ?? null;
+		for (const p of chain.premises) {
+			const ptid = topicByNode.get(p);
+			if (ptid) return topicLabelById.get(ptid) ?? null;
+		}
+		return null;
+	}, [topicByNode, topicLabelById]);
+
+	const chainSourceLabel = useCallback((chain: (typeof visibleChains)[number]) => {
+		const conclusion = byId.get(chain.conclusion);
+		const birth = conclusion?.provenance[0]?.chatId ?? null;
+		if (!birth) return null;
+		return sourceRecords.get(birth)?.label ?? sessions[birth] ?? (fileSources[birth] === undefined ? null : sourceFileLabel(fileSources[birth]));
+	}, [byId, sourceRecords, sessions, fileSources]);
+
+	const topicGroups = useMemo(() => {
+		if (groupBy !== "topics") return [];
+		const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+		const map = new Map<string, ClusterGroup>();
+
+		for (const topic of topicOrg?.topics ?? []) {
+			map.set(topic.id, {
+				key: `topic-${topic.id}`,
+				birth: null,
+				label: topic.label,
+				kind: null,
+				chains: [],
+				nodeIds: [...topic.members],
+				newestCreatedAt: "",
+				rawTopicId: topic.id,
+			});
+		}
+
+		const unassigned: ClusterGroup = {
+			key: "topic-unassigned",
+			birth: null,
+			label: "Unassigned",
+			kind: null,
+			chains: [],
+			nodeIds: [],
+			newestCreatedAt: "",
+		};
+
+		for (const chain of visibleChains) {
+			const tid = topicByNode.get(chain.conclusion);
+			let target = tid ? map.get(tid) : undefined;
+			if (!target) {
+				for (const p of chain.premises) {
+					const ptid = topicByNode.get(p);
+					if (ptid && map.has(ptid)) {
+						target = map.get(ptid);
+						break;
+					}
+				}
+			}
+			const group = target ?? unassigned;
+			group.chains.push(chain);
+			for (const id of [...chain.premises, chain.conclusion]) {
+				if (!group.nodeIds.includes(id)) group.nodeIds.push(id);
+				const createdAt = byId.get(id)?.createdAt ?? "";
+				if (createdAt > group.newestCreatedAt) group.newestCreatedAt = createdAt;
+			}
+		}
+
+		const list = [...map.values()].filter((g) => g.chains.length > 0 || g.nodeIds.length > 0);
+		if (unassigned.chains.length > 0) list.push(unassigned);
+
+		const nameKey = (g: ClusterGroup) => (g.key === "topic-unassigned" ? "\uffff" : (g.label ?? "\uffff"));
+		const cmpName = (a: ClusterGroup, b: ClusterGroup) => collator.compare(nameKey(a), nameKey(b)) * (sort.col === "name" ? sort.dir : 1);
+		const cmpProps = (a: ClusterGroup, b: ClusterGroup) =>
+			sort.dir === -1 ? b.nodeIds.length - a.nodeIds.length : a.nodeIds.length - b.nodeIds.length;
+		const cmpCreated = (a: ClusterGroup, b: ClusterGroup) =>
+			sort.dir === -1 ? b.newestCreatedAt.localeCompare(a.newestCreatedAt) : a.newestCreatedAt.localeCompare(b.newestCreatedAt);
+
+		list.sort((a, b) =>
+			sort.col === "created" ? cmpCreated(a, b) || cmpName(a, b) : sort.col === "props" ? cmpProps(a, b) || cmpName(a, b) : cmpName(a, b),
+		);
+
+		for (const group of list) {
+			const chainName = (chain: (typeof chains)[number]) => byId.get(chain.conclusion)?.name ?? chain.conclusion;
+			const chainSize = (chain: (typeof chains)[number]) => chain.premises.length + 1;
+			const chainDate = (chain: (typeof chains)[number]) => byId.get(chain.conclusion)?.createdAt ?? "";
+			const cName = (a: (typeof chains)[number], b: (typeof chains)[number]) => collator.compare(chainName(a), chainName(b)) * (sort.col === "name" ? sort.dir : 1);
+			const cProps = (a: (typeof chains)[number], b: (typeof chains)[number]) =>
+				sort.dir === -1 ? chainSize(b) - chainSize(a) : chainSize(a) - chainSize(b);
+			const cDate = (a: (typeof chains)[number], b: (typeof chains)[number]) =>
+				sort.dir === -1 ? chainDate(b).localeCompare(chainDate(a)) : chainDate(a).localeCompare(chainDate(b));
+			group.chains.sort((a, b) =>
+				sort.col === "created" ? cDate(a, b) || cName(a, b) : sort.col === "props" ? cProps(a, b) || cName(a, b) : cName(a, b),
+			);
+		}
+
+		return list;
+	}, [groupBy, topicOrg, visibleChains, topicByNode, byId, sort]);
+
 	const fullySelectedFolders = directory ? new Set([...selectedFolders].filter((id) => folderEntryCheck(directory, id, { sources: selectedSources, folders: selectedFolders }).checked)) : selectedFolders;
 	const nameOf = (id: string) => byId.get(id)?.name ?? id;
 	const dateOf = (id: string) => byId.get(id)?.createdAt.slice(0, 10) ?? "";
 	const dirIcon = (col: ChainSortCol) =>
 		sort.col !== col ? null : sort.dir === 1 ? <ChevronUpIcon className="size-3" /> : <ChevronDownIcon className="size-3" />;
+
+	const renderChainItem = (
+		chain: (typeof visibleChains)[number],
+		groupKey: string,
+		depth: number,
+		mode: "sources" | "topics",
+	) => {
+		const memberIds = [...chain.premises, chain.conclusion];
+		const chainOpen = expandedChains.has(chain.id);
+		const selectedInChain = memberIds.filter((id) => selection.has(id)).length;
+		const topicLabel = chainTopicLabel(chain);
+		const sourceLabel = chainSourceLabel(chain);
+
+		return (
+			<div key={chain.id} data-testid={`chain-block-${chain.id}`} {...treeBranchLayout()}>
+				{chainOpen && memberIds.length > 0 && (
+					<TreeGuide selectionColumn depth={1} variant="compact" data-testid={`chain-thread-${chain.id}`} />
+				)}
+				<div
+					{...chainRow(["chain", groupKey, chain.id], depth + 1, chainOpen)}
+					data-testid={`chain-row-${chain.id}`}
+					aria-label={formatChainLine(chain, Object.fromEntries([...byId.entries()].map(([id, n]) => [id, { name: n.name }]))) }
+					{...treeRowLayout({ depth: 1, variant: "compact" })}
+				>
+					{selectMode ? (
+						<RowCheckbox
+							checked={selectedInChain === memberIds.length && memberIds.length > 0}
+							indeterminate={selectedInChain > 0 && selectedInChain < memberIds.length}
+							onToggle={(next) => onToggleNodes(memberIds, next)}
+							testid={`chain-checkbox-${chain.id}`}
+							label={`Select chain ${nameOf(chain.conclusion)}`}
+						/>
+					) : (
+						<TreeSelectionSpacer />
+					)}
+					<Expander
+						open={chainOpen}
+						onClick={() => onToggleChain(chain.id)}
+						testid={`chain-toggle-${chain.id}`}
+						label={`Expand chain ${nameOf(chain.conclusion)}`}
+					/>
+					<span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-0.5 gap-y-1 text-[13px] leading-tight">
+						{memberIds.map((id, i) => {
+							const isConclusion = i === memberIds.length - 1;
+							return (
+								<span key={id} className="flex items-center">
+									{i > 0 && (isConclusion ? (
+										<LatexGlyph
+											cmd="\implies"
+											testid={`chain-implies-${chain.id}`}
+											className="px-1.5 text-foreground"
+										/>
+									) : (
+										<LatexGlyph
+											cmd="\land"
+											testid={`chain-and-${chain.id}-${i}`}
+											className="px-1.5 text-foreground"
+										/>
+									))}
+									<span
+										data-testid={`prop-chip-${id}`}
+										className="rounded border border-border/70 bg-muted/30 px-1.5 py-0.5"
+									>
+										{nameOf(id)}
+									</span>
+								</span>
+							);
+						})}
+						{mode === "sources" && topicLabel && (
+							<span
+								data-testid={`chain-topic-badge-${chain.id}`}
+								className="ml-2 inline-flex items-center rounded-sm border border-border/50 bg-muted/20 px-1.5 py-0.5 font-ui text-[10px] text-muted-foreground"
+								title={`Topic: ${topicLabel}`}
+							>
+								{topicLabel}
+							</span>
+						)}
+						{mode === "topics" && sourceLabel && (
+							<span
+								data-testid={`chain-source-badge-${chain.id}`}
+								className="ml-2 inline-flex items-center rounded-sm border border-border/50 bg-muted/20 px-1.5 py-0.5 font-ui text-[10px] text-muted-foreground"
+								title={`Source: ${sourceLabel}`}
+							>
+								{sourceLabel}
+							</span>
+						)}
+					</span>
+					<TreeCell widthClassName="w-14" align="right" className="text-xs tabular-nums text-muted-foreground">
+						{memberIds.length}
+					</TreeCell>
+					<TreeCell widthClassName="w-20" align="right" className="text-xs tabular-nums text-muted-foreground">
+						{dateOf(chain.conclusion)}
+					</TreeCell>
+				</div>
+
+				{chainOpen &&
+					memberIds.map((id) => {
+						const node = byId.get(id);
+						if (!node) return null;
+						return (
+							<div
+								key={id}
+								{...chainRow(["prop", groupKey, chain.id, id], depth + 2)}
+								data-testid={`prop-row-${id}`}
+								data-chain-statement
+								{...treeRowLayout({ depth: 2, variant: "detail" })}
+							>
+								{selectMode ? (
+									<RowCheckbox
+										checked={selection.has(id)}
+										onToggle={(next) => onToggleNodes([id], next)}
+										testid={`prop-checkbox-${id}`}
+										label={`Select node ${node.name}`}
+									/>
+								) : (
+									<TreeSelectionSpacer />
+								)}
+								<ToolContentResponse mode="static" className="min-w-0 flex-1 text-muted-foreground [--font-prose:var(--font-ui)] [--lh-prose-size:var(--text-xs)] [--lh-prose-leading:1.625] [&_[data-streamdown=inline-code]]:[font-size:inherit] [&_[data-streamdown=inline-code]]:[color:inherit]">
+									{node.statement}
+								</ToolContentResponse>
+								<TreeCell widthClassName="w-14" />
+								<TreeCell widthClassName="w-20" />
+							</div>
+						);
+					})}
+			</div>
+		);
+	};
 
 	return (
 		<div ref={tableRef} tabIndex={-1} data-testid="chain-table" className="relative flex h-full min-h-0 flex-col outline-none [&_[data-chain-nav-active=true]]:bg-accent/50 [&_[data-chain-nav-row]]:outline-none [&_[data-chain-nav-row]]:scroll-mt-8 [&_[data-chain-nav-row]]:scroll-mb-16">
@@ -318,10 +728,100 @@ export function ChainTableBody({
 			    law: later in the DOM). */}
 			<TopBar sidebarToggle={!pickerChrome}>
 				<span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-					{chains.length} {chains.length === 1 ? "chain" : "chains"} · {nodes.length} {nodes.length === 1 ? "node" : "nodes"}
+					{refreshingTopics ? (
+						<span className="inline-flex items-center gap-1.5 text-foreground">
+							<RefreshCwIcon className="size-3 animate-spin" />
+							<span>Organizing topics with AI…</span>
+						</span>
+					) : topicStatusMsg ? (
+						<span className="inline-flex items-center gap-1.5 text-foreground">
+							<span>{topicStatusMsg}</span>
+						</span>
+					) : (
+						<>
+							{chains.length} {chains.length === 1 ? "chain" : "chains"} · {nodes.length} {nodes.length === 1 ? "node" : "nodes"}
+						</>
+					)}
 				</span>
-				{onOrganizationChange && <button type="button" aria-label="Add folder" data-testid="add-source-folder"
-					onClick={() => setCreatingFolder(true)} className="lh-no-drag rounded-lg p-2 text-muted-foreground hover:bg-accent"><FolderPlusIcon className="size-4" /></button>}
+				{onOrganizationChange && groupBy === "sources" && (
+					<button
+						type="button"
+						aria-label="Add folder"
+						data-testid="add-source-folder"
+						onClick={() => setCreatingFolder(true)}
+						className="lh-no-drag flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+						title="Add folder"
+					>
+						<FolderPlusIcon className="size-4" />
+					</button>
+				)}
+				{groupBy === "topics" && (
+					<div className="flex items-center gap-0.5">
+						<button
+							type="button"
+							aria-label="Add topic"
+							data-testid="chains-add-topic"
+							onClick={() => setCreatingTopic(true)}
+							className="lh-no-drag flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+							title="Add custom topic"
+						>
+							<PlusIcon className="size-4" />
+						</button>
+						<button
+							type="button"
+							aria-label="Auto-organize topics"
+							data-testid="chains-auto-organize"
+							disabled={refreshingTopics}
+							onClick={() => void runAutoOrganize()}
+							className="lh-no-drag flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer disabled:opacity-40"
+							title={refreshingTopics ? "Organizing topics…" : "Auto-organize topics"}
+						>
+							<RefreshCwIcon className={cn("size-4", refreshingTopics && "animate-spin text-foreground")} />
+						</button>
+						<button
+							type="button"
+							aria-label="Topic settings"
+							data-testid="chains-topic-settings"
+							onClick={() => openSettings("graph")}
+							className="lh-no-drag flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+							title="Topic organization settings"
+						>
+							<SettingsIcon className="size-4" />
+						</button>
+					</div>
+				)}
+				<div className="lh-no-drag flex items-center rounded-md border border-border/60 bg-muted/30 p-0.5 text-[11px] font-medium">
+					<button
+						type="button"
+						data-testid="chains-group-by-sources"
+						onClick={() => setGroupBy("sources")}
+						className={cn(
+							"flex items-center gap-1.5 rounded px-2 py-1 transition-colors cursor-pointer",
+							groupBy === "sources"
+								? "bg-background text-foreground shadow-xs font-semibold"
+								: "text-muted-foreground hover:text-foreground"
+						)}
+						title="Group chains by file sources and folders"
+					>
+						<FolderTreeIcon className="size-3" />
+						<span>Sources</span>
+					</button>
+					<button
+						type="button"
+						data-testid="chains-group-by-topics"
+						onClick={() => setGroupBy("topics")}
+						className={cn(
+							"flex items-center gap-1.5 rounded px-2 py-1 transition-colors cursor-pointer",
+							groupBy === "topics"
+								? "bg-background text-foreground shadow-xs font-semibold"
+								: "text-muted-foreground hover:text-foreground"
+						)}
+						title="Group chains by semantic topics"
+					>
+						<ListTreeIcon className="size-3" />
+						<span>Topics</span>
+					</button>
+				</div>
 				<div className="relative shrink-0">
 					<SearchIcon className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
 					<input
@@ -392,13 +892,67 @@ export function ChainTableBody({
 						onQuery(""); if (id) navigation.focusRow(["folder", id]); setCreatingFolder(false);
 					}} />
 				</div>}
-				{groups.length === 0 && (directory?.organization.folders.length ?? 0) === 0 && (
+				{creatingTopic && (
+					<div
+						data-testid="new-topic-row"
+						{...treeRowLayout({ className: "border-b border-border/40 bg-muted/15" })}
+					>
+						<TreeSelectionSpacer />
+						<div className="size-3.5 shrink-0" />
+						<div className="flex h-5 w-3.5 shrink-0 items-center justify-center">
+							<FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
+						</div>
+						<EditableSourceName
+							name=""
+							placeholder="Topic name"
+							initiallyEditing
+							onCancel={() => setCreatingTopic(false)}
+							onSave={async (label) => {
+								await postTopicAction({ action: "create-topic", label, nodeIds: [] });
+								setCreatingTopic(false);
+							}}
+						/>
+						<TreeCell widthClassName="w-14" />
+						<TreeCell widthClassName="w-20" />
+					</div>
+				)}
+				{((groupBy === "sources" && groups.length === 0 && (directory?.organization.folders.length ?? 0) === 0) ||
+					(groupBy === "topics" && topicGroups.length === 0 && searching)) && (
 					<div data-testid="chain-table-nomatch" className="px-4 pt-3 text-xs text-muted-foreground">
 						No matching chains.
 					</div>
 				)}
+				{groupBy === "topics" && topicGroups.length === 0 && !searching && (
+					<div data-testid="chain-table-topics-empty" className="flex flex-col items-center justify-center px-4 py-16 text-center">
+						<ListTreeIcon className="size-8 text-muted-foreground/40 mb-3" />
+						<p className="text-sm font-medium text-foreground mb-1">No topics yet</p>
+						<p className="text-xs text-muted-foreground max-w-sm mb-4">
+							Automatically group your reasoning chains into semantic topics, or create custom topics manually.
+						</p>
+						<div className="flex items-center gap-2">
+							<button
+								type="button"
+								onClick={() => void runAutoOrganize()}
+								disabled={refreshingTopics}
+								className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/70 bg-card/80 px-3 text-xs font-medium text-foreground shadow-xs transition-colors hover:bg-accent disabled:opacity-50 cursor-pointer"
+							>
+								<RefreshCwIcon className={cn("size-3.5 text-muted-foreground", refreshingTopics && "animate-spin text-foreground")} />
+								<span>{refreshingTopics ? "Organizing…" : "Auto-organize topics"}</span>
+							</button>
+							<button
+								type="button"
+								onClick={() => setCreatingTopic(true)}
+								className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-transparent px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+							>
+								<PlusIcon className="size-3.5" />
+								<span>Add topic</span>
+							</button>
+						</div>
+					</div>
+				)}
 
-				<SourceFolderTree groups={groups} directory={directory} query={query} sort={sort} onAction={onOrganizationChange}
+				{groupBy === "sources" ? (
+					<SourceFolderTree groups={groups} directory={directory} query={query} sort={sort} onAction={onOrganizationChange}
 					sourceSelection={selectMode ? undefined : { sources: selectedSources, folders: selectedFolders }}
 					expanded={expandedClusters} collapsedForSearch={foldedClusters} onToggleExpanded={toggleCluster} selection={selection} selectedFolders={selectedFolders}
 					onToggleNodes={onToggleNodes} onToggleFolder={onToggleFolder} allowEmptySelection={!selectMode} allSourceNodes={allSourceNodes}
@@ -456,117 +1010,76 @@ export function ChainTableBody({
 							    (owner ruling); visible only when the cluster is open
 							    (searching auto-expands). */}
 							{open &&
-								group.chains.map((chain) => {
-									const memberIds = [...chain.premises, chain.conclusion];
-									const chainOpen = expandedChains.has(chain.id);
-									const selectedInChain = memberIds.filter((id) => selection.has(id)).length;
-									return (
-										<div key={chain.id} data-testid={`chain-block-${chain.id}`} {...treeBranchLayout()}>
-												{/* The chain's own thread (owner rounds 5–6): the same
-												    bracket law one level down — at the chain arrow's column
-												    (center 73px), from the chain row's checkbox bottom
-												    (top-[22px]) to the LAST statement row's checkbox bottom
-												    (bottom-[8px]) — live-measured anchors. */}
-												{chainOpen && memberIds.length > 0 && (
-													<TreeGuide selectionColumn depth={1} variant="compact" data-testid={`chain-thread-${chain.id}`} />
-												)}
-											<div
-												{...chainRow(["chain", group.key, chain.id], depth + 1, chainOpen)}
-												data-testid={`chain-row-${chain.id}`}
-												aria-label={formatChainLine(chain, Object.fromEntries([...byId.entries()].map(([id, n]) => [id, { name: n.name }])))}
-												{...treeRowLayout({ depth: 1, variant: "compact" })}
-											>
-												{selectMode ? <RowCheckbox
-													checked={selectedInChain === memberIds.length && memberIds.length > 0}
-													indeterminate={selectedInChain > 0 && selectedInChain < memberIds.length}
-													onToggle={(next) => onToggleNodes(memberIds, next)}
-													testid={`chain-checkbox-${chain.id}`}
-													label={`Select chain ${nameOf(chain.conclusion)}`}
-												/> : <TreeSelectionSpacer />}
-												<Expander open={chainOpen} onClick={() => onToggleChain(chain.id)} testid={`chain-toggle-${chain.id}`} label={`Expand chain ${nameOf(chain.conclusion)}`} />
-												{/* The chain line: proposition names as faint-outlined
-												    chips. THE LOGIC IS THE PAYLOAD (owner rulings,
-												    2026-09-30): premises join with the LaTeX LAND (∧),
-												    the conclusion separates by the LaTeX IMPLICATION
-												    (⟹) — `A ∧ B ⟹ C`, never the misleading `A → B →
-												    C` — the glyphs render through KaTeX (the app's
-												    math engine), PROMINENT in the theme foreground
-												    (white), not the old dim gray. A lonely chip reads
-												    as a standalone proposition (no glyphs at all);
-												    the row's aria-label keeps the plain-text form. */}
-												<span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-0.5 gap-y-1 text-[13px] leading-tight">
-													{memberIds.map((id, i) => {
-														const isConclusion = i === memberIds.length - 1;
-														return (
-															<span key={id} className="flex items-center">
-																{i > 0 && (isConclusion ? (
-																	<LatexGlyph
-																		cmd="\implies"
-																		testid={`chain-implies-${chain.id}`}
-																		className="px-1.5 text-foreground"
-																	/>
-																) : (
-																	<LatexGlyph
-																		cmd="\land"
-																		testid={`chain-and-${chain.id}-${i}`}
-																		className="px-1.5 text-foreground"
-																	/>
-																))}
-																<span
-																	data-testid={`prop-chip-${id}`}
-																	className="rounded border border-border/70 bg-muted/30 px-1.5 py-0.5"
-																>
-																	{nameOf(id)}
-																</span>
-															</span>
-														);
-													})}
-												</span>
-												<TreeCell widthClassName="w-14" align="right" className="text-xs tabular-nums text-muted-foreground">
-													{memberIds.length}
-												</TreeCell>
-												<TreeCell widthClassName="w-20" align="right" className="text-xs tabular-nums text-muted-foreground">
-													{dateOf(chain.conclusion)}
-												</TreeCell>
-											</div>
-
-											{/* The propositions — their STATEMENT text directly (owner
-											    ruling: names live in the line; a singleton reveals its
-											    one statement in one click). PLAIN rows: the derivation
-											    is already encoded in the chain line — no conclusion
-											    marker down here. Deepest indent. */}
-											{chainOpen &&
-												memberIds.map((id) => {
-													const node = byId.get(id);
-													if (!node) return null;
-													return (
-														<div
-															key={id}
-															{...chainRow(["prop", group.key, chain.id, id], depth + 2)}
-															data-testid={`prop-row-${id}`}
-															{...treeRowLayout({ depth: 2, variant: "detail" })}
-														>
-															{selectMode ? <RowCheckbox
-																checked={selection.has(id)}
-																onToggle={(next) => onToggleNodes([id], next)}
-																testid={`prop-checkbox-${id}`}
-																label={`Select node ${node.name}`}
-															/> : <TreeSelectionSpacer />}
-															<span className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
-																{node.statement}
-															</span>
-															<TreeCell widthClassName="w-14" />
-															<TreeCell widthClassName="w-20" />
-														</div>
-													);
-												})}
-										</div>
-									);
-								})}
+								group.chains.map((chain) => renderChainItem(chain, group.key, depth, "sources"))}
 							<TreeSeparator data-testid={`source-separator-${group.key}`} outside inset={depth === 0 ? 0 : 1} />
 						</div>
 					);
 				}} />
+				) : (
+					topicGroups.map((group) => {
+						const open = searching ? !foldedClusters.has(group.key) : expandedClusters.has(group.key);
+						const selectedCount = group.nodeIds.filter((id) => selection.has(id)).length;
+						return (
+							<div
+								key={group.key}
+								data-testid={`cluster-group-${group.key}`}
+								{...treeBranchLayout({ depth: 0, className: "border-b border-transparent" })}
+							>
+								{open && group.chains.length > 0 && (
+									<TreeGuide selectionColumn depth={0} data-testid={`cluster-thread-${group.key}`} />
+								)}
+								<div {...chainRow(["source", group.key], 0, open)} {...treeRowLayout()}>
+									<RowCheckbox
+										disabled={group.nodeIds.length === 0}
+										checked={selectedCount === group.nodeIds.length && group.nodeIds.length > 0}
+										indeterminate={selectedCount > 0 && selectedCount < group.nodeIds.length}
+										onToggle={(next) => onToggleNodes(group.nodeIds, next)}
+										testid={`cluster-checkbox-${group.key}`}
+										label={`Select topic ${group.label ?? "unlabeled"}`}
+									/>
+									<Expander open={open} onClick={() => toggleCluster(group.key)} testid={`cluster-toggle-${group.key}`} label={`Expand topic ${group.label ?? "unlabeled"}`} />
+									<button type="button" data-source-icon data-testid={`source-icon-${group.key}`} aria-expanded={open} aria-label={`Expand topic ${group.label ?? "unlabeled"}`}
+										onClick={() => toggleCluster(group.key)} className="flex h-5 w-3.5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+										<FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
+									</button>
+									{group.rawTopicId ? (
+										<div className="flex min-w-0 flex-1 items-center gap-1.5">
+											<EditableSourceName
+												name={group.label ?? ""}
+												onSave={(label) => postTopicAction({ action: "rename-topic", id: group.rawTopicId!, label })}
+											/>
+											<button
+												type="button"
+												data-testid={`delete-topic-${group.rawTopicId}`}
+												onClick={(e) => {
+													e.stopPropagation();
+													void postTopicAction({ action: "delete-topic", id: group.rawTopicId! });
+												}}
+												className="flex size-5 items-center justify-center rounded text-muted-foreground/60 hover:text-error hover:bg-error/10 cursor-pointer transition-colors"
+												title="Delete topic"
+											>
+												<Trash2Icon className="size-3" />
+											</button>
+										</div>
+									) : (
+										<span className="min-w-0 flex-1 truncate text-sm font-medium">
+											{group.label ?? <span className="text-muted-foreground/60">unlabeled</span>}
+										</span>
+									)}
+									<TreeCell widthClassName="w-14" align="right" className="text-xs tabular-nums text-muted-foreground">
+										{group.nodeIds.length}
+									</TreeCell>
+									<TreeCell widthClassName="w-20" align="right" className="text-xs tabular-nums text-muted-foreground">
+										{group.newestCreatedAt ? group.newestCreatedAt.slice(0, 10) : ""}
+									</TreeCell>
+								</div>
+
+								{open && group.chains.map((chain) => renderChainItem(chain, group.key, 0, "topics"))}
+								<TreeSeparator data-testid={`source-separator-${group.key}`} outside inset={0} />
+							</div>
+						);
+					})
+				)}
 			</div>
 
 			{/* The floating selection bar (owner ruling: never shifts layout —
@@ -620,6 +1133,60 @@ export function ChainTableBody({
 							</>
 						)}
 					</div>
+				</div>
+			)}
+			{topicFeedback && (
+				<div className="pointer-events-none absolute inset-x-0 bottom-2 z-20 flex justify-center">
+					<div className="pointer-events-auto w-full max-w-xl">
+						<OrganizationFeedbackToast feedback={topicFeedback} onDismiss={() => setTopicFeedback(null)} />
+					</div>
+				</div>
+			)}
+			{topicPreview && (
+				<div className="absolute inset-0 z-30 flex items-center justify-center bg-background/70 p-3 backdrop-blur-sm sm:p-6">
+					<section role="dialog" aria-modal="true" aria-labelledby="topic-preview-title" data-testid="topic-preview" className="flex h-full max-h-[54rem] w-full max-w-5xl flex-col overflow-hidden rounded-xl border bg-card shadow-2xl">
+						<header className="shrink-0 border-b px-4 py-4 sm:px-6">
+							<div className="flex items-start justify-between gap-4">
+								<div className="min-w-0">
+									<h2 id="topic-preview-title" className="text-base font-semibold">Review topic changes</h2>
+									<p className="mt-1 text-xs text-muted-foreground">
+										{changedTopicPropositions.length} {changedTopicPropositions.length === 1 ? "title changed" : "titles changed"}
+									</p>
+								</div>
+								<button type="button" data-testid="topic-preview-cancel" onClick={() => setTopicPreview(null)} disabled={refreshingTopics} className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50" aria-label="Cancel topic preview">
+									<XIcon className="size-4" />
+								</button>
+							</div>
+							{topicPreviewError && <p role="alert" className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">{topicPreviewError}</p>}
+							<div className="mt-3 hidden grid-cols-[minmax(0,1fr)_minmax(10rem,0.8fr)] gap-3 px-1 text-xs text-muted-foreground sm:grid">
+								<span>Proposition</span><span>Topic</span>
+							</div>
+						</header>
+						<div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-6">
+							{[...changedTopicPropositions].sort((a, b) => a.name.localeCompare(b.name)).map((node) => {
+								const currentLabel = topicLabelForNode(topicPreview.base, node.id);
+								const proposedLabel = topicLabelForNode(topicPreview.proposed, node.id);
+								return (
+								<div key={node.id} data-topic-preview-node={node.id} className="grid grid-cols-1 items-center gap-2 border-b border-border/60 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,0.8fr)] sm:gap-3">
+										<div className="truncate text-sm font-medium" title={node.name}>{node.name}</div>
+										<div className="flex min-w-0 items-center gap-2 text-xs">
+											<span className="min-w-0 flex-1 truncate text-muted-foreground" title={currentLabel}>{currentLabel}</span>
+											<ArrowRightIcon className="size-3.5 shrink-0 text-muted-foreground" />
+											<span className="min-w-0 flex-1 truncate font-medium text-foreground" title={proposedLabel}>{proposedLabel}</span>
+										</div>
+									</div>
+								);
+							})}
+							{changedTopicPropositions.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No topic titles changed</p>}
+						</div>
+						<footer className="flex shrink-0 items-center justify-between gap-3 border-t px-4 py-3 sm:px-6">
+							<p className="min-w-0 truncate text-xs text-muted-foreground">{changedTopicPropositions.length} {changedTopicPropositions.length === 1 ? "topic move" : "topic moves"}</p>
+							<div className="flex shrink-0 items-center gap-2">
+								<button type="button" onClick={() => setTopicPreview(null)} disabled={refreshingTopics} className="rounded-md px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50">Cancel</button>
+								<button type="button" data-testid="topic-preview-apply" onClick={() => applyTopicPreview()} disabled={refreshingTopics || changedTopicPropositions.length === 0} className="rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50">{refreshingTopics ? "Applying…" : "Apply changes"}</button>
+							</div>
+						</footer>
+					</section>
 				</div>
 			)}
 		</div>
@@ -679,7 +1246,11 @@ export function ChainTableOverlay({
 	keyboardActive = true,
 	registerInteraction = true,
 	pickerChrome = false,
+	topicOrg,
+	onTopicOrganizationStart,
 }: {
+	topicOrg?: TopicOrganization | null;
+	onTopicOrganizationStart?: () => { operationId: string; finish: (error?: string) => void };
 	open: boolean;
 	/** Host knowledge picker has clearance, but no sidebar-reopen action. */
 	pickerChrome?: boolean;
@@ -703,6 +1274,7 @@ export function ChainTableOverlay({
 	const [expandedChains, setExpandedChains] = useState<ReadonlySet<string>>(() => new Set());
 	const [deletion, setDeletion] = useState<{ sources: SourceEntry[]; folders: SourceFolder[] } | null>(null);
 	const deleteOpen = deletion !== null;
+
 	const [directory, setDirectory] = useState<SourceDirectory>();
 	const [directoryPending, setDirectoryPending] = useState(true);
 	const visibleDirectory = useMemo(() => directory && chainSourceDirectory(directory), [directory]);
@@ -817,6 +1389,8 @@ export function ChainTableOverlay({
 			>
 				{directoryFailure && <p role="alert" className="px-3 py-1 text-xs text-error">{directoryFailure}</p>}
 				<ChainTableBody
+					topicOrg={topicOrg}
+					onTopicOrganizationStart={onTopicOrganizationStart}
 					pickerChrome={pickerChrome}
 					keyboardActive={keyboardActive && !deleteOpen}
 					directory={directory}

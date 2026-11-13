@@ -101,6 +101,15 @@ a,
 	max-width: 100%;
 }
 
+/* Session-type choices have a title and supporting copy; let both wrap
+   inside the anchored popup instead of inheriting the single-line action rule. */
+.lh-new-session-option {
+	white-space: normal;
+	overflow: visible;
+	text-overflow: clip;
+	overflow-wrap: anywhere;
+}
+
 /* Exception: composer textarea / path-input — the .lh-input class marks
    multi-line inputs; revert the white-space rule so they can wrap freely. */
 .lh-input,

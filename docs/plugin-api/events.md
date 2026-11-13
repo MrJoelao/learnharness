@@ -52,6 +52,7 @@ export interface ServerEvents {
     "chats-changed": Record<string, never>;
     "chat-organization-changed": Record<string, never>;
     "sources-changed": Record<string, never>;
+    "topics-changed": Record<string, never>;
     "subscriptions-changed": Record<string, never>;
     "record-changed": {
         chatId: string;
@@ -84,6 +85,7 @@ export interface ServerEvents {
 - ["chats-changed"](#serverevents-chats-changed)
 - ["chat-organization-changed"](#serverevents-chat-organization-changed)
 - ["sources-changed"](#serverevents-sources-changed)
+- ["topics-changed"](#serverevents-topics-changed)
 - ["subscriptions-changed"](#serverevents-subscriptions-changed)
 - ["record-changed"](#serverevents-record-changed)
 - ["record-changed".chatId](#serverevents-record-changedchatid)
@@ -179,6 +181,14 @@ Source inventory, display names, or organizational folders changed.
 
 ```ts
 "sources-changed": Record<string, never>;
+```
+
+### ServerEvents "topics-changed"
+
+Semantic topic groupings or assignments changed.
+
+```ts
+"topics-changed": Record<string, never>;
 ```
 
 ### ServerEvents "subscriptions-changed"

@@ -17,12 +17,12 @@
 </p>
 
 > [!NOTE]
-> ### LearnHarness Fork (v0.7.0)
+> ### LearnHarness Fork (v0.7.1)
 > This is an independent fork of [LearnHarness](https://github.com/amosblomqvist/learnharness).
 >
 > **Why this fork?**
-> This fork combines new features I added myself alongside several valuable contributions taken from community pull requests:
-> - **Added Features:** Hierarchical folders and subfolders for organizing chats and study sessions.
+> This fork combines features developed here with selected upstream changes:
+> - **Added Features:** Hierarchical folders, semantic topic organization, and controls for reviewing or automatically applying topic changes.
 > - **Integrated Community Pull Requests:** Archive redesign, session notes panel with live math, study time tracking, session documents and references, Hallmark design harmonization, flashcard refinements, and expanded keyboard shortcuts.
 >
 > **macOS Build Notice (Unsigned):**
@@ -64,7 +64,7 @@ Future teaching sessions can read the graph instead of starting from scratch. Pr
 
 ## Download and get started
 
-**[Download from learnharness.ai](https://learnharness.ai)** · [GitHub Releases](https://github.com/amosblomqvist/learnharness/releases)
+**[Download from learnharness.ai](https://learnharness.ai)** · [GitHub Releases](https://github.com/MrJoelao/learnharness/releases)
 
 - **macOS (Apple Silicon):** signed and notarized DMG. Drag the app to Applications.
 - **Windows (x64):** run the installer. It is currently unsigned; Windows may show an “unknown publisher” or SmartScreen warning.
@@ -96,7 +96,7 @@ See the [documentation index](docs/README.md) for all guides, [development](docs
 
 For trusted local plugins, start with the [authoring guide and capability map](docs/plugin-authoring.md). It links the question, practice-problem, submission, view-context and UI contracts. Use [`examples/plugins/`](examples/plugins/) for small runnable templates, [`plugins/`](plugins/) for feature source projects, and the [host architecture](docs/plugin-architecture.md) for internals.
 
-Questions, bug reports, and feature requests: [GitHub Issues](https://github.com/amosblomqvist/learnharness/issues).
+Questions, bug reports, and feature requests: [GitHub Issues](https://github.com/MrJoelao/learnharness/issues).
 
 Security vulnerabilities: report privately as described in [SECURITY.md](SECURITY.md), not in public issues.
 

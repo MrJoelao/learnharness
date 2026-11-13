@@ -70,3 +70,10 @@ export { claudeCodeInstallationResponse } from "./claude-code.ts";
 // No import side effects; the boot sync lives in stores.ts.
 export * from "./custom-provider.ts";
 export { customProviderGet, customProviderMutation } from "./custom-provider-http.ts";
+export { getGraph } from "../core/graph.ts";
+export { settleGraphLayout } from "../core/layout-settle.ts";
+export { resolveRoleSpec, resolveSettings } from "../core/settings-resolution.ts";
+export { ModelsNotConfiguredError, ProviderKeyMissingError } from "../core/settings.ts";
+export { piEngineForSpec } from "../agent/models.ts";
+export { previewTopicAssign } from "../agent/subagents/topic-assign.ts";
+export { abortTopicOrganization, registerTopicOrganizationAbort, unregisterTopicOrganizationAbort } from "../agent/subagents/topic-organization-aborts.ts";

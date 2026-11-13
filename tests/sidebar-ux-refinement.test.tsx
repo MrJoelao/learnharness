@@ -40,6 +40,7 @@ describe("Sidebar UX Refinement Layout & Structural Contract", () => {
 		const fs = await import("node:fs");
 		const path = await import("node:path");
 		const sidebarCode = fs.readFileSync(path.resolve("components/sidebar.tsx"), "utf-8");
+		const menuShellCode = fs.readFileSync(path.resolve("components/menu-shell.tsx"), "utf-8");
 
 		// Requirement 1: Integrated visible All/Teaching/Practice filters with search
 		assert.ok(sidebarCode.includes('data-testid="session-kind-filter"'), "integrated kind filter container present");
@@ -68,7 +69,7 @@ describe("Sidebar UX Refinement Layout & Structural Contract", () => {
 		assert.ok(sidebarCode.includes('data-testid="new-session"'), "teaching option present");
 		assert.ok(sidebarCode.includes('data-testid="new-session-practice"'), "practice option present");
 		const newUnifiedMenuSlice = sidebarCode.slice(
-			sidebarCode.indexOf('data-testid="new-unified-menu"'),
+			sidebarCode.indexOf('testid="new-unified-menu"'),
 			sidebarCode.indexOf('Divider above Archive / Settings'),
 		);
 		assert.ok(newUnifiedMenuSlice.includes('New Teaching Session'));
@@ -90,7 +91,7 @@ describe("Sidebar UX Refinement Layout & Structural Contract", () => {
 		// Focus and keyboard handling
 		assert.ok(sidebarCode.includes('if (e.key === "Escape")'), "Escape key handling present");
 		assert.ok(sidebarCode.includes('newMenuAnchorRef.current?.focus()'), "focus restoration to anchor on Escape");
-		assert.ok(sidebarCode.includes('firstItem?.focus()'), "initial focus inside menu");
+		assert.ok(menuShellCode.includes("(input ?? el).focus()"), "MenuShell moves focus inside an opened menu");
 	});
 });
 

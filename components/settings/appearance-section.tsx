@@ -39,6 +39,8 @@ import {
 	type AppearanceSettings,
 	type GraphSettings,
 	type ThemeColorKey,
+	type TopicGranularity,
+	type TopicUnification,
 } from "@/src/core";
 import { MenuShell } from "@/components/menu-shell";
 import { useInteractionLayers } from "@/components/interaction-layers";
@@ -46,7 +48,10 @@ import { Hint } from "@/components/ui/hint";
 import { BUNDLED_READING_FONTS, useAppearance } from "./appearance.tsx";
 import { FontMenuList } from "./model-menu";
 import { ThemeCards } from "./theme-cards.tsx";
-import { CommitInput, SettingsMenuTrigger, SettingsRow, Toggle } from "./controls.tsx";
+import { TopicGranularitySlider } from "./topic-granularity-slider.tsx";
+import { TopicPromptDisclosure } from "./topic-prompt-disclosure.tsx";
+import { TopicUnificationSelector } from "./topic-unification-selector.tsx";
+import { CommitInput, SettingsGroup, SettingsMenuTrigger, SettingsRow, SettingsSlider, ThinSelect, Toggle } from "./controls.tsx";
 
 /** The factory reading family — the DEFAULT row's identity (unset =
  *  this). Exported for tests. */
@@ -522,6 +527,83 @@ export function GraphSection({
 					}}
 				/>
 			</SettingsRow>
+			<SettingsGroup label="Topic Organization" testid="group-topics">
+				<SettingsRow
+					label="Review topic changes"
+					hint="Show proposed topic moves before applying them"
+					testid="graph-row-topic-review"
+				>
+					<Toggle
+						label="Review topic changes before applying"
+						checked={graph?.topics?.reviewBeforeApply ?? resolved.topics.reviewBeforeApply}
+						onChange={(value) => {
+							void onSectionChange({
+								...graph,
+								topics: { ...graph?.topics, reviewBeforeApply: value },
+							});
+						}}
+					/>
+				</SettingsRow>
+				<SettingsRow
+					label="Topic granularity"
+					hint="Cluster size from fine-grained subtopics to broad exam areas"
+					testid="graph-row-topic-granularity"
+				>
+					<TopicGranularitySlider
+						value={graph?.topics?.granularity ?? resolved.topics.granularity ?? "balanced"}
+						onChange={(val) => {
+							void onSectionChange({
+								...graph,
+								topics: {
+									...graph?.topics,
+									granularity: val,
+								},
+							});
+						}}
+					/>
+				</SettingsRow>
+
+				<div
+					className="flex flex-col gap-2.5 py-1"
+					data-testid="graph-row-topic-unification"
+				>
+					<div className="flex items-baseline justify-between gap-4">
+						<span className="min-w-0">
+							<span className="block font-prose text-(length:--lh-prose-size)">Cross-material unification</span>
+							<span className="block text-xs text-muted-foreground/70">
+								Merge scope across chats, notes, and imported documents
+							</span>
+						</span>
+					</div>
+					<TopicUnificationSelector
+						value={graph?.topics?.unification ?? resolved.topics.unification ?? "folder"}
+						onChange={(val) => {
+							void onSectionChange({
+								...graph,
+								topics: {
+									...graph?.topics,
+									unification: val,
+								},
+							});
+						}}
+					/>
+				</div>
+
+				<div className="pt-1">
+					<TopicPromptDisclosure
+						value={graph?.topics?.customPrompt ?? ""}
+						onCommit={(val) => {
+							void onSectionChange({
+								...graph,
+								topics: {
+									...graph?.topics,
+									customPrompt: val,
+								},
+							});
+						}}
+					/>
+				</div>
+			</SettingsGroup>
 		</>
 	);
 }

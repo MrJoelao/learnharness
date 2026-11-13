@@ -10,6 +10,7 @@ import { chatStore } from "../store/chats.ts";
 import { graphStore } from "../store/graph.ts";
 import { sourceOrganizationStore } from "../store/source-organization.ts";
 import { chatOrganizationStore } from "../store/chat-organization.ts";
+import { topicOrganizationStore } from "../store/topic-organization.ts";
 import { jobStore } from "../store/jobs.ts";
 import { settingsStore } from "../store/settings.ts";
 import { themeStore } from "../store/themes.ts";
@@ -23,11 +24,13 @@ export const stores = {
 	graphStore,
 	sourceOrganizationStore,
 	chatOrganizationStore,
+	topicOrganizationStore,
 	jobStore,
 	settingsStore,
 	themeStore,
 	studyStore,
 };
+
 
 export type Stores = typeof stores;
 

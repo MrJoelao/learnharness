@@ -128,3 +128,38 @@ export function attachImpToCommunities(
 	}
 	for (const community of communities) community.members.sort();
 }
+
+/** Attach derived imp nodes to topic clusters by majority among premises'
+ *  topic assignments (ties to alphabetically first topic). */
+export function attachImpToTopicClusters(
+	clusters: Array<{ id: string; members: string[] }>,
+	propositions: ReadonlyArray<Pick<GraphNode, "id">>,
+	chains: ReadonlyArray<Pick<GraphChain, "id" | "premises" | "conclusion">>,
+): void {
+	const topicByNode = new Map<string, string>();
+	for (const cluster of clusters) {
+		for (const member of cluster.members) {
+			topicByNode.set(member, cluster.id);
+		}
+	}
+	const live = new Set(propositions.map((node) => node.id));
+	for (const chain of chains) {
+		if (chain.premises.length < 2) continue;
+		if (!live.has(chain.conclusion) || !chain.premises.every((p) => live.has(p))) continue;
+		const counts = new Map<string, number>();
+		for (const p of chain.premises) {
+			const tid = topicByNode.get(p);
+			if (tid) counts.set(tid, (counts.get(tid) ?? 0) + 1);
+		}
+		if (counts.size === 0) continue;
+		let max = 0;
+		for (const n of counts.values()) if (n > max) max = n;
+		const winners: string[] = [];
+		for (const [key, n] of counts) if (n === max) winners.push(key);
+		const winTopic = winners.sort()[0]!;
+		const community = clusters.find((c) => c.id === winTopic);
+		if (!community) continue;
+		community.members.push(chain.id);
+	}
+	for (const community of clusters) community.members.sort();
+}

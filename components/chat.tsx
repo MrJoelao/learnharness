@@ -101,7 +101,7 @@ import { readPluginProblemSubmission, pluginProblemById } from "@/src/core";
 import { ThinkingCard, ProblemCard, type PracticeThinkingData } from "@/components/practice-cards";
 import { GraphContextCard, type GraphContextData } from "@/components/graph-context-card";
 import { TopBar } from "@/components/top-bar";
-import { PluginTopBarActions } from "@/components/plugin-chrome";
+import { PluginSessionTopBarActions } from "@/components/plugin-chrome";
 import { usePluginShortcutPage } from "@/components/plugin-shortcuts";
 import { createPluginSessionActionContext, type PluginSessionViewInput } from "@/src/core";
 import type { SessionInputViewReader, SessionViewTargets, NativeQuestionViewState, ViewReaderRef } from "./session-view-readers";
@@ -371,9 +371,9 @@ export function Chat({
 	const submissionMounted = useRef(true);
 	useEffect(() => { submissionMounted.current = true; return () => { submissionMounted.current = false; submissionRunner.dispose(); }; }, [submissionRunner]);
 	useEffect(() => () => submissionRunner.dispose(), [surfaceTarget, submissionRunner]);
-	const inputViewReader = useRef<SessionInputViewReader>({ current: null }).current;
-	const [, refreshViewContext] = useState(0);
-	const notifyViewChanged = useCallback(() => { if (submissionMounted.current) refreshViewContext(value => value + 1); }, []);
+	const inputViewReader = useMemo<SessionInputViewReader>(() => ({ current: null }), []);
+	const refreshPluginActions = useRef<(() => void) | null>(null);
+	const notifyViewChanged = useCallback(() => { if (submissionMounted.current) refreshPluginActions.current?.(); }, []);
 	inputViewReader.changed = notifyViewChanged;
 	const submissionLive = useRef({ nativeMessages, surfaceTarget, ready: true });
 	submissionLive.current = { nativeMessages, surfaceTarget, ready: true };
@@ -1632,7 +1632,6 @@ export function Chat({
 			input: readViewInput(),
 		};
 	}) : undefined;
-	const renderedActionContext = actionContext();
 	const captureActionContext = () => {
 		if (!submissionMounted.current || !surfaceTarget || !findSurfaceBoundary(surfaceTarget)) return;
 		const captured = actionContext();
@@ -1794,7 +1793,7 @@ export function Chat({
 					)}
 					<SourcesChip chatId={chatId} sourceDocuments={sourceDocuments} initialReferences={initialReferences} disabled={isArchived} />
 					<NotesChip />
-					{renderedActionContext && <PluginTopBarActions context={renderedActionContext} captureContext={captureActionContext} />}
+					<PluginSessionTopBarActions readContext={actionContext} captureContext={captureActionContext} refreshRef={refreshPluginActions} />
 				</TopBar>
 				{isArchived && (
 					<div data-testid="archived-chat-banner" className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">

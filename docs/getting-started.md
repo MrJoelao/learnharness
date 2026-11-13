@@ -1,6 +1,6 @@
 # Getting started
 
-Download LearnHarness from [learnharness.ai](https://learnharness.ai) or [GitHub Releases](https://github.com/amosblomqvist/learnharness/releases). For running from source, see [Development](development.md).
+Download LearnHarness from [learnharness.ai](https://learnharness.ai) or [GitHub Releases](https://github.com/MrJoelao/learnharness/releases). For running from source, see [Development](development.md).
 
 ## Connect models
 
@@ -69,4 +69,4 @@ API-key files sit beside `data`, not inside it. They are plaintext with restrict
 
 Click the context/cost row beneath the composer for Session stats. Dollar figures estimate known API costs; subscription, CLI, and custom-endpoint usage are not treated as free. See [context, caching, and costs](compaction-accounting.md) for the details.
 
-Packaged apps support updates under **Settings → General**. Development builds do not run the updater. Report problems through [GitHub Issues](https://github.com/amosblomqvist/learnharness/issues), with reproduction steps and the app/OS version rather than private learning records or keys.
+Packaged apps support updates under **Settings → General**. Development builds do not run the updater. Report problems through [GitHub Issues](https://github.com/MrJoelao/learnharness/issues), with reproduction steps and the app/OS version rather than private learning records or keys.

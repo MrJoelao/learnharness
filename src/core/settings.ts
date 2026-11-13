@@ -422,6 +422,26 @@ export interface AppearanceSettings {
 	mdRendering?: MdRenderingSettings;
 }
 
+export type TopicGranularity = "fine" | "balanced" | "broad";
+export type TopicUnification = "strict" | "folder" | "global";
+
+export interface TopicSettings {
+	/** Granularity of semantic topic clusters:
+	 *  - 'fine': micro-topics (~3–6 nodes)
+	 *  - 'balanced': moderate modular topics (~6–12 nodes)
+	 *  - 'broad': macroscopic domain themes (~8–25 nodes, default) */
+	granularity?: TopicGranularity;
+	/** Cross-material unification:
+	 *  - 'strict': keep separate by chat/file
+	 *  - 'folder': unify within course/subject folder (default)
+	 *  - 'global': unify across the whole graph */
+	unification?: TopicUnification;
+	/** Optional custom directives or rules for the AI topic classifier. */
+	customPrompt?: string;
+	/** Show topic proposals before applying; defaults to true. */
+	reviewBeforeApply?: boolean;
+}
+
 /** Knowledge-graph settings — a strict dependency ladder (owner decision
  *  2026-09-19): graph → embedding → clustering → labeling, each rung only
  *  meaningful when its parent is on (the UI grays dependents out; stored
@@ -442,6 +462,8 @@ export interface GraphSettings {
 	 *  switch, not a data switch (the extraction master above is the
 	 *  data switch). Default on. */
 	rendering?: boolean;
+	/** Topic auto-organization preferences (granularity, unification, prompt). */
+	topics?: TopicSettings;
 	/** The chunk budget (extraction-UX redesign, owner 2026-09-24): the
 	 *  transcript-token share of the extractor's context — a run fires
 	 *  when a chat's UNCOVERED tokens reach it, and the run batches the
@@ -537,7 +559,7 @@ export interface FactorySettings {
 			italicColor: string | null;
 		};
 	};
-	graph: Required<GraphSettings>;
+	graph: Required<Omit<GraphSettings, "topics">> & { topics: Required<TopicSettings> };
 	compaction: Required<CompactionSettings>;
 	studyTime: Required<StudyTimeSettings>;
 }
@@ -557,7 +579,17 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		sessionNameSerif: true,
 		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
 	},
-	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
+	graph: {
+		enabled: true,
+		rendering: true,
+		extractionChunkTokens: 4096,
+		topics: {
+			granularity: "broad",
+			unification: "folder",
+			customPrompt: "",
+			reviewBeforeApply: true,
+		},
+	},
 	compaction: { thresholdTokens: 150_000, includeReasoning: false },
 	studyTime: { idleMinutes: 5, weekStart: "monday" },
 };
@@ -837,6 +869,25 @@ function sanitizeGraph(raw: Record<string, unknown>): GraphSettings {
 	const rawTokens = raw.extractionChunkTokens;
 	if (typeof rawTokens === "number" && Number.isFinite(rawTokens) && rawTokens > 0) {
 		out.extractionChunkTokens = Math.max(EXTRACTION_CHUNK_TOKENS_FLOOR, Math.floor(rawTokens));
+	}
+	if (typeof raw.topics === "object" && raw.topics !== null) {
+		const t = raw.topics as Record<string, unknown>;
+		const topics: TopicSettings = {};
+		if (t.granularity === "fine" || t.granularity === "balanced" || t.granularity === "broad") {
+			topics.granularity = t.granularity;
+		}
+		if (t.unification === "strict" || t.unification === "folder" || t.unification === "global") {
+			topics.unification = t.unification;
+		}
+		if (typeof t.customPrompt === "string") {
+			topics.customPrompt = t.customPrompt.slice(0, 2000);
+		}
+		if (typeof t.reviewBeforeApply === "boolean") {
+			topics.reviewBeforeApply = t.reviewBeforeApply;
+		}
+		if (Object.keys(topics).length > 0) {
+			out.topics = topics;
+		}
 	}
 	return out;
 }

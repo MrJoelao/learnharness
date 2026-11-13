@@ -223,7 +223,7 @@ describe("desktop window chrome", () => {
 		const appearance = { mode: "light", background: "#eeeeee" };
 		(bridge.setAppearance as (a: unknown) => void)(appearance);
 		assert.deepEqual(sent, [["lh:appearance", appearance]]);
-		assert.deepEqual(Object.keys(bridge.subscriptions as object).sort(), ["cancel", "consent", "disconnect", "login", "onChange", "open", "respond", "retry", "status"]);
+		assert.deepEqual(Object.keys(bridge.subscriptions as object).sort(), ["cancel", "consent", "disconnect", "login", "onChange", "open", "removeAccount", "respond", "retry", "select", "status", "switchAccount"]);
 	});
 });
 

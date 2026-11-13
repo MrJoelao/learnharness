@@ -25,8 +25,18 @@ describe("FACTORY_SETTINGS (the compiled factory layer)", () => {
 		// wave 7 collapse: the master switch ONLY + the extraction-UX
 		// redesign's chunk budget (2026-09-24); doubled to 8192 with the
 		// digest-aware redesign (2026-09-30), then HALVED BACK to 4096
-		// with the message anchors (owner, 2026-10-13)
-		assert.deepEqual(FACTORY_SETTINGS.graph, { enabled: true, rendering: true, extractionChunkTokens: 4096 });
+		// with the message anchors (owner, 2026-10-13); topics settings (2026-11)
+		assert.deepEqual(FACTORY_SETTINGS.graph, {
+			enabled: true,
+			rendering: true,
+			extractionChunkTokens: 4096,
+			topics: {
+				granularity: "broad",
+				unification: "folder",
+				customPrompt: "",
+				reviewBeforeApply: true,
+			},
+		});
 		const a = FACTORY_SETTINGS.appearance;
 		assert.equal(a.theme, "default");
 		assert.equal(a.background, null); // the theme's own background, not a factory hex
@@ -137,6 +147,35 @@ describe("sanitizeUserSettings", () => {
 			const dropped = sanitizeUserSettings({ version: 1, graph: { extractionChunkTokens: junk } });
 			assert.equal(dropped?.graph?.extractionChunkTokens, undefined, `junk ${String(junk)} drops`);
 		}
+
+		// topics settings: valid granularity, unification, and customPrompt survive; junk drops
+		const validTopics = sanitizeUserSettings({
+			version: 1,
+			graph: {
+				topics: {
+					granularity: "fine",
+					unification: "global",
+					customPrompt: "Follow book index",
+				},
+			},
+		});
+		assert.deepEqual(validTopics?.graph?.topics, {
+			granularity: "fine",
+			unification: "global",
+			customPrompt: "Follow book index",
+		});
+
+		const invalidTopics = sanitizeUserSettings({
+			version: 1,
+			graph: {
+				topics: {
+					granularity: "invalid" as any,
+					unification: "unknown" as any,
+					customPrompt: 123 as any,
+				},
+			},
+		});
+		assert.equal(invalidTopics?.graph?.topics, undefined);
 	});
 
 	it("out-of-range numbers CLAMP (proseFontSize, headingWeight)", () => {
