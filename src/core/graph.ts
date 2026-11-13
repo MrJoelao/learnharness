@@ -66,14 +66,15 @@ import type {
 } from "./contracts.ts";
 import { MIN_CLUSTER_SIZE } from "./clusters.ts";
 import { formatChainLine } from "./chains.ts";
-import { attachImpToCommunities, birthSessionOf, birthSessionPartition } from "./session-clusters.ts";
+import { attachImpToCommunities, attachImpToTopicClusters, birthSessionOf, birthSessionPartition } from "./session-clusters.ts";
 import { sourceFileLabel } from "./source-label.ts";
-import type { ChatStore, GraphStore } from "./ports.ts";
+import type { ChatStore, GraphStore, TopicOrganizationStore } from "./ports.ts";
 
 /** The storage ports every graph operation needs, passed explicitly. */
 export interface GraphDeps {
 	chatStore: ChatStore;
 	graphStore: GraphStore;
+	topicOrganizationStore?: TopicOrganizationStore;
 }
 
 /** "n_" + 12 hex chars (contracts.ts GraphNode.id — store-assigned). */
@@ -561,27 +562,36 @@ export function graphSnapshot(deps: GraphDeps, sourceNames: Readonly<Record<stri
 	// presentation rule (a region needs >= 3 propositions for a hull). A
 	// birth session whose record is gone (deleted chat) keeps its members
 	// but renders unlabeled — honest, never guessed.
-	// PROPOSITIONS ONLY (owner, 2026-09-30): derived implication nodes
-	// never partition — the stored world clusters, its image follows.
-	const communities = birthSessionPartition(graph.nodes);
-	const clusters: Cluster[] = communities
-		.filter((community) => community.members.length >= MIN_CLUSTER_SIZE)
-		.map((community) => {
-			// Display names never replace the original provenance path.
-			const file = fileSources[community.id];
-			return {
-				id: community.id,
-				label: sessions[community.id] ?? (file === undefined ? null : sourceNames[community.id] ?? sourceFileLabel(file)),
-				members: community.members,
-			};
-		});
-	// IMP-NODE CLUSTER ASSIGNMENT (owner, 2026-09-30): majority among the
-	// premises' birth sessions, ties to the chain's own birth — attached
-	// AFTER the hull filter so a two-proposition community + its bundle
-	// never resurrects a hull (the filter counts propositions). Both
-	// cluster-membership consumers — the sim's centroid pull and the
-	// canvas's region rasterization — read it through this one list.
-	attachImpToCommunities(clusters, graph.nodes, graph.chains);
+	// TOPIC CLUSTERING (semantic cross-session grouping) vs BIRTH-SESSION CLUSTERING:
+	// If topic organization exists and has at least one topic, use it.
+	// Otherwise, fallback to birth-session clustering derived from provenance.
+	let clusters: Cluster[];
+	const topicOrg = deps.topicOrganizationStore?.read();
+	if (topicOrg && topicOrg.topics.length > 0) {
+		const liveNodeIds = new Set(graph.nodes.map((n) => n.id));
+		clusters = topicOrg.topics
+			.map((topic) => ({
+				id: topic.id,
+				label: topic.label,
+				members: topic.members.filter((id) => liveNodeIds.has(id)),
+			}))
+			.filter((c) => c.members.length >= MIN_CLUSTER_SIZE);
+		attachImpToTopicClusters(clusters, graph.nodes, graph.chains);
+	} else {
+		const communities = birthSessionPartition(graph.nodes);
+		clusters = communities
+			.filter((community) => community.members.length >= MIN_CLUSTER_SIZE)
+			.map((community) => {
+				// Display names never replace the original provenance path.
+				const file = fileSources[community.id];
+				return {
+					id: community.id,
+					label: sessions[community.id] ?? (file === undefined ? null : sourceNames[community.id] ?? sourceFileLabel(file)),
+					members: community.members,
+				};
+			});
+		attachImpToCommunities(clusters, graph.nodes, graph.chains);
+	}
 
 	// Resting layout (Option A): the positions ledger, when the settle has
 	// ever run. Absent on a fresh graph — the view falls back to its own

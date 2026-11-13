@@ -30,6 +30,7 @@ import { batchRuns, coverageOf, messageViewLines } from "../../core/coverage.ts"
 import { failedOutputCallIds, type LhMessage } from "../../core/native-messages.ts";
 import { prepareAuditorReview } from "../tools/graph.ts";
 import { runSubmitAgent, healStringifiedArrays } from "./submit-agent.ts";
+import { runTopicAssign } from "./topic-assign.ts";
 
 /**
  * The extraction pipeline (vision §1 construction, 2026-09-02 redesign;
@@ -1214,6 +1215,20 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 				`[extraction ${chatId}] merged: ${stats.nodes} nodes, ${stats.chains ?? 0} chains ` +
 					`(${Math.round(performance.now() - t0)}ms total, ${batches.length} batch job(s))`,
 			);
+			if (stats.nodes > 0 && deps.topicOrganizationStore) {
+				const engine = stageEngine("extractor", deps.extractor);
+				if (engine) {
+					const allNodes = deps.graphStore.readNodes();
+					void runTopicAssign(allNodes, { topicStore: deps.topicOrganizationStore, engine })
+						.then((count) => {
+							if (count !== null) {
+								emit("topics-changed", {});
+								emit("sources-changed", {});
+							}
+						})
+						.catch((err) => console.error(`[extraction ${chatId}] topic-assign background pass failed:`, err));
+				}
+			}
 			return stats;
 		} catch (err) {
 			// Pre-fan-out failures only (stage gate, coverage read): aborts
@@ -1395,6 +1410,20 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 				`[extraction ${id}] merged: ${stats.nodes} nodes, ${stats.chains ?? 0} chains ` +
 					`(${Math.round(performance.now() - t0)}ms total, ${chunks.length} chunk job(s))`,
 			);
+			if (stats.nodes > 0 && deps.topicOrganizationStore) {
+				const engine = stageEngine("extractor", deps.extractor);
+				if (engine) {
+					const allNodes = deps.graphStore.readNodes();
+					void runTopicAssign(allNodes, { topicStore: deps.topicOrganizationStore, engine })
+						.then((count) => {
+							if (count !== null) {
+								emit("topics-changed", {});
+								emit("sources-changed", {});
+							}
+						})
+						.catch((err) => console.error(`[extraction ${id}] topic-assign background pass failed:`, err));
+				}
+			}
 			return stats;
 		} catch (err) {
 			console.error(`[extraction ${id}] notes pipeline failed (${Math.round(performance.now() - t0)}ms):`, err);

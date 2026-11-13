@@ -178,6 +178,15 @@ export interface ChatOrganizationStore {
 	write(state: import("./chat-organization.ts").ChatOrganization): void;
 }
 
+/** Semantic topic groupings (topics.json): LLM-assigned, user-correctable.
+ *  Presentation metadata separate from graph ledgers — same pattern as
+ *  source-organization.ts. */
+export interface TopicOrganizationStore {
+	read(): import("./topic-organization.ts").TopicOrganization;
+	write(state: import("./topic-organization.ts").TopicOrganization): void;
+}
+
+
 export interface StudyStore {
 	readIntervals(): StudyInterval[];
 	appendIntervals(list: StudyInterval[]): void;

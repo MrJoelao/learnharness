@@ -1,7 +1,8 @@
 import type { GraphChain, GraphNode, Position } from "./contracts.ts";
 import { incrementalLayout } from "./layout.ts";
-import { attachImpToCommunities, birthSessionPartition } from "./session-clusters.ts";
+import { attachImpToCommunities, attachImpToTopicClusters, birthSessionPartition } from "./session-clusters.ts";
 import { deriveView, getGraph } from "./graph.ts";
+import type { TopicOrganizationStore } from "./ports.ts";
 
 /**
  * The merge-time settle: recompute the resting layout from the CURRENT
@@ -23,28 +24,41 @@ import { deriveView, getGraph } from "./graph.ts";
  * Server code imports it DIRECTLY; it is never re-exported through
  * src/core/index.ts.
  */
-export function settleGraphLayout(graphStore: {
-	readNodes(): GraphNode[];
-	readChains(): GraphChain[];
-	readPositions(): Record<string, Position>;
-	writePositions(positions: Record<string, Position>): void;
-}): void {
+export interface SettleOptions {
+	topicStore?: TopicOrganizationStore;
+	resetAnchors?: boolean;
+}
+
+export function settleGraphLayout(
+	graphStore: {
+		readNodes(): GraphNode[];
+		readChains(): GraphChain[];
+		readPositions(): Record<string, Position>;
+		writePositions(positions: Record<string, Position>): void;
+	},
+	options?: SettleOptions,
+): void {
 	const graph = getGraph(graphStore);
 	if (graph.nodes.length === 0) return;
 	const view = deriveView(graph);
-	const previous = new Map(Object.entries(graphStore.readPositions()));
-	// The cluster partition for the centroid pull: the SAME birth-session
-	// partition the snapshot renders (derived from provenance on read —
-	// core/session-clusters.ts, wave 7) — one cluster concept everywhere.
-	// PROPOSITIONS ONLY (owner, 2026-09-30): implication nodes never
-	// partition; the stored world clusters, its image follows.
-	const communities = birthSessionPartition(graph.nodes);
-	// The SAME imp-node assignment the snapshot renders (majority among
-	// premises' births — core/session-clusters.ts): the resting ledger and
-	// the live sim must agree on where bundles belong, or the first live
-	// tick would fight the settle. Unfiltered here (settle pulls every
-	// community, hulls are a canvas-only concern).
-	attachImpToCommunities(communities, graph.nodes, graph.chains);
+	const previous = options?.resetAnchors
+		? new Map<string, Position>()
+		: new Map(Object.entries(graphStore.readPositions()));
+
+	let communities: Array<{ id: string; members: string[] }>;
+	const topicOrg = options?.topicStore?.read();
+	if (topicOrg && topicOrg.topics.length > 0) {
+		const liveNodeIds = new Set(graph.nodes.map((n) => n.id));
+		communities = topicOrg.topics.map((t) => ({
+			id: t.id,
+			members: t.members.filter((id) => liveNodeIds.has(id)),
+		}));
+		attachImpToTopicClusters(communities, graph.nodes, graph.chains);
+	} else {
+		communities = birthSessionPartition(graph.nodes);
+		attachImpToCommunities(communities, graph.nodes, graph.chains);
+	}
+
 	const next = incrementalLayout(view.nodes, view.edges, previous, {
 		clusters: communities,
 		logicalEdges: view.logicalEdges,
@@ -52,3 +66,4 @@ export function settleGraphLayout(graphStore: {
 	});
 	graphStore.writePositions(Object.fromEntries(next));
 }
+

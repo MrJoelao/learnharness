@@ -91,7 +91,7 @@ const BASE = {
 	onClose: () => {},
 };
 
-function render(props: Partial<typeof BASE> = {}) {
+function render(props: Partial<React.ComponentProps<typeof ChainTableBody>> = {}) {
 	return renderToStaticMarkup(React.createElement(ChainTableBody, { ...BASE, ...props }));
 }
 
@@ -484,3 +484,76 @@ describe("ChainTableOverlay — the lifted practice pick (owner vision, 2026-10-
 		assert.ok(!html.includes('data-testid="chain-practice-done"'));
 	});
 });
+
+describe("ChainTableBody — Sources vs Topics view modes", () => {
+	const sampleTopicOrg = {
+		topics: [
+			{
+				id: "t-ethics",
+				label: "Ethics & Responsibility",
+				members: ["c1", "a", "b"],
+				locked: false,
+				overriddenAt: null,
+				createdAt: "2026-09-20T10:00:00.000Z",
+				updatedAt: "2026-09-20T10:00:00.000Z",
+			},
+			{
+				id: "t-logic",
+				label: "Logic Foundations",
+				members: ["e", "d"],
+				locked: false,
+				overriddenAt: null,
+				createdAt: "2026-09-20T10:00:00.000Z",
+				updatedAt: "2026-09-20T10:00:00.000Z",
+			},
+		],
+		unassigned: [],
+		lastAutoRunAt: null,
+		version: 1 as const,
+	};
+
+	it("renders view mode switcher with Sources and Topics toggle buttons", () => {
+		const html = render();
+		assert.ok(html.includes('data-testid="chains-group-by-sources"'));
+		assert.ok(html.includes('data-testid="chains-group-by-topics"'));
+		assert.ok(html.includes("Sources"));
+		assert.ok(html.includes("Topics"));
+	});
+
+	it("renders topic badge on chain rows in Sources mode when topicOrg is provided", () => {
+		const html = render({
+			expandedClusters: new Set(["chat1"]),
+			topicOrg: sampleTopicOrg,
+		});
+		assert.ok(html.includes('data-testid="chain-topic-badge-c1"'));
+		assert.ok(html.includes("Ethics &amp; Responsibility") || html.includes("Ethics & Responsibility"));
+	});
+
+	it("renders topic clusters and source badges when grouped by Topics", () => {
+		const html = render({
+			initialGroupBy: "topics",
+			topicOrg: sampleTopicOrg,
+			expandedClusters: new Set(["topic-t-ethics"]),
+		});
+		assert.ok(html.includes('data-testid="cluster-group-topic-t-ethics"'));
+		assert.ok(html.includes("Ethics &amp; Responsibility") || html.includes("Ethics & Responsibility"));
+		assert.ok(html.includes('data-testid="chain-row-c1"'));
+		assert.ok(html.includes('data-testid="chain-source-badge-c1"'));
+		assert.ok(html.includes("Ethics lesson"));
+		assert.ok(html.includes('data-testid="chains-auto-organize"'));
+		assert.ok(html.includes('data-testid="chains-add-topic"'));
+		assert.ok(html.includes('data-testid="chains-topic-settings"'));
+		assert.ok(html.includes('data-testid="delete-topic-t-ethics"'));
+	});
+
+	it("renders new-topic-row when creatingTopic is active in Topics mode", () => {
+		const html = render({
+			initialGroupBy: "topics",
+			topicOrg: sampleTopicOrg,
+			initialCreatingTopic: true,
+		});
+		assert.ok(html.includes('data-testid="new-topic-row"'));
+		assert.ok(html.includes('placeholder="Topic name"'));
+	});
+});
+

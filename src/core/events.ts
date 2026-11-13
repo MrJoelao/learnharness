@@ -25,6 +25,8 @@ export interface ServerEvents {
 	"chat-organization-changed": Record<string, never>;
 	/** Source inventory, display names, or organizational folders changed. */
 	"sources-changed": Record<string, never>;
+	/** Semantic topic groupings or assignments changed. */
+	"topics-changed": Record<string, never>;
 	/** Web subscription state changed. No account or credential data on the bus. */
 	"subscriptions-changed": Record<string, never>;
 	/** A chat's record changed WITHOUT a turn (the silent dismissal write).

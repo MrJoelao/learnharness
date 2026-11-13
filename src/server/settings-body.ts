@@ -367,6 +367,32 @@ export function parseGraphSettingsBody(body: unknown): SettingsBodyResult<GraphS
 		}
 		settings.extractionChunkTokens = floored;
 	}
+	if (raw.topics !== undefined) {
+		if (typeof raw.topics !== "object" || raw.topics === null) {
+			return { ok: false, error: "topics must be an object" };
+		}
+		const t = raw.topics as Record<string, unknown>;
+		const topics: import("../core/settings.ts").TopicSettings = {};
+		if (t.granularity !== undefined) {
+			if (t.granularity !== "fine" && t.granularity !== "balanced" && t.granularity !== "broad") {
+				return { ok: false, error: "topics.granularity must be 'fine', 'balanced', or 'broad'" };
+			}
+			topics.granularity = t.granularity;
+		}
+		if (t.unification !== undefined) {
+			if (t.unification !== "strict" && t.unification !== "folder" && t.unification !== "global") {
+				return { ok: false, error: "topics.unification must be 'strict', 'folder', or 'global'" };
+			}
+			topics.unification = t.unification;
+		}
+		if (t.customPrompt !== undefined) {
+			if (typeof t.customPrompt !== "string") {
+				return { ok: false, error: "topics.customPrompt must be a string" };
+			}
+			topics.customPrompt = t.customPrompt.slice(0, 2000);
+		}
+		settings.topics = topics;
+	}
 	return { ok: true, settings };
 }
 

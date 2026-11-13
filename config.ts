@@ -96,6 +96,11 @@ export const CHAT_ORGANIZATION_FILE = path.join(/* turbopackIgnore: true */ DATA
  *  Carries an updatedAt stamp for future live-physics conflict handling. */
 export const POSITIONS_FILE = path.join(/* turbopackIgnore: true */ PATHS.graph, "positions.json");
 
+/** Semantic topic organization (read-modify-write): node-id → topic mapping,
+ *  LLM-assigned and user-correctable. Separate from graph ledgers — same
+ *  pattern as source-organization.json. */
+export const TOPIC_ORGANIZATION_FILE = path.join(/* turbopackIgnore: true */ PATHS.graph, "topics.json");
+
 /**
  * Graph render settings (the settings-panel controls): one small JSON blob,
  * read-modify-write. Shared shape/sanitizer: src/core/render-settings.ts.

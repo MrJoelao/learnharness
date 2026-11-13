@@ -59,8 +59,17 @@ describe("resolveSettings", () => {
 		assert.equal(eff.appearance.mdRendering.headingWeight, 900);
 		// wave 7 collapse: the master switch ONLY + the redesign's chunk
 		// budget — absent record resolves the factory 4096 (halved back
-		// from the digest-era 8192, owner, 2026-10-13)
-		assert.deepEqual(eff.graph, { enabled: true, rendering: true, extractionChunkTokens: 4096 });
+		// from the digest-era 8192, owner, 2026-10-13); topics settings (2026-11)
+		assert.deepEqual(eff.graph, {
+			enabled: true,
+			rendering: true,
+			extractionChunkTokens: 4096,
+			topics: {
+				granularity: "broad",
+				unification: "folder",
+				customPrompt: "",
+			},
+		});
 	});
 
 	it("explicit record values win over every factory default", () => {
@@ -94,13 +103,31 @@ describe("resolveSettings", () => {
 		assert.equal(eff.appearance.mdRendering.headingWeight, 600);
 		// wave 7 collapse: the section IS the master switch (absent budget
 		// field = factory 4096 — a pre-redesign record resolves cleanly).
-		assert.deepEqual(eff.graph, { enabled: false, rendering: true, extractionChunkTokens: 4096 });
+		assert.deepEqual(eff.graph, {
+			enabled: false,
+			rendering: true,
+			extractionChunkTokens: 4096,
+			topics: {
+				granularity: "broad",
+				unification: "folder",
+				customPrompt: "",
+			},
+		});
 		// The DISPLAY split (owner, 2026-10-06): extraction off leaves the
 		// rendering switch ON — the data channel and the view are separate.
 		assert.equal(renderingEnabled(eff.graph), true);
 		// The chunk budget rides the same resolution: stored value wins.
 		const budgeted = resolveSettings({ version: 1, graph: { extractionChunkTokens: 2000 } });
-		assert.deepEqual(budgeted.graph, { enabled: true, rendering: true, extractionChunkTokens: 2000 });
+		assert.deepEqual(budgeted.graph, {
+			enabled: true,
+			rendering: true,
+			extractionChunkTokens: 2000,
+			topics: {
+				granularity: "broad",
+				unification: "folder",
+				customPrompt: "",
+			},
+		});
 	});
 
 	it("graph rendering (2026-10-06): display-only — off resolves off, extraction untouched", () => {

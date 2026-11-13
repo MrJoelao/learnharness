@@ -81,6 +81,7 @@ import { MenuShell } from "@/components/menu-shell.tsx";
 import { useInteractionLayers } from "@/components/interaction-layers";
 import { isInteractionScopeEligible } from "@/components/plugin-input-focus";
 import { DeleteNodeDialog } from "@/components/delete-node-dialog.tsx";
+import { AssignTopicDialog } from "@/components/assign-topic-dialog.tsx";
 import { ChainTableOverlay } from "@/components/chain-table.tsx";
 import { Hint } from "@/components/ui/hint";
 import {
@@ -814,6 +815,7 @@ export function GraphChromeRow({
 	settings,
 	changeSettings,
 	onOpenChains,
+	onTopicsChanged,
 }: {
 	isEmpty: boolean;
 	query: string;
@@ -829,6 +831,7 @@ export function GraphChromeRow({
 	/** Opens the chain table overlay (the chains-overlay plan,
 	 *  2026-09-29). */
 	onOpenChains: () => void;
+	onTopicsChanged?: () => void;
 }) {
 	return (
 		<>
@@ -1089,6 +1092,9 @@ export function GraphView({
 		}, 250);
 	});
 	useServerResync(() => readPipelineStatus());
+	useServerEvent("topics-changed", () => {
+		setRefreshTick((t) => t + 1);
+	});
 	useEffect(() => {
 		readPipelineStatus();
 		return () => {
@@ -1180,6 +1186,7 @@ export function GraphView({
 	const [ctxNode, setCtxNode] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
 	const ctxAnchorRef = useRef<HTMLDivElement | null>(null);
 	const [deletingNode, setDeletingNode] = useState<{ id: string; name: string } | null>(null);
+	const [assigningTopicNode, setAssigningTopicNode] = useState<{ id: string; name: string } | null>(null);
 	useEffect(() => {
 		if (ctxNode === null) return;
 		const onPointerDown = (e: PointerEvent) => {
@@ -1471,6 +1478,17 @@ export function GraphView({
 				>
 					<button
 						type="button"
+						data-testid="ctx-node-assign-topic"
+						onClick={() => {
+							setAssigningTopicNode({ id: ctxNode.id, name: ctxNode.name });
+							setCtxNode(null);
+						}}
+						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
+					>
+						Assign topic…
+					</button>
+					<button
+						type="button"
 						data-testid="ctx-node-delete"
 						onClick={() => {
 							setDeletingNode({ id: ctxNode.id, name: ctxNode.name });
@@ -1482,6 +1500,12 @@ export function GraphView({
 					</button>
 				</MenuShell>
 			)}
+
+			<AssignTopicDialog
+				node={assigningTopicNode}
+				onClose={() => setAssigningTopicNode(null)}
+				onAssigned={() => setRefreshTick((t) => t + 1)}
+			/>
 
 			{/* The full-death confirm dialog (node interlude) — portaled to
 			    body by the component itself, lives here for state locality. */}
@@ -1551,6 +1575,7 @@ export function GraphView({
 					settings={settings}
 					changeSettings={changeSettings}
 					onOpenChains={() => setChainsOpen(true)}
+					onTopicsChanged={() => setRefreshTick((t) => t + 1)}
 				/>
 			</div>
 
@@ -1589,6 +1614,26 @@ export function GraphView({
 				>
 					<div className="text-sm font-medium leading-snug">{selected.node.name}</div>
 					<div className="mt-1 text-xs leading-relaxed text-muted-foreground">{selected.node.statement}</div>
+					{(() => {
+						const cluster = snapshot?.clusters.find((c) => c.members.includes(selected.node.id));
+						return (
+							<div className="mt-2.5 flex items-center justify-between rounded-lg bg-muted/50 px-2.5 py-1.5 text-xs">
+								<div className="flex items-center gap-1.5 truncate">
+									<span className="text-muted-foreground">Topic:</span>
+									<span className="font-medium text-foreground truncate">
+										{cluster?.label ?? "(Unassigned)"}
+									</span>
+								</div>
+								<button
+									type="button"
+									onClick={() => setAssigningTopicNode({ id: selected.node.id, name: selected.node.name })}
+									className="text-[11px] text-primary hover:underline shrink-0 ml-2"
+								>
+									Change
+								</button>
+							</div>
+						);
+					})()}
 					{selected.sourceIds.length > 0 ? (
 						<div className="mt-3 flex flex-col gap-1">
 							<div className="text-xs text-muted-foreground">Sessions</div>
