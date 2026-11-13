@@ -191,9 +191,9 @@ export function NativeSubscriptionUIProvider({ children }: { children: React.Rea
 									<div className="flex min-w-0 items-center gap-2.5">
 										{/* eslint-disable-next-line @next/next/no-img-element */}
 										<img src="/siwc/google-logo.svg" width="16" height="16" alt="" aria-hidden="true" className="shrink-0 opacity-90" />
-										<div className="flex min-w-0 flex-col">
+										<div className="flex min-w-0 items-center gap-1.5">
 											<span className="truncate font-medium text-foreground">{a.email || "Google account"}</span>
-											{isActive && <span className="text-[10px] text-primary">Active</span>}
+											{isActive && <span className="shrink-0 rounded-full border border-primary/30 px-1.5 py-0.5 text-[9px] leading-none text-primary">Active</span>}
 										</div>
 									</div>
 									<div className="flex shrink-0 items-center gap-1.5">

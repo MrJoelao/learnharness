@@ -1082,7 +1082,6 @@ export function SessionsSidebar({
 
 	const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
 	const newMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
-	const newMenuRef = useRef<HTMLDivElement | null>(null);
 
 	// Auto-dismiss feedback toast
 	useEffect(() => {
@@ -1126,7 +1125,6 @@ export function SessionsSidebar({
 			if (ctxAnchorRef.current?.contains(target)) return;
 			if (ctxFolderAnchorRef.current?.contains(target)) return;
 			if (newMenuAnchorRef.current?.contains(target)) return;
-			if (newMenuRef.current?.contains(target)) return;
 			closeContextMenus();
 		};
 		const onKeyDown = (e: KeyboardEvent) => {
@@ -1145,13 +1143,6 @@ export function SessionsSidebar({
 			document.removeEventListener("keydown", onKeyDown);
 		};
 	}, [isAnyMenuOpen, isNewMenuOpen, closeContextMenus]);
-
-	useEffect(() => {
-		if (isNewMenuOpen) {
-			const firstItem = newMenuRef.current?.querySelector<HTMLButtonElement>("button");
-			firstItem?.focus();
-		}
-	}, [isNewMenuOpen]);
 
 	const executeAction = useCallback(
 		async (
@@ -1685,37 +1676,18 @@ export function SessionsSidebar({
 					</Hint>
 
 					{isNewMenuOpen && (
-						<div
-							ref={newMenuRef}
-							data-lh-menu="true"
-							data-testid="new-unified-menu"
-							onKeyDown={(e) => {
-								if (e.key === "Escape") {
-									e.stopPropagation();
-									setIsNewMenuOpen(false);
-									newMenuAnchorRef.current?.focus();
-								} else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-									e.preventDefault();
-									const buttons = Array.from(newMenuRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
-									const currentIndex = buttons.indexOf(document.activeElement as HTMLButtonElement);
-									const nextIndex = e.key === "ArrowDown"
-										? (currentIndex + 1) % buttons.length
-										: (currentIndex - 1 + buttons.length) % buttons.length;
-									buttons[nextIndex]?.focus();
-								}
+						<MenuShell
+							anchorRef={newMenuAnchorRef}
+							testid="new-unified-menu"
+							preferredSide="up"
+							align="left"
+							menuClass="flex w-64 flex-col rounded-xl border border-border bg-card text-xs shadow-2xl overflow-hidden"
+							onClose={(reason) => {
+								setIsNewMenuOpen(false);
+								if (reason === "escape") newMenuAnchorRef.current?.focus();
+								return "closed";
 							}}
-							className="absolute bottom-full left-2 right-2 mb-1.5 flex flex-col rounded-xl border border-border bg-card text-xs shadow-2xl z-30 overflow-hidden"
 						>
-							{/* Fixed Header matching Sources popup architecture */}
-							<div className="flex shrink-0 items-center justify-between border-b border-border/40 px-3.5 py-2.5">
-								<div className="flex flex-col gap-0.5">
-									<span className="font-semibold text-foreground text-xs tracking-tight">New session</span>
-									<p className="text-muted-foreground text-[10px] leading-snug">
-										Choose the session learning mode
-									</p>
-								</div>
-							</div>
-
 							{/* Session Mode Options */}
 							<div className="p-1.5 flex flex-col gap-1">
 								<button
@@ -1725,7 +1697,7 @@ export function SessionsSidebar({
 										setIsNewMenuOpen(false);
 										void newSession();
 									}}
-									className="group flex items-start gap-2.5 rounded-lg p-2 text-left transition-all duration-150 hover:bg-accent cursor-pointer active:scale-[0.99]"
+									className="lh-new-session-option group flex items-start gap-2.5 rounded-lg p-2 text-left transition-all duration-150 hover:bg-accent cursor-pointer active:scale-[0.99]"
 								>
 									<div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 group-hover:bg-accent-foreground/10 group-hover:border-border transition-colors">
 										<GraduationCapIcon className="size-3.5 text-foreground/80" />
@@ -1743,7 +1715,7 @@ export function SessionsSidebar({
 										setIsNewMenuOpen(false);
 										router.push("/chat/new?mode=practice");
 									}}
-									className="group flex items-start gap-2.5 rounded-lg p-2 text-left transition-all duration-150 hover:bg-accent cursor-pointer active:scale-[0.99]"
+									className="lh-new-session-option group flex items-start gap-2.5 rounded-lg p-2 text-left transition-all duration-150 hover:bg-accent cursor-pointer active:scale-[0.99]"
 								>
 									<div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 group-hover:bg-accent-foreground/10 group-hover:border-border transition-colors">
 										<DumbbellIcon className="size-3.5 text-foreground/80" />
@@ -1754,7 +1726,7 @@ export function SessionsSidebar({
 									</div>
 								</button>
 							</div>
-						</div>
+						</MenuShell>
 					)}
 				</div>
 				</PluginSidebarActions>

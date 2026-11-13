@@ -76,6 +76,7 @@ export function computeMenuPlacement(
 	contentHeight: number,
 	preferredSide: MenuSide,
 	align: MenuAlign,
+	contentWidth = 0,
 ): MenuPlacement {
 	const availDown = viewport.height - EDGE - (rect.bottom + GAP);
 	const availUp = rect.top - GAP - EDGE;
@@ -91,8 +92,17 @@ export function computeMenuPlacement(
 	}
 	const avail = side === "down" ? availDown : availUp;
 	const maxHeight = Math.max(MIN_USABLE, Math.min(CAP_VH * viewport.height, avail));
-	const horizontal: Record<string, number> =
-		align === "right" ? { right: viewport.width - rect.right } : { left: rect.left };
+	const horizontal: Record<string, number> = align === "right"
+		? { right: viewport.width - rect.right }
+		: { left: rect.left };
+	if (contentWidth > 0) {
+		const preferredLeft = align === "right" ? rect.right - contentWidth : rect.left;
+		const maxLeft = Math.max(EDGE, viewport.width - contentWidth - EDGE);
+		const left = Math.min(Math.max(preferredLeft, EDGE), maxLeft);
+		delete horizontal.right;
+		horizontal.left = left;
+		horizontal.maxWidth = Math.max(0, viewport.width - EDGE * 2);
+	}
 	const vertical: Record<string, number> =
 		side === "down" ? { top: rect.bottom + GAP } : { bottom: viewport.height - rect.top + GAP };
 	return { side, style: { ...horizontal, ...vertical }, maxHeight };
@@ -235,6 +245,7 @@ export function MenuShell({
 				menuRef.current.scrollHeight,
 				preferredSide,
 				align,
+				menuRef.current.offsetWidth,
 			);
 			setPlaced(p);
 		};
