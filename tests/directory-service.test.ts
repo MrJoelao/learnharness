@@ -468,3 +468,41 @@ it("deleted workspace with removePlacement no longer appears in directory or arc
 	assert.equal(emptyWsService.read().items.length, 0);
 	assert.equal(emptyWsService.readArchived().items.length, 0);
 });
+
+it("removePlacement propagates errors when reading or writing organization store", () => {
+	const failingReadOrgStore = {
+		read() { throw new Error("EACCES: permission denied"); },
+		write() {},
+	};
+	const serviceWithFailingRead = createDirectoryService({
+		chatStore: { listChats: () => [] } as unknown as ChatStore,
+		workspaceStore: { list: () => ({ workspaces: [], issues: [] }) } as unknown as WorkspaceStore,
+		organizationStore: failingReadOrgStore,
+		resolveAvailability: () => "available",
+	});
+	assert.throws(
+		() => serviceWithFailingRead.removePlacement(workspaceKey(WS_A)),
+		/EACCES: permission denied/,
+	);
+
+	const failingWriteOrgStore = {
+		read() {
+			return {
+				version: 2 as const,
+				folders: [],
+				placements: { [workspaceKey(WS_A)]: { folderId: null } },
+			};
+		},
+		write() { throw new Error("ENOSPC: no space left on device"); },
+	};
+	const serviceWithFailingWrite = createDirectoryService({
+		chatStore: { listChats: () => [] } as unknown as ChatStore,
+		workspaceStore: { list: () => ({ workspaces: [], issues: [] }) } as unknown as WorkspaceStore,
+		organizationStore: failingWriteOrgStore,
+		resolveAvailability: () => "available",
+	});
+	assert.throws(
+		() => serviceWithFailingWrite.removePlacement(workspaceKey(WS_A)),
+		/ENOSPC: no space left on device/,
+	);
+});

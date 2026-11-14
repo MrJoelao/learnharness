@@ -658,19 +658,28 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			const workspace = deps.workspaces.read(id);
 			if (!workspace) throw new PluginHostError(404, "Workspace not found");
 			const dataDirectory = safePluginDataDirectory(directory, workspace.pluginId, coreData, false);
+			let stateRemoved = false;
 			if (deps.workspaceStateStore && dataDirectory) {
 				try {
 					deps.workspaceStateStore.remove(dataDirectory, id);
+					stateRemoved = true;
 				} catch (error) {
-					throw new PluginHostError(500, `Failed to delete plugin workspace state: ${errorText(error)}`);
+					throw new PluginHostError(500, `Failed to delete plugin workspace state: ${errorText(error)} (workspace metadata remains intact)`);
 				}
 			}
 			try {
 				deps.workspaces.delete(id);
 			} catch (error) {
-				throw new PluginHostError(500, `Failed to delete workspace metadata: ${errorText(error)}`);
+				const stateNote = stateRemoved ? " (plugin state was already deleted; metadata remains)" : "";
+				throw new PluginHostError(500, `Failed to delete workspace metadata: ${errorText(error)}${stateNote}`);
 			}
-			deps.onWorkspaceDeleted?.(id);
+			if (deps.onWorkspaceDeleted) {
+				try {
+					deps.onWorkspaceDeleted(id);
+				} catch (error) {
+					throw new PluginHostError(500, `Failed to remove workspace placement from directory: ${errorText(error)} (workspace metadata and state were deleted)`);
+				}
+			}
 		},
 		setEnabled(id: string, enabled: boolean): Promise<void> {
 			// Let a cooperative in-flight activation finish so queued teardown cannot deadlock.

@@ -189,3 +189,97 @@ it("calls onDelete callback when a workspace is deleted", () => {
 	service.delete(ws.id);
 	assert.equal(deletedId, ws.id);
 });
+
+it("failure of unlinkSync leaves record file and index intact, preventing orphan creation", (t) => {
+	const directory = path.join(root, "unlink-failure");
+	const store = createWorkspaceStore(directory);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000050");
+	const recordPath = path.join(directory, `${targetId}.json`);
+	const indexPath = path.join(directory, "index.json");
+	store.create(record(targetId));
+
+	assert.equal(fs.existsSync(recordPath), true);
+	const indexBefore = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+	assert.deepEqual(indexBefore.workspaceIds, [targetId]);
+
+	const originalUnlink = fs.unlinkSync.bind(fs);
+	t.mock.method(fs, "unlinkSync", (target: fs.PathLike) => {
+		if (typeof target === "string" && target.includes(targetId)) {
+			const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+			err.code = "EACCES";
+			throw err;
+		}
+		return originalUnlink(target);
+	});
+
+	assert.throws(
+		() => store.delete(targetId),
+		/Cannot delete workspace record.*file could not be deleted/i,
+	);
+
+	// Check actual disk state: file still exists, index still contains targetId
+	assert.equal(fs.existsSync(recordPath), true, "Record file must remain on disk");
+	const indexAfter = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+	assert.deepEqual(indexAfter.workspaceIds, [targetId], "Index must still contain the workspace ID");
+	assert.deepEqual(store.list().workspaces.map((w) => w.id), [targetId], "Workspace must still be listed, not orphaned");
+	assert.deepEqual(store.inspect().orphanIds, [], "Workspace must not become an orphan");
+});
+
+it("failure of index write after unlinking leaves a detectable and recoverable missing-record reference", (t) => {
+	const directory = path.join(root, "index-delete-failure");
+	const store = createWorkspaceStore(directory);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000051");
+	const recordPath = path.join(directory, `${targetId}.json`);
+	const indexPath = path.join(directory, "index.json");
+	store.create(record(targetId));
+
+	const originalRename = fs.renameSync.bind(fs);
+	t.mock.method(fs, "renameSync", (from: fs.PathLike, to: fs.PathLike) => {
+		if (typeof to === "string" && to === indexPath) {
+			const err = new Error("EIO: i/o error") as NodeJS.ErrnoException;
+			err.code = "EIO";
+			throw err;
+		}
+		return originalRename(from, to);
+	});
+
+	assert.throws(
+		() => store.delete(targetId),
+		/Workspace record.*was deleted, but index could not be updated/i,
+	);
+
+	// Record file was deleted on disk
+	assert.equal(fs.existsSync(recordPath), false, "Record file was deleted");
+	// Index still references targetId
+	const indexAfter = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+	assert.deepEqual(indexAfter.workspaceIds, [targetId]);
+	// Deterministically detected via issues and inspect()
+	assert.deepEqual(store.list().issues, [{ kind: "missing-record", id: targetId }]);
+	assert.deepEqual(store.inspect().missingIds, [targetId]);
+
+	// Deterministic recovery: removeMissingReference cleans up index
+	t.mock.restoreAll();
+	store.removeMissingReference(targetId);
+	const recoveredIndex = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+	assert.deepEqual(recoveredIndex.workspaceIds, []);
+	assert.deepEqual(store.list().issues, []);
+});
+
+it("refuses to delete invalid or unreadable records, leaving files and index untouched", () => {
+	const directory = path.join(root, "delete-invalid");
+	const store = createWorkspaceStore(directory);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000052");
+	const recordPath = path.join(directory, `${targetId}.json`);
+	const indexPath = path.join(directory, "index.json");
+	store.create(record(targetId));
+
+	// Corrupt record file on disk
+	fs.writeFileSync(recordPath, '{"broken": json');
+	assert.throws(
+		() => store.delete(targetId),
+		/Cannot delete workspace record.*invalid/i,
+	);
+	assert.equal(fs.existsSync(recordPath), true, "Corrupted file must not be deleted");
+	const indexAfter = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+	assert.deepEqual(indexAfter.workspaceIds, [targetId], "Index must remain untouched");
+});

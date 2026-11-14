@@ -259,28 +259,101 @@ test("workspace deletion coordinates plugin state, metadata, and deletion callba
 	await assert.rejects(f.host.deleteWorkspace("invalid-id"), status(400));
 });
 
-test("workspace deletion fails with 500 and leaves record intact if state removal throws", async t => {
+test("deletion phase 1 failure: state removal error leaves workspace metadata and placement intact", async t => {
 	const f = fixture(t);
-	f.plugin("fail-del", {}, `exports.activate = ctx => {
+	let placementDeleted = false;
+	f.deps.onWorkspaceDeleted = () => { placementDeleted = true; };
+	f.plugin("del-phase1", {}, `exports.activate = ctx => {
 		ctx.registerMode({
-			id: "fail-mode",
-			name: "Fail Mode",
-			description: "Fail test",
-			category: "Test",
-			initializeWorkspace: ({ storage }) => { storage.set("data", "preserved"); },
+			id: "p1-mode", name: "P1 Mode", description: "Test", category: "Test",
+			initializeWorkspace: ({ storage }) => { storage.set("key", "val"); },
 		});
 	};`);
 	await f.host.initialize();
-	await f.host.setEnabled("fail-del", true);
+	await f.host.setEnabled("del-phase1", true);
 
-	const ws = await f.host.createWorkspace({ pluginId: "fail-del", modeId: "fail-mode" });
+	const ws = await f.host.createWorkspace({ pluginId: "del-phase1", modeId: "p1-mode" });
 	const originalRemove = f.deps.workspaceStateStore!.remove;
-	f.deps.workspaceStateStore!.remove = () => { throw new Error("State disk locked"); };
+	f.deps.workspaceStateStore!.remove = () => { throw new Error("State storage EPERM"); };
 
-	await assert.rejects(f.host.deleteWorkspace(ws.id), status(500));
-	assert.ok(f.workspaces.read(ws.id));
+	let err: unknown;
+	try {
+		await f.host.deleteWorkspace(ws.id);
+	} catch (e) {
+		err = e;
+	}
+	assert.ok(isPluginHostError(err) && err.status === 500);
+	assert.match(err.message, /Failed to delete plugin workspace state.*workspace metadata remains intact/i);
+
+	// Verification of actual state: workspace metadata record is still present and indexed
+	assert.ok(f.workspaces.read(ws.id), "Workspace record must still exist");
+	assert.equal(placementDeleted, false, "Placement callback must not have run");
 
 	f.deps.workspaceStateStore!.remove = originalRemove;
+});
+
+test("deletion phase 2 failure: metadata deletion error informs caller that plugin state was deleted", async t => {
+	const f = fixture(t);
+	let placementDeleted = false;
+	f.deps.onWorkspaceDeleted = () => { placementDeleted = true; };
+	f.plugin("del-phase2", {}, `exports.activate = ctx => {
+		ctx.registerMode({
+			id: "p2-mode", name: "P2 Mode", description: "Test", category: "Test",
+			initializeWorkspace: ({ storage }) => { storage.set("key", "val"); },
+		});
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("del-phase2", true);
+
+	const ws = await f.host.createWorkspace({ pluginId: "del-phase2", modeId: "p2-mode" });
+	const originalDelete = f.workspaces.delete;
+	f.workspaces.delete = () => { throw new Error("Disk locked metadata failure"); };
+
+	let err: unknown;
+	try {
+		await f.host.deleteWorkspace(ws.id);
+	} catch (e) {
+		err = e;
+	}
+	assert.ok(isPluginHostError(err) && err.status === 500);
+	assert.match(err.message, /Failed to delete workspace metadata.*plugin state was already deleted; metadata remains/i);
+
+	// Workspace metadata is still present
+	assert.ok(f.workspaces.read(ws.id));
+	// But plugin state was deleted
+	assert.deepEqual(f.host.workspaceState(ws.id, "key", "get"), { found: false });
+	assert.equal(placementDeleted, false, "Placement callback must not have run");
+
+	f.workspaces.delete = originalDelete;
+});
+
+test("deletion phase 3 failure: placement removal error propagates without hiding failure", async t => {
+	const f = fixture(t);
+	f.deps.onWorkspaceDeleted = () => { throw new Error("Directory organization ENOSPC"); };
+	f.plugin("del-phase3", {}, `exports.activate = ctx => {
+		ctx.registerMode({
+			id: "p3-mode", name: "P3 Mode", description: "Test", category: "Test",
+			initializeWorkspace: ({ storage }) => { storage.set("key", "val"); },
+		});
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("del-phase3", true);
+
+	const ws = await f.host.createWorkspace({ pluginId: "del-phase3", modeId: "p3-mode" });
+
+	let err: unknown;
+	try {
+		await f.host.deleteWorkspace(ws.id);
+	} catch (e) {
+		err = e;
+	}
+	assert.ok(isPluginHostError(err) && err.status === 500);
+	assert.match(err.message, /Failed to remove workspace placement from directory.*workspace metadata and state were deleted/i);
+
+	// Both metadata and state are gone
+	assert.equal(f.workspaces.read(ws.id), null, "Workspace metadata was deleted");
+	assert.deepEqual(f.workspaces.list().workspaces, []);
+	assert.throws(() => f.host.workspaceState(ws.id, "key", "get"), status(404));
 });
 
 test("native backend path/require, fresh activations, reverse cleanup, stale callbacks and unregister guards", async t => {

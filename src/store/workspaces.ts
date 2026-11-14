@@ -1,4 +1,4 @@
-import * as fs from "node:fs";
+import fs from "node:fs";
 import * as path from "node:path";
 import { WORKSPACE_INDEX_FILE } from "../../config.ts";
 import {
@@ -158,14 +158,19 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 		if (result.kind === "invalid" || result.kind === "unreadable") {
 			throw new Error(`Cannot delete workspace record ${id}: ${result.kind}.`);
 		}
-		writeIndex({ version: 1, workspaceIds: index.workspaceIds.filter((workspaceId) => workspaceId !== id) });
-		if (result.kind === "missing") return;
-		const file = fileFor(id);
+		if (result.kind === "found") {
+			const file = fileFor(id);
+			try {
+				fs.unlinkSync(/* turbopackIgnore: true */ file);
+				removeLeftoverTemps(file);
+			} catch (error) {
+				throw new Error(`Cannot delete workspace record ${id}: file could not be deleted.`, { cause: error });
+			}
+		}
 		try {
-			fs.unlinkSync(/* turbopackIgnore: true */ file);
-			removeLeftoverTemps(file);
+			writeIndex({ version: 1, workspaceIds: index.workspaceIds.filter((workspaceId) => workspaceId !== id) });
 		} catch (error) {
-			throw new Error(`Workspace ${id} was removed from the index, but its record could not be deleted.`, { cause: error });
+			throw new Error(`Workspace record ${id} was deleted, but index could not be updated.`, { cause: error });
 		}
 	}
 

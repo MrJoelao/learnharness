@@ -214,15 +214,11 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 	 * record itself and every other placement stay untouched (R5).
 	 */
 	function removePlacement(key: ItemKey): void {
-		try {
-			const org = deps.organizationStore.read();
-			if (Object.hasOwn(org.placements, key)) {
-				const next = { ...org, placements: { ...org.placements } };
-				delete next.placements[key];
-				deps.organizationStore.write(next);
-			}
-		} catch {
-			// ignore cleanup errors on deletion
+		const org = deps.organizationStore.read();
+		if (Object.hasOwn(org.placements, key)) {
+			const next = { ...org, placements: { ...org.placements } };
+			delete next.placements[key];
+			deps.organizationStore.write(next);
 		}
 	}
 
