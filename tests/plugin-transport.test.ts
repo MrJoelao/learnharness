@@ -9,6 +9,7 @@ function fixture() {
 	const host: PluginTransportHost = {
 		list: () => [], modes: () => [], createWorkspace: async input => ({ ...input, title: input.title ?? "Fixture", id: "workspace_00000000-0000-4000-8000-000000000001" as never, version: 1, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }),
 		workspaceState: () => ({ found: false }), renameWorkspace: () => { throw new Error("Unexpected rename"); }, conflicts: () => [], refresh: async () => { calls.push("refresh"); },
+		deleteWorkspace: async (id: string) => { calls.push({ deleteWorkspace: id }); },
 		setEnabled: async (id, enabled) => { calls.push({ id, enabled }); },
 		call: async (id, operation, input) => { calls.push({ id, operation, input }); return input; },
 		convertDocument: async (id, request) => { calls.push({ id, request }); return { name: "fixture.txt", markdown: "Text", notices: [] }; },
@@ -102,4 +103,16 @@ it("plugin HTTP adapter uses typed host errors and keeps code assets uncached", 
 	assert.match(await asset.text(), /export const/);
 	host.asset = () => { throw new PluginHostError(404, "Asset unavailable"); };
 	assert.equal((await transport.asset("example", ["data", "private.json"])).status, 404);
+});
+it("workspace deletion forwards to host and preserves expected errors", async () => {
+	const { transport, calls, host } = fixture();
+	const response = await transport.deleteWorkspace("workspace_00000000-0000-4000-8000-000000000001", new Request("http://localhost/api/workspaces/workspace_00000000-0000-4000-8000-000000000001", { method: "DELETE" }));
+	assert.equal(response.status, 200);
+	assert.deepEqual(await response.json(), { ok: true });
+	assert.deepEqual(calls, [{ deleteWorkspace: "workspace_00000000-0000-4000-8000-000000000001" }]);
+
+	host.deleteWorkspace = async () => { throw new PluginHostError(404, "Workspace not found"); };
+	const notFound = await transport.deleteWorkspace("workspace_00000000-0000-4000-8000-000000000002", new Request("http://localhost", { method: "DELETE" }));
+	assert.equal(notFound.status, 404);
+	assert.deepEqual(await notFound.json(), { error: "Workspace not found" });
 });

@@ -178,3 +178,14 @@ it("resolves workspace availability from a host-supplied plugin and mode snapsho
 	assert.equal(resolveWorkspaceAvailability(workspace, [{ id: "sample-plugin", enabled: true, modeIds: [] }]), "mode-missing");
 	assert.equal(resolveWorkspaceAvailability(workspace, [{ id: "sample-plugin", enabled: true, modeIds: ["memory-lab"] }]), "available");
 });
+
+it("calls onDelete callback when a workspace is deleted", () => {
+	let deletedId: string | undefined;
+	const service = createWorkspaceService({
+		store: createWorkspaceStore(path.join(root, "on-delete")),
+		onDelete: (id) => { deletedId = id; },
+	});
+	const ws = service.create({ pluginId: "sample", modeId: "mode", title: "Test" });
+	service.delete(ws.id);
+	assert.equal(deletedId, ws.id);
+});

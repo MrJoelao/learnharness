@@ -61,6 +61,7 @@ export interface PluginHostDependencies {
 		delete(id: WorkspaceId): void;
 	};
 	workspaceStateStore?: PluginWorkspaceStateStore;
+	onWorkspaceDeleted?: (id: WorkspaceId) => void;
 }
 interface Instructions { agents: Set<PluginAgentKind>; text: string }
 interface Tools { agents: Set<PluginAgentKind>; create: PluginTools["create"] }
@@ -103,7 +104,6 @@ interface Package {
 	restart?: string;
 	blocked?: boolean;
 	contributionWarning?: string;
-	modeRegistrationWarning?: string;
 }
 interface State { version: 1; enabled: Record<string, boolean> }
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -244,7 +244,6 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			pkg.info.status = "error";
 			return;
 		}
-		delete pkg.modeRegistrationWarning;
 		const manifest = pkg.info.manifest;
 		const activation: Activation = { controller: new AbortController(), cleanups: [], handlers: new Map(), instructions: new Set(), tools: new Set(), questions: new Map(), problems: new Map(), modes: new Map(), dataDirectory: "", ready: false };
 		pkg.activation = activation;
@@ -313,14 +312,8 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					},
 					registerMode(definition) {
 						requireLive();
-						let registered: ReturnType<typeof preparePluginMode>;
-						try {
-							registered = preparePluginMode(definition, manifest.id);
-							if (activation.modes.has(registered.metadata.id)) throw new Error(`Duplicate plugin mode: ${registered.metadata.id}`);
-						} catch (error) {
-							pkg.modeRegistrationWarning = [pkg.modeRegistrationWarning, `Mode registration: ${errorText(error)}`].filter(Boolean).join("; ");
-							return () => {};
-						}
+						const registered = preparePluginMode(definition, manifest.id);
+						if (activation.modes.has(registered.metadata.id)) throw new Error(`Duplicate plugin mode: ${registered.metadata.id}`);
 						activation.modes.set(registered.metadata.id, registered);
 						if (activation.ready) change();
 						return () => {
@@ -373,7 +366,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			if (!live(pkg, activation)) { await deactivate(pkg); pkg.info.status = "disabled"; return; }
 			activation.ready = true;
 			pkg.info.status = "active";
-			if (pkg.modeRegistrationWarning || pkg.contributionWarning) pkg.info.error = [pkg.modeRegistrationWarning, pkg.contributionWarning].filter(Boolean).join("; ");
+			if (pkg.contributionWarning) pkg.info.error = pkg.contributionWarning;
 			else delete pkg.info.error;
 		} catch (e) {
 			const failures = await deactivate(pkg);
@@ -411,7 +404,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					current.info.error = candidate.info.error;
 				} else if (candidate.info.revision !== current.info.revision || candidate.info.error !== undefined) {
 					current.restart = `Restart required: plugin package changed${candidate.info.error ? ` (${candidate.info.error})` : ""}`;
-					current.info.error = [current.restart, current.modeRegistrationWarning, current.contributionWarning].filter(Boolean).join("; ");
+					current.info.error = [current.restart, current.contributionWarning].filter(Boolean).join("; ");
 				}
 				continue;
 			}
@@ -421,7 +414,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 		}
 		for (const [id, pkg] of packages) if (!ids.has(id)) {
 			pkg.restart = "Restart required: plugin package removed";
-			pkg.info.error = [pkg.restart, pkg.modeRegistrationWarning, pkg.contributionWarning].filter(Boolean).join("; ");
+			pkg.info.error = [pkg.restart, pkg.contributionWarning].filter(Boolean).join("; ");
 		}
 	}
 	async function initializeInternal(): Promise<void> {
@@ -525,7 +518,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				if (problemTypes.length) (result.problemTypes ??= []).push(...problemTypes);
 				if (pkg.contributionWarning !== undefined) {
 					delete pkg.contributionWarning;
-					if (pkg.restart || pkg.modeRegistrationWarning) pkg.info.error = [pkg.restart, pkg.modeRegistrationWarning].filter(Boolean).join("; ");
+					if (pkg.restart) pkg.info.error = pkg.restart;
 					else delete pkg.info.error;
 					change(); // The current loadout recovered; independent package diagnostics remain.
 				}
@@ -534,7 +527,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				const warning = `Agent contributions (${turn.agent}): ${errorText(e)}`;
 				if (pkg.contributionWarning !== warning) {
 					pkg.contributionWarning = warning;
-					pkg.info.error = [pkg.restart, pkg.modeRegistrationWarning, warning].filter(Boolean).join("; ");
+					pkg.info.error = [pkg.restart, warning].filter(Boolean).join("; ");
 					change(); // Activation stays active: views, assets and operations remain usable.
 				}
 			}
@@ -656,6 +649,29 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			try { return deps.workspaces.rename(id, parseWorkspaceTitle(title)); }
 			catch (error) { if (error instanceof PluginHostError) throw error; throw new PluginHostError(400, error instanceof Error ? error.message : "Invalid workspace title"); }
 		},
+		async deleteWorkspace(idValue: string): Promise<void> {
+			assertOpen();
+			if (!initialized) throw new PluginHostError(503, "Plugin host is not initialized");
+			if (!deps.workspaces) throw new PluginHostError(503, "Workspace storage is unavailable");
+			let id: WorkspaceId;
+			try { id = parseWorkspaceId(idValue); } catch { throw new PluginHostError(400, "Invalid workspace ID"); }
+			const workspace = deps.workspaces.read(id);
+			if (!workspace) throw new PluginHostError(404, "Workspace not found");
+			const dataDirectory = safePluginDataDirectory(directory, workspace.pluginId, coreData, false);
+			if (deps.workspaceStateStore && dataDirectory) {
+				try {
+					deps.workspaceStateStore.remove(dataDirectory, id);
+				} catch (error) {
+					throw new PluginHostError(500, `Failed to delete plugin workspace state: ${errorText(error)}`);
+				}
+			}
+			try {
+				deps.workspaces.delete(id);
+			} catch (error) {
+				throw new PluginHostError(500, `Failed to delete workspace metadata: ${errorText(error)}`);
+			}
+			deps.onWorkspaceDeleted?.(id);
+		},
 		setEnabled(id: string, enabled: boolean): Promise<void> {
 			// Let a cooperative in-flight activation finish so queued teardown cannot deadlock.
 			if (!enabled) {
@@ -674,7 +690,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					delete pkg.contributionWarning;
 					const failures = await deactivate(pkg);
 					pkg.info.status = failures.length || pkg.blocked ? "error" : "disabled";
-					pkg.info.error = failures.length ? `Cleanup: ${failures.join("; ")}` : [pkg.restart, pkg.modeRegistrationWarning].filter(Boolean).join("; ") || (pkg.blocked ? pkg.info.error : undefined);
+					pkg.info.error = failures.length ? `Cleanup: ${failures.join("; ")}` : (pkg.restart || (pkg.blocked ? pkg.info.error : undefined));
 				} else {
 					// Discover edits BEFORE first native evaluation or reactivation.
 					await discover(state);

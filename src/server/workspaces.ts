@@ -11,7 +11,9 @@ import {
 	type WorkspaceReconciliation,
 } from "../core/workspaces.ts";
 import type { WorkspaceStore } from "../core/ports.ts";
+import { workspaceKey } from "../core/organization.ts";
 import { stores } from "./stores.ts";
+import { directoryService } from "./directory.ts";
 
 export interface CreateWorkspaceInput {
 	pluginId: string;
@@ -23,9 +25,10 @@ export interface WorkspaceServiceOptions {
 	store: WorkspaceStore;
 	now?: () => string;
 	createId?: () => WorkspaceId;
+	onDelete?: (id: WorkspaceId) => void;
 }
 
-export function createWorkspaceService({ store, now = () => new Date().toISOString(), createId = newWorkspaceId }: WorkspaceServiceOptions) {
+export function createWorkspaceService({ store, now = () => new Date().toISOString(), createId = newWorkspaceId, onDelete }: WorkspaceServiceOptions) {
 	function create(input: CreateWorkspaceInput): WorkspaceRecord {
 		const timestamp = now();
 		const workspace = parseWorkspaceRecord({
@@ -59,6 +62,7 @@ export function createWorkspaceService({ store, now = () => new Date().toISOStri
 
 	function remove(id: WorkspaceId): void {
 		store.delete(id);
+		onDelete?.(id);
 	}
 
 	function inspect(): WorkspaceReconciliation {
@@ -80,7 +84,10 @@ export function createWorkspaceService({ store, now = () => new Date().toISOStri
 	return { create, read, list, rename, delete: remove, inspect, recoverOrphan, removeMissingReference, availability };
 }
 
-export const workspaceService = createWorkspaceService({ store: stores.workspaceStore });
+export const workspaceService = createWorkspaceService({
+	store: stores.workspaceStore,
+	onDelete: (id) => directoryService.removePlacement(workspaceKey(id)),
+});
 
 function newWorkspaceId(): WorkspaceId {
 	return parseWorkspaceId(`workspace_${randomUUID()}`);

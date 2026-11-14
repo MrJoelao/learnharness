@@ -130,22 +130,157 @@ test("runtime availability distinguishes a removed mode and a missing plugin", a
 	assert.equal(f.host.workspaceAvailability({ ...workspace, pluginId: "gone" }), "plugin-missing");
 });
 
-test("invalid and duplicate mode declarations are isolated from other v1 capabilities", async t => {
+test("P2.1: registration of a valid mode succeeds and is exposed", async t => {
 	const f = fixture(t);
-	f.plugin("invalid-mode", {}, `exports.activate = ctx => { ctx.handle('legacy', () => 'works'); ctx.registerMode({ id: "../escape", name: "Bad", description: "Bad", category: "Bad", initializeWorkspace() {} }); };`);
-	f.plugin("duplicate-mode", {}, `exports.activate = ctx => {
-	  const definition = { id: "same", name: "Same", description: "Same", category: "Test", initializeWorkspace() {} };
-	  ctx.registerMode(definition); ctx.registerMode(definition);
+	f.plugin("valid-mode", {}, `exports.activate = ctx => {
+		ctx.registerMode({ id: "my-mode", name: "My Mode", description: "Valid mode", category: "Test", initializeWorkspace() {} });
 	};`);
 	await f.host.initialize();
-	await f.host.setEnabled("invalid-mode", true);
-	await f.host.setEnabled("duplicate-mode", true);
-	assert.equal(f.host.list().find(plugin => plugin.id === "invalid-mode")!.status, "active");
-	assert.match(f.host.list().find(plugin => plugin.id === "invalid-mode")!.error!, /Mode id/);
-	assert.equal(await f.host.call("invalid-mode", "legacy", null), "works");
-	assert.equal(f.host.list().find(plugin => plugin.id === "duplicate-mode")!.status, "active");
-	assert.match(f.host.list().find(plugin => plugin.id === "duplicate-mode")!.error!, /Duplicate plugin mode/);
-	assert.deepEqual(f.host.modes().map(mode => mode.id), ["same"]);
+	await f.host.setEnabled("valid-mode", true);
+	assert.equal(f.host.list().find(p => p.id === "valid-mode")!.status, "active");
+	assert.deepEqual(f.host.modes().map(m => m.id), ["my-mode"]);
+});
+
+test("P2.2: duplicate registration of the same mode is rejected and propagates to caller", async t => {
+	const f = fixture(t);
+	f.plugin("dup-mode", {}, `exports.activate = ctx => {
+		const def = { id: "same", name: "Same", description: "Desc", category: "Test", initializeWorkspace() {} };
+		ctx.registerMode(def);
+		ctx.registerMode(def);
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("dup-mode", true);
+	const plugin = f.host.list().find(p => p.id === "dup-mode")!;
+	assert.equal(plugin.status, "error");
+	assert.match(plugin.error!, /Duplicate plugin mode: same/);
+	assert.deepEqual(f.host.modes(), []);
+});
+
+test("P2.3: mode registration with invalid ID is rejected and propagates to caller", async t => {
+	const f = fixture(t);
+	f.plugin("bad-id-mode", {}, `exports.activate = ctx => {
+		ctx.registerMode({ id: "../escape", name: "Bad ID", description: "Desc", category: "Test", initializeWorkspace() {} });
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("bad-id-mode", true);
+	const plugin = f.host.list().find(p => p.id === "bad-id-mode")!;
+	assert.equal(plugin.status, "error");
+	assert.match(plugin.error!, /Mode id/);
+	assert.deepEqual(f.host.modes(), []);
+});
+
+test("P2.4: mode registration with invalid metadata is rejected and propagates to caller", async t => {
+	const f = fixture(t);
+	f.plugin("bad-meta-mode", {}, `exports.activate = ctx => {
+		ctx.registerMode({ id: "bad-meta", name: "", description: "Desc", category: "Test", initializeWorkspace() {} });
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("bad-meta-mode", true);
+	const plugin = f.host.list().find(p => p.id === "bad-meta-mode")!;
+	assert.equal(plugin.status, "error");
+	assert.match(plugin.error!, /Mode name/i);
+	assert.deepEqual(f.host.modes(), []);
+});
+
+test("P2.5: plugin registering multiple valid modes exposes all of them", async t => {
+	const f = fixture(t);
+	f.plugin("multi-mode", {}, `exports.activate = ctx => {
+		ctx.registerMode({ id: "mode-1", name: "Mode 1", description: "Desc 1", category: "A", initializeWorkspace() {} });
+		ctx.registerMode({ id: "mode-2", name: "Mode 2", description: "Desc 2", category: "B", initializeWorkspace() {} });
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("multi-mode", true);
+	assert.equal(f.host.list().find(p => p.id === "multi-mode")!.status, "active");
+	assert.deepEqual(f.host.modes().map(m => m.id), ["mode-1", "mode-2"]);
+});
+
+test("P2.6: failing mode registration isolates failure without breaking other healthy plugins", async t => {
+	const f = fixture(t);
+	f.plugin("failing-mode", {}, `exports.activate = ctx => {
+		ctx.registerMode({ id: "../invalid", name: "Invalid", description: "Desc", category: "Test", initializeWorkspace() {} });
+	};`);
+	f.plugin("healthy-plugin", {}, `exports.activate = ctx => {
+		ctx.registerMode({ id: "good-mode", name: "Good Mode", description: "Desc", category: "Test", initializeWorkspace() {} });
+		ctx.handle("ping", () => "pong");
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("failing-mode", true);
+	await f.host.setEnabled("healthy-plugin", true);
+	assert.equal(f.host.list().find(p => p.id === "failing-mode")!.status, "error");
+	assert.equal(f.host.list().find(p => p.id === "healthy-plugin")!.status, "active");
+	assert.deepEqual(f.host.modes().map(m => m.id), ["good-mode"]);
+	assert.equal(await f.host.call("healthy-plugin", "ping", null), "pong");
+});
+
+test("P2.7: legacy v1 plugin that does not call registerMode activates normally", async t => {
+	const f = fixture(t);
+	f.plugin("legacy-v1", {}, `exports.activate = ctx => {
+		ctx.handle("hello", () => "world");
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("legacy-v1", true);
+	assert.equal(f.host.list().find(p => p.id === "legacy-v1")!.status, "active");
+	assert.equal(await f.host.call("legacy-v1", "hello", null), "world");
+	assert.deepEqual(f.host.modes(), []);
+});
+
+test("workspace deletion coordinates plugin state, metadata, and deletion callback", async t => {
+	const f = fixture(t);
+	let deletedPlacementId: string | undefined;
+	f.deps.onWorkspaceDeleted = id => { deletedPlacementId = id; };
+	f.plugin("del-plugin", {}, `exports.activate = ctx => {
+		ctx.registerMode({
+			id: "del-mode",
+			name: "Delete Mode",
+			description: "Mode for delete test",
+			category: "Test",
+			initializeWorkspace: ({ storage }) => {
+				storage.set("workspace-key", { ready: true });
+			},
+		});
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("del-plugin", true);
+
+	const ws = await f.host.createWorkspace({ pluginId: "del-plugin", modeId: "del-mode" });
+	assert.deepEqual(f.host.workspaceState(ws.id, "workspace-key", "get"), { found: true, value: { ready: true } });
+	assert.ok(f.workspaces.read(ws.id));
+
+	// Successful deletion
+	await f.host.deleteWorkspace(ws.id);
+	assert.equal(f.workspaces.read(ws.id), null);
+	assert.throws(() => f.host.workspaceState(ws.id, "workspace-key", "get"), status(404));
+	assert.equal(deletedPlacementId, ws.id);
+
+	// Deleting a non-existent workspace throws 404
+	await assert.rejects(f.host.deleteWorkspace(ws.id), status(404));
+
+	// Deleting with an invalid ID throws 400
+	await assert.rejects(f.host.deleteWorkspace("invalid-id"), status(400));
+});
+
+test("workspace deletion fails with 500 and leaves record intact if state removal throws", async t => {
+	const f = fixture(t);
+	f.plugin("fail-del", {}, `exports.activate = ctx => {
+		ctx.registerMode({
+			id: "fail-mode",
+			name: "Fail Mode",
+			description: "Fail test",
+			category: "Test",
+			initializeWorkspace: ({ storage }) => { storage.set("data", "preserved"); },
+		});
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("fail-del", true);
+
+	const ws = await f.host.createWorkspace({ pluginId: "fail-del", modeId: "fail-mode" });
+	const originalRemove = f.deps.workspaceStateStore!.remove;
+	f.deps.workspaceStateStore!.remove = () => { throw new Error("State disk locked"); };
+
+	await assert.rejects(f.host.deleteWorkspace(ws.id), status(500));
+	assert.ok(f.workspaces.read(ws.id));
+
+	f.deps.workspaceStateStore!.remove = originalRemove;
 });
 
 test("native backend path/require, fresh activations, reverse cleanup, stale callbacks and unregister guards", async t => {

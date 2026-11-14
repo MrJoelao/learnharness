@@ -10,6 +10,7 @@ export interface PluginTransportHost {
 	createWorkspace(input: { pluginId: string; modeId: string; title?: string }): Promise<WorkspaceRecord>;
 	workspaceState(id: string, key: string, operation: "get" | "set" | "delete", value?: unknown): { found: boolean; value?: unknown };
 	renameWorkspace(id: string, title: string): WorkspaceRecord;
+	deleteWorkspace(id: string): Promise<void>;
 	conflicts(): { id: string; error: string }[];
 	refresh(): Promise<void>;
 	setEnabled(id: string, enabled: boolean): Promise<void>;
@@ -50,6 +51,10 @@ export function createPluginTransport(deps: { getHost(): Promise<PluginTransport
 			const body = await objectBody(request);
 			if (Object.keys(body).length !== 1 || typeof body.title !== "string") throw new InputError("Expected a workspace title");
 			return json({ workspace: (await deps.getHost()).renameWorkspace(id, body.title) });
+		}),
+		deleteWorkspace: (id: string, _request: Request) => guarded(async () => {
+			await (await deps.getHost()).deleteWorkspace(id);
+			return json({ ok: true });
 		}),
 		workspaceState: (id: string, key: string, request: Request, operation: "get" | "set" | "delete") => guarded(async () => {
 			const host = await deps.getHost();

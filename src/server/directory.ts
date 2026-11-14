@@ -142,10 +142,18 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 
 		// ── Sort ───────────────────────────────────────────────────────────
 		items.sort((a, b) => {
-			if (a.order !== undefined && b.order !== undefined) return a.order - b.order;
-			if (a.order !== undefined) return -1;
-			if (b.order !== undefined) return 1;
-			return b.updatedAt.localeCompare(a.updatedAt);
+			if (a.order !== undefined && b.order !== undefined) {
+				if (a.order !== b.order) return a.order - b.order;
+			} else if (a.order !== undefined) {
+				return -1;
+			} else if (b.order !== undefined) {
+				return 1;
+			}
+			const byUpdated = b.updatedAt.localeCompare(a.updatedAt);
+			if (byUpdated !== 0) return byUpdated;
+			const byKind = a.kind.localeCompare(b.kind);
+			if (byKind !== 0) return byKind;
+			return a.id.localeCompare(b.id);
 		});
 
 		if (!options?.includeArchived) {

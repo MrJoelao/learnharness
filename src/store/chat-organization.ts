@@ -67,6 +67,26 @@ export const organizationV2Store: OrganizationV2Store = {
 
 	write(state: OrganizationV2): void {
 		const valid = parseOrganizationV2(state);
+		if (fs.existsSync(CHAT_ORGANIZATION_FILE)) {
+			try {
+				const existingRaw = fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8");
+				const existingParsed = JSON.parse(existingRaw);
+				if (existingParsed && typeof existingParsed === "object" && !Array.isArray(existingParsed)) {
+					const version = (existingParsed as Record<string, unknown>)["version"];
+					if (typeof version === "number" && version > 2) {
+						throw new Error(
+							"Could not write organization. Existing file is newer than this app.",
+						);
+					}
+				}
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+					// File was removed in the meantime; proceed
+				} else {
+					throw error;
+				}
+			}
+		}
 		fs.mkdirSync(path.dirname(CHAT_ORGANIZATION_FILE), { recursive: true });
 		writeFileAtomicSync(CHAT_ORGANIZATION_FILE, JSON.stringify(valid, null, "\t") + "\n");
 		removeLeftoverTemps(CHAT_ORGANIZATION_FILE);
@@ -84,51 +104,24 @@ export const organizationV2Store: OrganizationV2Store = {
 
 export const chatOrganizationStore: ChatOrganizationStore = {
 	read(): ChatOrganization {
-		let raw: string;
-		try {
-			raw = fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8");
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyChatOrganization();
-			throw error;
-		}
-		const parsed: unknown = JSON.parse(raw);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-			return emptyChatOrganization();
-		}
-		const obj = parsed as Record<string, unknown>;
-		if (obj["version"] === 2) {
-			// Read v2 and down-project to v1 for the compat store.
-			try {
-				const v2 = parseOrganizationV2(parsed);
-				return toV1CompatOrganization(v2);
-			} catch {
-				// If v2 is somehow corrupt, fail loudly (consistent with existing behavior).
-				throw new Error(
-					"Could not read organization. Its data is invalid or newer than this app.",
-				);
-			}
-		}
-		return parseChatOrganization(parsed);
+		return toV1CompatOrganization(organizationV2Store.read());
 	},
 	write(state: ChatOrganization): void {
 		// v1 callers express only chat placements with bare IDs. Merge them
 		// into the current organization (upgrading v1 files on this write, the
 		// lazy migration) so recorded workspace placements survive.
 		const valid = parseChatOrganization(state);
-		let next: OrganizationV2;
-		try {
-			const current = organizationV2Store.read();
-			next = { version: 2, folders: valid.folders, placements: { ...current.placements } };
-			for (const key of Object.keys(next.placements)) {
-				if (key.startsWith("chat:")) delete next.placements[key];
-			}
-			for (const [id, placement] of Object.entries(valid.placements)) {
-				next.placements[chatKey(id)] = placement;
-			}
-		} catch {
-			// Unreadable current file (corrupt/newer): the incoming state is the
-			// best available truth — same overwrite behavior as before v2.
-			next = migrateV1toV2(valid);
+		const current = organizationV2Store.read();
+		const next: OrganizationV2 = {
+			version: 2,
+			folders: valid.folders,
+			placements: { ...current.placements },
+		};
+		for (const key of Object.keys(next.placements)) {
+			if (key.startsWith("chat:")) delete next.placements[key];
+		}
+		for (const [id, placement] of Object.entries(valid.placements)) {
+			next.placements[chatKey(id)] = placement;
 		}
 		organizationV2Store.write(next);
 	},

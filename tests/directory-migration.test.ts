@@ -267,3 +267,200 @@ it("toV1CompatOrganization strips prefixes and keeps chat placements only", () =
 	assert.equal(v1View.version, 1);
 	assert.deepEqual(v1View.placements, { c1: { folderId: "f1" } });
 });
+
+// ─── P1 Hardening & Data Loss Prevention Tests ──────────────────────────────
+
+it("P1.1: normal v1 write updates chat placements and preserves workspace placements", () => {
+	const seeded: OrganizationV2 = {
+		version: 2,
+		folders: [folder("f1")],
+		placements: {
+			[chatKey("chat-1")]: { folderId: "f1", order: 1 },
+			[workspaceKey("ws-1")]: { folderId: "f1", order: 2 },
+			[workspaceKey("ws-2")]: { folderId: null, order: 3 },
+		},
+	};
+	organizationV2Store.write(seeded);
+
+	chatOrganizationStore.write({
+		version: 1,
+		folders: [folder("f1")],
+		placements: {
+			"chat-1": { folderId: "f1", order: 99 },
+			"chat-2": { folderId: null, order: 100 },
+		},
+	});
+
+	const updated = organizationV2Store.read();
+	assert.equal(updated.version, 2);
+	assert.deepEqual(updated.placements[chatKey("chat-1")], { folderId: "f1", order: 99 });
+	assert.deepEqual(updated.placements[chatKey("chat-2")], { folderId: null, order: 100 });
+	assert.deepEqual(updated.placements[workspaceKey("ws-1")], { folderId: "f1", order: 2 });
+	assert.deepEqual(updated.placements[workspaceKey("ws-2")], { folderId: null, order: 3 });
+});
+
+it("P1.2: future v2 version is not overwritten by v1 write and preserves file content intact", () => {
+	const futureContent = JSON.stringify({
+		version: 3,
+		folders: [{ id: "future-folder", name: "Future" }],
+		placements: {
+			"chat:future-1": { folderId: "future-folder" },
+			"workspace:future-ws": { folderId: "future-folder" },
+		},
+		futureMetadata: { key: "preserve-me" },
+	}, null, "\t") + "\n";
+	fs.writeFileSync(CHAT_ORGANIZATION_FILE, futureContent);
+
+	assert.throws(
+		() => chatOrganizationStore.write({
+			version: 1,
+			folders: [],
+			placements: { "c1": { folderId: null } },
+		}),
+		/newer than this app|unknown version/i,
+	);
+
+	const after = fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8");
+	assert.equal(after, futureContent, "Future version file content must remain completely unchanged");
+});
+
+it("P1.3: corrupt JSON does not cause destructive automatic reconstruction and preserves file intact", () => {
+	const corruptContent = '{"version": 2, "folders": [ {"id": "f1", "name": "F1", broken JSON...';
+	fs.writeFileSync(CHAT_ORGANIZATION_FILE, corruptContent);
+
+	assert.throws(
+		() => chatOrganizationStore.write({
+			version: 1,
+			folders: [],
+			placements: { "c1": { folderId: null } },
+		}),
+		SyntaxError,
+	);
+
+	const after = fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8");
+	assert.equal(after, corruptContent, "Corrupt file content must remain intact and not be overwritten");
+});
+
+it("P1.4: filesystem errors propagate and do not overwrite or lose placements", (t) => {
+	fs.rmSync(CHAT_ORGANIZATION_FILE, { force: true });
+	const seeded: OrganizationV2 = {
+		version: 2,
+		folders: [folder("f1")],
+		placements: {
+			[chatKey("c1")]: { folderId: "f1" },
+			[workspaceKey("w1")]: { folderId: "f1" },
+		},
+	};
+	organizationV2Store.write(seeded);
+	const before = fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8");
+
+	const originalReadFileSync = fs.readFileSync.bind(fs);
+	t.mock.method(fs, "readFileSync", (targetPath: fs.PathOrFileDescriptor, options?: unknown) => {
+		if (typeof targetPath === "string" && targetPath === CHAT_ORGANIZATION_FILE) {
+			const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+			err.code = "EACCES";
+			throw err;
+		}
+		return originalReadFileSync(targetPath as never, options as never);
+	});
+
+	assert.throws(
+		() => chatOrganizationStore.write({
+			version: 1,
+			folders: [],
+			placements: { "c1": { folderId: null } },
+		}),
+		(err: unknown) => (err as NodeJS.ErrnoException).code === "EACCES",
+	);
+
+	// Restore original readFileSync before checking file content
+	t.mock.restoreAll();
+	const after = fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8");
+	assert.equal(after, before, "File must remain untouched when filesystem read error occurs");
+});
+
+it("P1.5: invalid incoming v1 data aborts write and leaves existing content unchanged", () => {
+	fs.rmSync(CHAT_ORGANIZATION_FILE, { force: true });
+	const seeded: OrganizationV2 = {
+		version: 2,
+		folders: [folder("f1")],
+		placements: {
+			[chatKey("c1")]: { folderId: "f1" },
+			[workspaceKey("w1")]: { folderId: "f1" },
+		},
+	};
+	organizationV2Store.write(seeded);
+	const before = fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8");
+
+	// Invalid v1 state (cycle or invalid folder parent)
+	assert.throws(
+		() => chatOrganizationStore.write({
+			version: 1,
+			folders: [{ id: "bad", name: "Bad", parentId: "nonexistent", createdAt: NOW }],
+			placements: {},
+		} as unknown as Parameters<typeof chatOrganizationStore.write>[0]),
+		/missing parent folder|invalid or newer/i,
+	);
+
+	const after = fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8");
+	assert.equal(after, before, "File content must remain unchanged when validation fails");
+});
+
+it("P1.6: normal v1 installation file migrates transparently to v2 on read and preserves on write", () => {
+	const v1Raw = {
+		version: 1,
+		folders: [folder("f1", { order: 0 })],
+		placements: {
+			"chat-legacy": { folderId: "f1", order: 5 },
+		},
+	};
+	fs.writeFileSync(CHAT_ORGANIZATION_FILE, JSON.stringify(v1Raw, null, "\t") + "\n");
+
+	// Read via organizationV2Store migrates in memory
+	const v2 = organizationV2Store.read();
+	assert.equal(v2.version, 2);
+	assert.deepEqual(v2.placements["chat:chat-legacy"], { folderId: "f1", order: 5 });
+
+	// Read via chatOrganizationStore keeps v1 shape
+	const v1 = chatOrganizationStore.read();
+	assert.equal(v1.version, 1);
+	assert.deepEqual(v1.placements["chat-legacy"], { folderId: "f1", order: 5 });
+
+	// Write via chatOrganizationStore upgrades file on disk to v2 with proper placements
+	chatOrganizationStore.write({
+		version: 1,
+		folders: [folder("f1", { order: 0 })],
+		placements: {
+			"chat-legacy": { folderId: "f1", order: 6 },
+		},
+	});
+
+	const disk = JSON.parse(fs.readFileSync(CHAT_ORGANIZATION_FILE, "utf8"));
+	assert.equal(disk.version, 2);
+	assert.deepEqual(disk.placements["chat:chat-legacy"], { folderId: "f1", order: 6 });
+});
+
+it("P1.7: v1 read continues to return exclusively chat placements without workspace keys", () => {
+	const seeded: OrganizationV2 = {
+		version: 2,
+		folders: [folder("f1")],
+		placements: {
+			[chatKey("c1")]: { folderId: "f1", order: 1 },
+			[chatKey("c2")]: { folderId: null, order: 2 },
+			[workspaceKey("w1")]: { folderId: "f1", order: 3 },
+			[workspaceKey("w2")]: { folderId: null, order: 4 },
+		},
+	};
+	organizationV2Store.write(seeded);
+
+	const v1 = chatOrganizationStore.read();
+	assert.equal(v1.version, 1);
+	const keys = Object.keys(v1.placements);
+	assert.deepEqual(keys.sort(), ["c1", "c2"]);
+	for (const k of keys) {
+		assert.ok(!k.includes("workspace"), `Key ${k} must not contain workspace prefix`);
+		assert.ok(!k.includes("chat:"), `Key ${k} must not contain chat: prefix`);
+	}
+	assert.deepEqual(v1.placements["c1"], { folderId: "f1", order: 1 });
+	assert.deepEqual(v1.placements["c2"], { folderId: null, order: 2 });
+});

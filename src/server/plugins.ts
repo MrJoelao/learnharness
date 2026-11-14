@@ -16,7 +16,8 @@ import { createPluginBackgroundTool, recoverPluginBackgroundJob } from "./plugin
 import { registerPluginWorkerActivity } from "./plugin-worker-activity.ts";
 import { deliverJobResult, setPluginJobRecovery } from "./jobs.ts";
 import { createPluginHost } from "./plugin-host.ts";
-import { configureDirectoryAvailabilityResolver } from "./directory.ts";
+import { configureDirectoryAvailabilityResolver, directoryService } from "./directory.ts";
+import { workspaceKey } from "../core/organization.ts";
 import { createPluginTransport } from "./plugin-transport.ts";
 import { createPluginDocumentConverter } from "./plugin-documents.ts";
 import type { AgentBuildOptions } from "../agent/teacher-agent.ts";
@@ -56,6 +57,7 @@ function runtime(): Runtime {
 		directory: pluginDirectory, core, appVersion: packageJson.version, installationErrors,
 		workspaces: workspaceService,
 		workspaceStateStore: stores.pluginWorkspaceStateStore,
+		onWorkspaceDeleted: (id) => directoryService.removePlacement(workspaceKey(id)),
 		// The process-global runtime owns one admission slot across all plugins
 		// and every separately compiled Next route module.
 		convertDocument: createPluginDocumentConverter().convert,

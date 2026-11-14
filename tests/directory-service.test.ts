@@ -358,3 +358,113 @@ it("corrupt organization data is a hard failure, never silently rewritten from e
 	});
 	assert.throws(() => service.read(), /invalid or newer/);
 });
+
+it("items organized in nested folders retain hierarchy and correct placement", () => {
+	const { service } = buildService({
+		chats: [chatSummary("c1"), chatSummary("c2")],
+		workspaces: [wsRecord(WS_A), wsRecord(WS_B)],
+	});
+	const parent = service.change({ action: "create-folder", name: "Parent", parentId: null });
+	const parentId = parent.createdFolderId!;
+	const child = service.change({ action: "create-folder", name: "Child", parentId });
+	const childId = child.createdFolderId!;
+
+	service.change({ action: "move", kind: "chat", id: "c1", parentId });
+	service.change({ action: "move", kind: "workspace", id: WS_A, parentId });
+	service.change({ action: "move", kind: "chat", id: "c2", parentId: childId });
+	service.change({ action: "move", kind: "workspace", id: WS_B, parentId: childId });
+
+	const directory = service.read();
+	const inParent = directory.items.filter((item) => item.folderId === parentId);
+	const inChild = directory.items.filter((item) => item.folderId === childId);
+
+	assert.equal(inParent.length, 2);
+	assert.deepEqual(inParent.map((item) => item.kind).sort(), ["chat", "workspace"]);
+	assert.equal(inChild.length, 2);
+	assert.deepEqual(inChild.map((item) => item.kind).sort(), ["chat", "workspace"]);
+});
+
+it("orphan placements in organization state are ignored and do not produce invalid items in directory", () => {
+	const orgStore = fakeOrgStore({
+		version: 2,
+		folders: [{ id: "f1", name: "F1", parentId: null, createdAt: NOW }],
+		placements: {
+			[chatKey("c1")]: { folderId: "f1", order: 0 },
+			[chatKey("orphan-chat")]: { folderId: "f1", order: 1 },
+			[workspaceKey(WS_A)]: { folderId: "f1", order: 2 },
+			[workspaceKey("workspace_00000000-0000-4000-8000-000000000999" as WorkspaceId)]: { folderId: "f1", order: 3 },
+		},
+	});
+	const service = createDirectoryService({
+		chatStore: { listChats: () => [chatSummary("c1")] } as unknown as ChatStore,
+		workspaceStore: { list: () => ({ workspaces: [wsRecord(WS_A)], issues: [] }) } as unknown as WorkspaceStore,
+		organizationStore: orgStore,
+		resolveAvailability: () => "available",
+	});
+
+	const directory = service.read();
+	assert.deepEqual(
+		directory.items.map((i) => i.id).sort(),
+		["c1", WS_A].sort(),
+		"orphan placements must be excluded from items",
+	);
+});
+
+it("mixed directory items sort deterministically by explicit order, then by updatedAt, kind, and id", () => {
+	const { service } = buildService({
+		chats: [
+			chatSummary("c-no-order", "2026-11-02T10:00:00.000Z"),
+			chatSummary("c-ordered", "2026-11-01T10:00:00.000Z"),
+		],
+		workspaces: [
+			wsRecord(WS_A, "WS Ordered"),
+			wsRecord(WS_B, "WS No Order"),
+		],
+	});
+	// Give c-ordered order 2, WS_A order 1
+	service.change({ action: "move", kind: "workspace", id: WS_A, parentId: null, targetOrder: 1 });
+	service.change({ action: "move", kind: "chat", id: "c-ordered", parentId: null, targetOrder: 2 });
+
+	const directory = service.read();
+	const orderedIds = directory.items.map((i) => i.id);
+	// Items with order come first: WS_A (order 1), then c-ordered (order 2)
+	assert.equal(orderedIds[0], WS_A);
+	assert.equal(orderedIds[1], "c-ordered");
+});
+
+it("archiving a workspace keeps it in archived items without deleting the record", () => {
+	const { service } = buildService({
+		workspaces: [wsRecord(WS_A)],
+	});
+	service.change({ action: "archive", kind: "workspace", id: WS_A });
+
+	const active = service.read();
+	assert.equal(active.items.length, 0, "archived workspace does not appear in active items");
+
+	const archived = service.readArchived();
+	assert.equal(archived.items.length, 1);
+	assert.equal(archived.items[0]!.id, WS_A);
+	assert.equal(archived.items[0]!.kind, "workspace");
+});
+
+it("deleted workspace with removePlacement no longer appears in directory or archive", () => {
+	const { service, orgStore } = buildService({
+		workspaces: [wsRecord(WS_A)],
+	});
+	service.change({ action: "move", kind: "workspace", id: WS_A, parentId: null });
+	assert.ok(orgStore.state.placements[workspaceKey(WS_A)]);
+
+	// Workspace deletion:
+	service.removePlacement(workspaceKey(WS_A));
+	assert.equal(orgStore.state.placements[workspaceKey(WS_A)], undefined);
+
+	// When workspace store no longer has the record:
+	const emptyWsService = createDirectoryService({
+		chatStore: { listChats: () => [] } as unknown as ChatStore,
+		workspaceStore: { list: () => ({ workspaces: [], issues: [] }) } as unknown as WorkspaceStore,
+		organizationStore: orgStore,
+		resolveAvailability: () => "available",
+	});
+	assert.equal(emptyWsService.read().items.length, 0);
+	assert.equal(emptyWsService.readArchived().items.length, 0);
+});
