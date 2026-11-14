@@ -14,6 +14,7 @@ import { createPluginWorkerService } from "../src/agent/plugin-workers.ts";
 import { createPluginTaskRecordStore } from "../src/store/plugin-task-records.ts";
 import { createWorkspaceStore } from "../src/store/workspaces.ts";
 import { createWorkspaceService } from "../src/server/workspaces.ts";
+import { createPluginWorkspaceStateStore } from "../src/store/plugin-workspace-state.ts";
 
 function fixture(t: TestContext) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-host-"));
@@ -26,7 +27,7 @@ function fixture(t: TestContext) {
 	const workspaces = createWorkspaceService({ store: createWorkspaceStore(path.join(root, "workspaces")) });
 	let servicesCreated = 0;
 	const deps: PluginHostDependencies = {
-		directory, appVersion: "0.3.7", workspaces,
+		directory, appVersion: "0.3.7", workspaces, workspaceStateStore: createPluginWorkspaceStateStore(),
 		createServices() {
 			servicesCreated++;
 			return { learning: { directory: root, history } as unknown as PluginLearningData, inference: {} as PluginInference,
@@ -45,7 +46,7 @@ function fixture(t: TestContext) {
 		fs.writeFileSync(path.join(dir, "backend.cjs"), backend);
 		return dir;
 	}
-	return { root, directory, host, deps, plugin, history, notifications, listeners, servicesCreated: () => servicesCreated };
+	return { root, directory, host, deps, workspaces, plugin, history, notifications, listeners, servicesCreated: () => servicesCreated };
 }
 const status = (expected: number) => (e: unknown) => isPluginHostError(e) && e.status === expected;
 
@@ -90,16 +91,48 @@ test("backend modes are validated, projected only while active, and initialize i
 	const first = await f.host.createWorkspace({ pluginId: "modes", modeId: "memory-lab" });
 	const second = await f.host.createWorkspace({ pluginId: "modes", modeId: "memory-lab" });
 	assert.notEqual(first.id, second.id);
+	assert.equal(f.host.workspaceAvailability(first), "available");
 	assert.deepEqual(f.host.workspaceState(first.id, "seed", "get"), { found: true, value: { id: first.id } });
 	assert.deepEqual(f.host.workspaceState(second.id, "seed", "get"), { found: true, value: { id: second.id } });
 	await f.host.setEnabled("modes", false);
+	assert.equal(f.host.workspaceAvailability(first), "plugin-disabled");
 	assert.deepEqual(f.host.modes(), []);
 	await assert.rejects(f.host.createWorkspace({ pluginId: "modes", modeId: "memory-lab" }), status(409));
 });
 
-test("invalid and duplicate backend mode declarations fail plugin admission", async t => {
+test("failed mode initialization rolls back persisted state and host record", async t => {
 	const f = fixture(t);
-	f.plugin("invalid-mode", {}, `exports.activate = ctx => ctx.registerMode({ id: "../escape", name: "Bad", description: "Bad", category: "Bad", initializeWorkspace() {} });`);
+	f.plugin("rollback", {}, `exports.activate = ctx => ctx.registerMode({ id: "broken", name: "Broken", description: "Test", category: "Test", initializeWorkspace: ({ storage }) => { storage.set("partial", true); throw new Error("init exploded"); } });`);
+	await f.host.initialize(); await f.host.setEnabled("rollback", true);
+	await assert.rejects(f.host.createWorkspace({ pluginId: "rollback", modeId: "broken" }), /init exploded.*rolled back/);
+	assert.deepEqual(f.workspaces.list().workspaces, []);
+});
+
+test("rollback failures are reported and leave a workspace record for recovery", async t => {
+	const f = fixture(t);
+	const original = f.deps.workspaceStateStore!;
+	f.deps.workspaceStateStore = { ...original, remove() { throw new Error("namespace locked"); } };
+	f.plugin("rollback", {}, `exports.activate = ctx => ctx.registerMode({ id: "broken", name: "Broken", description: "Test", category: "Test", initializeWorkspace() { throw new Error("init exploded"); } });`);
+	await f.host.initialize(); await f.host.setEnabled("rollback", true);
+	let failure: unknown;
+	try { await f.host.createWorkspace({ pluginId: "rollback", modeId: "broken" }); } catch (error) { failure = error; }
+	assert.match((failure as Error).message, /init exploded.*namespace locked.*remains identifiable/);
+	assert.equal(f.workspaces.list().workspaces.length, 1);
+});
+
+test("runtime availability distinguishes a removed mode and a missing plugin", async t => {
+	const f = fixture(t);
+	f.plugin("availability", {}, `let off; exports.activate = ctx => { off = ctx.registerMode({ id: "one", name: "One", description: "Test", category: "Test", initializeWorkspace() {} }); ctx.handle('remove-mode', () => off()); };`);
+	await f.host.initialize(); await f.host.setEnabled("availability", true);
+	const workspace = await f.host.createWorkspace({ pluginId: "availability", modeId: "one" });
+	await f.host.call("availability", "remove-mode", null);
+	assert.equal(f.host.workspaceAvailability(workspace), "mode-missing");
+	assert.equal(f.host.workspaceAvailability({ ...workspace, pluginId: "gone" }), "plugin-missing");
+});
+
+test("invalid and duplicate mode declarations are isolated from other v1 capabilities", async t => {
+	const f = fixture(t);
+	f.plugin("invalid-mode", {}, `exports.activate = ctx => { ctx.handle('legacy', () => 'works'); ctx.registerMode({ id: "../escape", name: "Bad", description: "Bad", category: "Bad", initializeWorkspace() {} }); };`);
 	f.plugin("duplicate-mode", {}, `exports.activate = ctx => {
 	  const definition = { id: "same", name: "Same", description: "Same", category: "Test", initializeWorkspace() {} };
 	  ctx.registerMode(definition); ctx.registerMode(definition);
@@ -107,9 +140,12 @@ test("invalid and duplicate backend mode declarations fail plugin admission", as
 	await f.host.initialize();
 	await f.host.setEnabled("invalid-mode", true);
 	await f.host.setEnabled("duplicate-mode", true);
+	assert.equal(f.host.list().find(plugin => plugin.id === "invalid-mode")!.status, "active");
 	assert.match(f.host.list().find(plugin => plugin.id === "invalid-mode")!.error!, /Mode id/);
+	assert.equal(await f.host.call("invalid-mode", "legacy", null), "works");
+	assert.equal(f.host.list().find(plugin => plugin.id === "duplicate-mode")!.status, "active");
 	assert.match(f.host.list().find(plugin => plugin.id === "duplicate-mode")!.error!, /Duplicate plugin mode/);
-	assert.deepEqual(f.host.modes(), []);
+	assert.deepEqual(f.host.modes().map(mode => mode.id), ["same"]);
 });
 
 test("native backend path/require, fresh activations, reverse cleanup, stale callbacks and unregister guards", async t => {

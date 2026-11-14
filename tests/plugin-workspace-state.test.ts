@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { it } from "node:test";
 import { parseWorkspaceId } from "../src/core/workspaces.ts";
-import { createPluginWorkspaceState } from "../src/store/plugin-workspace-state.ts";
+import { createPluginWorkspaceState, createPluginWorkspaceStateStore } from "../src/store/plugin-workspace-state.ts";
 
 it("stores bounded plugin JSON independently per workspace and validates keys", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-workspace-state-"));
@@ -15,6 +15,10 @@ it("stores bounded plugin JSON independently per workspace and validates keys", 
 		first.set("state", { count: 3 });
 		assert.deepEqual(first.get("state"), { count: 3 });
 		assert.equal(second.get("state"), undefined);
+		const reopened = createPluginWorkspaceStateStore().open(root, parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000001"));
+		assert.deepEqual(reopened.get("state"), { count: 3 });
+		createPluginWorkspaceStateStore().remove(root, parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000001"));
+		assert.equal(reopened.get("state"), undefined);
 		first.delete("state");
 		assert.equal(first.get("state"), undefined);
 		assert.throws(() => first.get("../outside"), /Invalid workspace state key/);

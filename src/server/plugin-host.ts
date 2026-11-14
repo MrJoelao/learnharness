@@ -15,10 +15,10 @@ import type { PluginAgentService } from "../core/plugin-agents.ts";
 import type { PluginWorkerService } from "../core/plugin-workers.ts";
 import type { ServerEvent } from "../core/events.ts";
 import { safePluginDataDirectory } from "../store/plugin-data-paths.ts";
-import { createPluginWorkspaceState } from "../store/plugin-workspace-state.ts";
 import { PLUGIN_MODE_ID_PATTERN, preparePluginMode } from "../core/plugin-modes.ts";
 import type { PluginModeMetadata, PluginWorkspaceCreateContext } from "../core/plugins.ts";
-import { parseWorkspaceId, parseWorkspaceTitle, type WorkspaceId, type WorkspaceRecord } from "../core/workspaces.ts";
+import { parseWorkspaceId, parseWorkspaceTitle, resolveWorkspaceAvailability, type WorkspaceId, type WorkspaceRecord } from "../core/workspaces.ts";
+import type { PluginWorkspaceStateStore } from "../core/ports.ts";
 
 /** Expected host/transport failure. Exceptions thrown by plugin handlers stay ordinary 500 errors. */
 export class PluginHostError extends Error {
@@ -60,6 +60,7 @@ export interface PluginHostDependencies {
 		rename(id: WorkspaceId, title: string): WorkspaceRecord;
 		delete(id: WorkspaceId): void;
 	};
+	workspaceStateStore?: PluginWorkspaceStateStore;
 }
 interface Instructions { agents: Set<PluginAgentKind>; text: string }
 interface Tools { agents: Set<PluginAgentKind>; create: PluginTools["create"] }
@@ -102,6 +103,7 @@ interface Package {
 	restart?: string;
 	blocked?: boolean;
 	contributionWarning?: string;
+	modeRegistrationWarning?: string;
 }
 interface State { version: 1; enabled: Record<string, boolean> }
 const errorText = (e: unknown) => e instanceof Error ? e.message : String(e);
@@ -242,6 +244,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			pkg.info.status = "error";
 			return;
 		}
+		delete pkg.modeRegistrationWarning;
 		const manifest = pkg.info.manifest;
 		const activation: Activation = { controller: new AbortController(), cleanups: [], handlers: new Map(), instructions: new Set(), tools: new Set(), questions: new Map(), problems: new Map(), modes: new Map(), dataDirectory: "", ready: false };
 		pkg.activation = activation;
@@ -310,8 +313,14 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					},
 					registerMode(definition) {
 						requireLive();
-						const registered = preparePluginMode(definition, manifest.id);
-						if (activation.modes.has(registered.metadata.id)) throw new Error(`Duplicate plugin mode: ${registered.metadata.id}`);
+						let registered: ReturnType<typeof preparePluginMode>;
+						try {
+							registered = preparePluginMode(definition, manifest.id);
+							if (activation.modes.has(registered.metadata.id)) throw new Error(`Duplicate plugin mode: ${registered.metadata.id}`);
+						} catch (error) {
+							pkg.modeRegistrationWarning = [pkg.modeRegistrationWarning, `Mode registration: ${errorText(error)}`].filter(Boolean).join("; ");
+							return () => {};
+						}
 						activation.modes.set(registered.metadata.id, registered);
 						if (activation.ready) change();
 						return () => {
@@ -364,8 +373,8 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			if (!live(pkg, activation)) { await deactivate(pkg); pkg.info.status = "disabled"; return; }
 			activation.ready = true;
 			pkg.info.status = "active";
-			delete pkg.contributionWarning;
-			delete pkg.info.error;
+			if (pkg.modeRegistrationWarning || pkg.contributionWarning) pkg.info.error = [pkg.modeRegistrationWarning, pkg.contributionWarning].filter(Boolean).join("; ");
+			else delete pkg.info.error;
 		} catch (e) {
 			const failures = await deactivate(pkg);
 			pkg.info.status = "error";
@@ -402,7 +411,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					current.info.error = candidate.info.error;
 				} else if (candidate.info.revision !== current.info.revision || candidate.info.error !== undefined) {
 					current.restart = `Restart required: plugin package changed${candidate.info.error ? ` (${candidate.info.error})` : ""}`;
-					current.info.error = [current.restart, current.contributionWarning].filter(Boolean).join("; ");
+					current.info.error = [current.restart, current.modeRegistrationWarning, current.contributionWarning].filter(Boolean).join("; ");
 				}
 				continue;
 			}
@@ -412,7 +421,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 		}
 		for (const [id, pkg] of packages) if (!ids.has(id)) {
 			pkg.restart = "Restart required: plugin package removed";
-			pkg.info.error = [pkg.restart, pkg.contributionWarning].filter(Boolean).join("; ");
+			pkg.info.error = [pkg.restart, pkg.modeRegistrationWarning, pkg.contributionWarning].filter(Boolean).join("; ");
 		}
 	}
 	async function initializeInternal(): Promise<void> {
@@ -516,7 +525,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				if (problemTypes.length) (result.problemTypes ??= []).push(...problemTypes);
 				if (pkg.contributionWarning !== undefined) {
 					delete pkg.contributionWarning;
-					if (pkg.restart) pkg.info.error = pkg.restart;
+					if (pkg.restart || pkg.modeRegistrationWarning) pkg.info.error = [pkg.restart, pkg.modeRegistrationWarning].filter(Boolean).join("; ");
 					else delete pkg.info.error;
 					change(); // The current loadout recovered; independent package diagnostics remain.
 				}
@@ -525,7 +534,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				const warning = `Agent contributions (${turn.agent}): ${errorText(e)}`;
 				if (pkg.contributionWarning !== warning) {
 					pkg.contributionWarning = warning;
-					pkg.info.error = [pkg.restart, warning].filter(Boolean).join("; ");
+					pkg.info.error = [pkg.restart, pkg.modeRegistrationWarning, warning].filter(Boolean).join("; ");
 					change(); // Activation stays active: views, assets and operations remain usable.
 				}
 			}
@@ -578,6 +587,14 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				return [...activation.modes.values()].map(mode => ({ ...mode.metadata }));
 			}).sort((a, b) => a.name.localeCompare(b.name) || a.pluginId.localeCompare(b.pluginId) || a.id.localeCompare(b.id));
 		},
+		workspaceAvailability(workspace: WorkspaceRecord) {
+			const snapshots = [...packages.values()].map(candidate => ({
+				id: candidate.info.id,
+				enabled: candidate.info.enabled && !!candidate.activation?.ready && !candidate.restart,
+				modeIds: candidate.activation?.ready ? [...candidate.activation.modes.keys()] : [],
+			}));
+			return resolveWorkspaceAvailability(workspace, snapshots);
+		},
 		async createWorkspace(input: { pluginId: string; modeId: string; title?: string }): Promise<WorkspaceRecord> {
 			assertOpen();
 			if (!initialized) throw new PluginHostError(503, "Plugin host is not initialized");
@@ -595,14 +612,20 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				const signal = activation.controller.signal;
 				signal.throwIfAborted();
 				await mode.initializeWorkspace(Object.freeze({
-					workspace, signal,
-					storage: createPluginWorkspaceState(activation.dataDirectory, workspace.id),
+					workspace: Object.freeze({ ...workspace }), signal,
+					storage: deps.workspaceStateStore?.open(activation.dataDirectory, workspace.id) ?? (() => { throw new PluginHostError(503, "Plugin workspace state storage is unavailable"); })(),
 				}));
 				if (!live(pkg, activation) || activation.modes.get(input.modeId) !== mode) throw new PluginHostError(409, "Mode became unavailable during workspace creation");
 				return workspace;
 			} catch (error) {
-				try { deps.workspaces.delete(workspace.id); } catch { /* Preserve the primary initialization failure. */ }
-				throw error;
+				const rollbackErrors: string[] = [];
+				try { deps.workspaceStateStore?.remove(activation.dataDirectory, workspace.id); }
+				catch (rollbackError) { rollbackErrors.push(`state namespace rollback failed: ${errorText(rollbackError)}`); }
+				if (!rollbackErrors.length) {
+					try { deps.workspaces.delete(workspace.id); }
+					catch (rollbackError) { rollbackErrors.push(`host record rollback failed: ${errorText(rollbackError)}`); }
+				}
+				throw new PluginHostError(500, `Workspace initialization failed (${workspace.id}): ${errorText(error)}${rollbackErrors.length ? `; rollback diagnostics: ${rollbackErrors.join("; ")}${rollbackErrors.some(item => item.startsWith("state namespace")) ? "; host record rollback was skipped to preserve the workspace identity" : ""}; workspace remains identifiable for recovery` : "; workspace record and plugin state namespace were rolled back"}`);
 			}
 		},
 		workspaceState(idValue: string, key: string, operation: "get" | "set" | "delete", value?: unknown): { found: boolean; value?: unknown } {
@@ -617,7 +640,8 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			const pkg = packages.get(workspace.pluginId), activation = pkg?.activation;
 			if (!pkg || !pkg.info.enabled || pkg.restart || !activation?.ready || !live(pkg, activation)) throw new PluginHostError(409, "Workspace plugin is disabled or unavailable");
 			if (!activation.modes.has(workspace.modeId)) throw new PluginHostError(409, "Workspace mode is unavailable");
-			const storage = createPluginWorkspaceState(activation.dataDirectory, id);
+			const storage = deps.workspaceStateStore?.open(activation.dataDirectory, id);
+			if (!storage) throw new PluginHostError(503, "Plugin workspace state storage is unavailable");
 			if (operation === "get") { const stored = storage.get(key); return stored === undefined ? { found: false } : { found: true, value: stored }; }
 			if (operation === "set") { storage.set(key, value); return { found: true }; }
 			storage.delete(key); return { found: false };
@@ -650,7 +674,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					delete pkg.contributionWarning;
 					const failures = await deactivate(pkg);
 					pkg.info.status = failures.length || pkg.blocked ? "error" : "disabled";
-					pkg.info.error = failures.length ? `Cleanup: ${failures.join("; ")}` : pkg.restart ?? (pkg.blocked ? pkg.info.error : undefined);
+					pkg.info.error = failures.length ? `Cleanup: ${failures.join("; ")}` : [pkg.restart, pkg.modeRegistrationWarning].filter(Boolean).join("; ") || (pkg.blocked ? pkg.info.error : undefined);
 				} else {
 					// Discover edits BEFORE first native evaluation or reactivation.
 					await discover(state);

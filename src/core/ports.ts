@@ -190,6 +190,13 @@ export interface WorkspaceStore {
 	removeMissingReference(id: import("./workspaces.ts").WorkspaceId): void;
 }
 
+/** Plugin-owned JSON state scoped to one host workspace and plugin data root. */
+export interface PluginWorkspaceState { get<T = unknown>(key: string): T | undefined; set(key: string, value: unknown): void; delete(key: string): void }
+export interface PluginWorkspaceStateStore {
+	open(pluginDataDirectory: string, workspaceId: import("./workspaces.ts").WorkspaceId): PluginWorkspaceState;
+	remove(pluginDataDirectory: string, workspaceId: import("./workspaces.ts").WorkspaceId): void;
+}
+
 /** Semantic topic groupings (topics.json): LLM-assigned, user-correctable.
  *  Presentation metadata separate from graph ledgers — same pattern as
  *  source-organization.ts. */

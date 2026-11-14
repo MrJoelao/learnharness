@@ -1,6 +1,8 @@
 import type { PluginModeDefinition, PluginModeMetadata } from "./plugins.ts";
 
 export const PLUGIN_MODE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+/** Lucide identifiers supported by the host mode metadata contract. */
+export const PLUGIN_MODE_ICONS = ["BookOpen", "Brain", "Calculator", "Code", "FlaskConical", "GraduationCap", "Lightbulb", "Network", "Puzzle", "Target"] as const;
 const boundedText = (value: unknown, field: string, max: number, optional = false): string | undefined => {
 	if (optional && value === undefined) return undefined;
 	if (typeof value !== "string" || !value.trim() || value.trim().length > max) throw new Error(`Mode ${field} must contain 1 to ${max} characters`);
@@ -23,7 +25,8 @@ export function preparePluginMode(definition: PluginModeDefinition, pluginId: st
 	const name = boundedText(definition.name, "name", 100)!;
 	const description = boundedText(definition.description, "description", 1000)!;
 	const category = boundedText(definition.category, "category", 80)!;
-	const icon = boundedText(definition.icon, "icon", 512, true);
+	const icon = boundedText(definition.icon, "icon", 40, true);
+	if (icon !== undefined && !(PLUGIN_MODE_ICONS as readonly string[]).includes(icon)) throw new Error("Mode icon must be a host-supported icon identifier");
 	const tags = stringList(definition.tags, "tags", 20, 40);
 	const capabilities = stringList(definition.capabilities, "capabilities", 20, 80);
 	const activityType = boundedText(definition.activityType, "activityType", 80, true);

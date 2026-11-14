@@ -662,14 +662,15 @@ export class PluginFrontendManager {
 		const modes = this.rendererMounts.get(registration) ?? new Set<() => void>();
 		this.rendererMounts.set(registration, modes);
 		const thisManager = this;
+		let currentWorkspace = Object.freeze({ ...workspace });
 		const off = this.mount(workspace.pluginId, (child, signal) => registration.renderer.mount(child, {
-			workspace, signal,
+			get workspace() { return currentWorkspace; }, signal,
 			storage: {
-				async get<T>(key: string) { const response = await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`) as { value?: T; found: boolean }; return response.found ? response.value : undefined; },
-			async set(key: string, value: unknown) { await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }) }); },
-			async delete(key: string) { await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { method: "DELETE" }); },
+				async get<T>(key: string) { signal.throwIfAborted(); const response = await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { signal }) as { value?: T; found: boolean }; signal.throwIfAborted(); return response.found ? response.value : undefined; },
+				async set(key: string, value: unknown) { signal.throwIfAborted(); await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }), signal }); signal.throwIfAborted(); },
+				async delete(key: string) { signal.throwIfAborted(); await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { method: "DELETE", signal }); signal.throwIfAborted(); },
 			},
-			async setTitle(title: string) { await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }) }); },
+			async setTitle(title: string) { signal.throwIfAborted(); const response = await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }), signal }) as { workspace: import("@/src/core").WorkspaceRecord }; signal.throwIfAborted(); currentWorkspace = Object.freeze({ ...response.workspace }); },
 		}), container, onError);
 		const release = () => { modes.delete(release); off(); };
 		modes.add(release);

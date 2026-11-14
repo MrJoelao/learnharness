@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseWorkspaceId, type WorkspaceId } from "../core/workspaces.ts";
+import type { PluginWorkspaceStateStore } from "../core/ports.ts";
 import { writeFileAtomicSync } from "./atomic-write.ts";
 
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -69,6 +70,26 @@ export function createPluginWorkspaceState(directory: string, workspaceIdValue: 
 				if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state record");
 				fs.unlinkSync(file);
 			} catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+		},
+	};
+}
+
+/** Store port adapter. Removal only targets the validated workspace namespace. */
+export function createPluginWorkspaceStateStore(): PluginWorkspaceStateStore {
+	return {
+		open: (directory, id) => createPluginWorkspaceState(directory, id),
+		remove(directory, idValue) {
+			const id = parseWorkspaceId(idValue);
+			const dataRoot = path.resolve(directory);
+			const workspaces = path.join(dataRoot, "workspaces");
+			const root = path.join(workspaces, id);
+			for (const parent of [dataRoot, workspaces]) {
+				try { const stat = fs.lstatSync(parent); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state parent directory"); }
+				catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+			}
+			try { const stat = fs.lstatSync(root); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state directory"); }
+			catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+			fs.rmSync(root, { recursive: true });
 		},
 	};
 }
