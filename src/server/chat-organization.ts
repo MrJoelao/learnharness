@@ -1,21 +1,37 @@
 import { randomUUID } from "node:crypto";
 import { stores } from "./stores.ts";
-import type { ChatStore, ChatOrganizationStore } from "../core/ports.ts";
+import type { ChatStore, WorkspaceStore } from "../core/ports.ts";
 import {
-	applyChatOrganizationAction,
 	parseChatOrganizationAction,
-	chatPlacementOf,
 	type ChatDirectory,
 	type ChatDirectoryItem,
 	type ChatFolder,
 	type ChatOrganization,
 } from "../core/chat-organization.ts";
+import {
+	applyOrganizationAction,
+	chatKey,
+	workspaceKey,
+	type ItemKey,
+	type OrganizationV2,
+} from "../core/organization.ts";
+import type { OrganizationV2Store } from "../store/chat-organization.ts";
 
 export class ChatOrganizationInputError extends Error {}
 
+/**
+ * The chat organization surface keeps its v1 wire contract (bare chat IDs,
+ * `chats: ChatDirectoryItem[]`) while the persisted organization is v2 (typed
+ * item keys). Workspace placements recorded in the organization are preserved
+ * on every read and write — they are only ever expressed through the shared
+ * /api/directory surface (risk R2).
+ */
 export interface ChatDirectoryDeps {
 	chatStore: ChatStore;
-	chatOrganizationStore: ChatOrganizationStore;
+	/** Known workspaces join the shared folder rules (empty checks, subtree
+	 * archive/restore) even on this chat-only surface — risks R3/R4. */
+	workspaceStore: WorkspaceStore;
+	organizationStore: OrganizationV2Store;
 }
 
 export function createChatDirectory(deps: ChatDirectoryDeps) {
@@ -24,13 +40,20 @@ export function createChatDirectory(deps: ChatDirectoryDeps) {
 		createdAt: new Date().toISOString(),
 	});
 
-	function read(options?: { includeArchived?: boolean }): ChatDirectory {
-		const organization = deps.chatOrganizationStore.read();
-		const summaries = deps.chatStore.listChats();
-		const folderIds = new Set(organization.folders.map((f) => f.id));
+	/** V1 wire projection of the v2 organization: bare chat IDs, no workspaces. */
+	function toV1Organization(org: OrganizationV2): ChatOrganization {
+		const placements: ChatOrganization["placements"] = {};
+		for (const [key, placement] of Object.entries(org.placements)) {
+			if (key.startsWith("chat:") && key.length > 5) placements[key.slice(5)] = placement;
+		}
+		return { version: 1, folders: org.folders, placements };
+	}
 
-		const allItems: ChatDirectoryItem[] = summaries.map((s) => {
-			const placement = chatPlacementOf(organization, s.id);
+	function chatItems(org: OrganizationV2, options?: { includeArchived?: boolean }): ChatDirectoryItem[] {
+		const folderIds = new Set(org.folders.map((f) => f.id));
+
+		const items: ChatDirectoryItem[] = deps.chatStore.listChats().map((s) => {
+			const placement = org.placements[chatKey(s.id)];
 			const isArchived = Boolean(placement?.archivedAt);
 			const folderId = isArchived
 				? (placement?.folderId ?? null)
@@ -51,7 +74,7 @@ export function createChatDirectory(deps: ChatDirectoryDeps) {
 		});
 
 		// Sort items by sibling order if specified, else updatedAt descending
-		allItems.sort((a, b) => {
+		items.sort((a, b) => {
 			if (a.order !== undefined && b.order !== undefined) {
 				return a.order - b.order;
 			}
@@ -60,22 +83,21 @@ export function createChatDirectory(deps: ChatDirectoryDeps) {
 			return b.updatedAt.localeCompare(a.updatedAt);
 		});
 
-		const chats = options?.includeArchived
-			? allItems
-			: allItems.filter((c) => !c.archivedAt);
+		return options?.includeArchived ? items : items.filter((c) => !c.archivedAt);
+	}
 
-		return { organization, chats };
+	function read(options?: { includeArchived?: boolean }): ChatDirectory {
+		const org = deps.organizationStore.read();
+		return { organization: toV1Organization(org), chats: chatItems(org, options) };
 	}
 
 	function readArchived(): { folders: ChatFolder[]; chats: ChatDirectoryItem[]; activeFolders: ChatFolder[] } {
-		const directory = read({ includeArchived: true });
-		const archivedFolders = directory.organization.folders.filter((f) => Boolean(f.archivedAt));
-		const archivedChats = directory.chats.filter((c) => Boolean(c.archivedAt));
-		const activeFolders = directory.organization.folders.filter((f) => !f.archivedAt);
+		const org = deps.organizationStore.read();
+		const chats = chatItems(org, { includeArchived: true });
 		return {
-			folders: archivedFolders,
-			chats: archivedChats,
-			activeFolders,
+			folders: org.folders.filter((f) => Boolean(f.archivedAt)),
+			chats: chats.filter((c) => Boolean(c.archivedAt)),
+			activeFolders: org.folders.filter((f) => !f.archivedAt),
 		};
 	}
 
@@ -89,18 +111,21 @@ export function createChatDirectory(deps: ChatDirectoryDeps) {
 			throw new ChatOrganizationInputError((error as Error).message);
 		}
 
-		const directory = read({ includeArchived: true });
+		const org = deps.organizationStore.read();
 		const fresh = freshFolder();
-		const chatIds = new Set(directory.chats.map((c) => c.id));
+		const itemKeys = new Set<ItemKey>([
+			...deps.chatStore.listChats().map((s) => chatKey(s.id)),
+			...deps.workspaceStore.list().workspaces.map((w) => workspaceKey(w.id)),
+		]);
 
-		let next: ChatOrganization;
+		let next: OrganizationV2;
 		try {
-			next = applyChatOrganizationAction(directory.organization, action, chatIds, fresh);
+			next = applyOrganizationAction(org, action, itemKeys, fresh);
 		} catch (error) {
 			throw new ChatOrganizationInputError((error as Error).message);
 		}
 
-		deps.chatOrganizationStore.write(next);
+		deps.organizationStore.write(next);
 		if (action.action === "create-folder") {
 			createdFolderId = fresh.id;
 		}
@@ -110,11 +135,12 @@ export function createChatDirectory(deps: ChatDirectoryDeps) {
 
 	function removeChatPlacement(chatId: string): void {
 		try {
-			const org = deps.chatOrganizationStore.read();
-			if (Object.hasOwn(org.placements, chatId)) {
+			const org = deps.organizationStore.read();
+			const key = chatKey(chatId);
+			if (Object.hasOwn(org.placements, key)) {
 				const next = { ...org, placements: { ...org.placements } };
-				delete next.placements[chatId];
-				deps.chatOrganizationStore.write(next);
+				delete next.placements[key];
+				deps.organizationStore.write(next);
 			}
 		} catch {
 			// ignore cleanup errors on deletion
@@ -124,7 +150,11 @@ export function createChatDirectory(deps: ChatDirectoryDeps) {
 	return { read, readArchived, change, removeChatPlacement };
 }
 
-export const chatDirectory = createChatDirectory(stores);
+export const chatDirectory = createChatDirectory({
+	chatStore: stores.chatStore,
+	workspaceStore: stores.workspaceStore,
+	organizationStore: stores.organizationV2Store,
+});
 
 /**
  * Bound actual JSON bytes as well as declared size; never buffer an unbounded operation body.

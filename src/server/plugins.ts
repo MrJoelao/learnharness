@@ -16,6 +16,7 @@ import { createPluginBackgroundTool, recoverPluginBackgroundJob } from "./plugin
 import { registerPluginWorkerActivity } from "./plugin-worker-activity.ts";
 import { deliverJobResult, setPluginJobRecovery } from "./jobs.ts";
 import { createPluginHost } from "./plugin-host.ts";
+import { configureDirectoryAvailabilityResolver } from "./directory.ts";
 import { createPluginTransport } from "./plugin-transport.ts";
 import { createPluginDocumentConverter } from "./plugin-documents.ts";
 import type { AgentBuildOptions } from "../agent/teacher-agent.ts";
@@ -101,6 +102,10 @@ function runtime(): Runtime {
 			installationErrors[id] = `Task recovery failed: ${error}`;
 		}
 		await host.initialize();
+		// The shared directory resolves workspace availability through the
+		// live host (synchronous once ready; until this line every workspace
+		// reports the conservative "plugin-missing" fallback).
+		configureDirectoryAvailabilityResolver((workspace) => host.workspaceAvailability(workspace));
 	});
 	global.__lhPlugins = { host, ready };
 	return global.__lhPlugins;

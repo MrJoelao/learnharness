@@ -9,7 +9,7 @@
 import { chatStore } from "../store/chats.ts";
 import { graphStore } from "../store/graph.ts";
 import { sourceOrganizationStore } from "../store/source-organization.ts";
-import { chatOrganizationStore } from "../store/chat-organization.ts";
+import { chatOrganizationStore, organizationV2Store } from "../store/chat-organization.ts";
 import { topicOrganizationStore } from "../store/topic-organization.ts";
 import { workspaceStore } from "../store/workspaces.ts";
 import { createPluginWorkspaceStateStore } from "../store/plugin-workspace-state.ts";
@@ -26,6 +26,7 @@ export const stores = {
 	graphStore,
 	sourceOrganizationStore,
 	chatOrganizationStore,
+	organizationV2Store,
 	topicOrganizationStore,
 	workspaceStore,
 	pluginWorkspaceStateStore: createPluginWorkspaceStateStore(),

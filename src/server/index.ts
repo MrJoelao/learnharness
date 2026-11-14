@@ -13,6 +13,7 @@ export * from "./references.ts";
 export { stageSessionDocuments, startDocumentExtraction, type StagedDocument } from "./session-documents.ts";
 export { readBoundedFormData as readBoundedForm, FormBodyLimitError } from "../../lib/bounded-form-data.ts";
 export * from "./chat-organization.ts";
+export * from "./directory.ts";
 export * from "./workspaces.ts";
 export * from "./source-deletion.ts";
 export { NotesImportError } from "../agent/subagents/extraction.ts";
