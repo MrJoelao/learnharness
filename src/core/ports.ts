@@ -188,6 +188,9 @@ export interface WorkspaceStore {
 	inspect(): import("./workspaces.ts").WorkspaceReconciliation;
 	recoverOrphan(id: import("./workspaces.ts").WorkspaceId): void;
 	removeMissingReference(id: import("./workspaces.ts").WorkspaceId): void;
+	readDeletionJournal?(): import("./workspaces.ts").WorkspaceDeletionJournalEntry[];
+	recordPendingDeletion?(entry: import("./workspaces.ts").WorkspaceDeletionJournalEntry): void;
+	clearPendingDeletion?(id: import("./workspaces.ts").WorkspaceId): void;
 }
 
 /** Plugin-owned JSON state scoped to one host workspace and plugin data root. */

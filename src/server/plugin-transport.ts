@@ -11,6 +11,8 @@ export interface PluginTransportHost {
 	workspaceState(id: string, key: string, operation: "get" | "set" | "delete", value?: unknown): { found: boolean; value?: unknown };
 	renameWorkspace(id: string, title: string): WorkspaceRecord;
 	deleteWorkspace(id: string): Promise<void>;
+	inspectWorkspaces?(): import("../core/workspaces.ts").WorkspaceReconciliation & { interruptedDeletions?: import("../core/workspaces.ts").WorkspaceDeletionJournalEntry[] };
+	recoverWorkspace?(input: { id: string; action: "recover-orphan" | "remove-missing-reference" | "resume-deletion" }): Promise<{ ok: boolean; message: string; reconciliation: import("../core/workspaces.ts").WorkspaceReconciliation }>;
 	conflicts(): { id: string; error: string }[];
 	refresh(): Promise<void>;
 	setEnabled(id: string, enabled: boolean): Promise<void>;
@@ -55,6 +57,21 @@ export function createPluginTransport(deps: { getHost(): Promise<PluginTransport
 		deleteWorkspace: (id: string, _request: Request) => guarded(async () => {
 			await (await deps.getHost()).deleteWorkspace(id);
 			return json({ ok: true });
+		}),
+		inspectWorkspaces: () => guarded(async () => {
+			const host = await deps.getHost();
+			if (!host.inspectWorkspaces) throw new InputError("Workspace inspection is not supported");
+			return json(host.inspectWorkspaces());
+		}),
+		recoverWorkspace: (request: Request) => guarded(async () => {
+			const body = await objectBody(request);
+			if (typeof body.id !== "string" || !body.id.trim() || typeof body.action !== "string" || !["recover-orphan", "remove-missing-reference", "resume-deletion"].includes(body.action)) {
+				throw new InputError("Invalid recovery request: expected id and action ('recover-orphan' | 'remove-missing-reference' | 'resume-deletion')");
+			}
+			const host = await deps.getHost();
+			if (!host.recoverWorkspace) throw new InputError("Workspace recovery is not supported");
+			const result = await host.recoverWorkspace({ id: body.id, action: body.action as any });
+			return json(result);
 		}),
 		workspaceState: (id: string, key: string, request: Request, operation: "get" | "set" | "delete") => guarded(async () => {
 			const host = await deps.getHost();

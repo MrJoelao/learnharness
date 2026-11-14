@@ -4,6 +4,7 @@ import {
 	parseWorkspaceRecord,
 	parseWorkspaceTitle,
 	resolveWorkspaceAvailability,
+	type WorkspaceDeletionJournalEntry,
 	type WorkspaceDirectory,
 	type WorkspaceId,
 	type WorkspacePluginSnapshot,
@@ -77,11 +78,36 @@ export function createWorkspaceService({ store, now = () => new Date().toISOStri
 		store.removeMissingReference(id);
 	}
 
+	function readDeletionJournal(): WorkspaceDeletionJournalEntry[] {
+		return store.readDeletionJournal?.() ?? [];
+	}
+
+	function recordPendingDeletion(entry: WorkspaceDeletionJournalEntry): void {
+		store.recordPendingDeletion?.(entry);
+	}
+
+	function clearPendingDeletion(id: WorkspaceId): void {
+		store.clearPendingDeletion?.(id);
+	}
+
 	function availability(workspace: WorkspaceRecord, plugins: readonly WorkspacePluginSnapshot[]) {
 		return resolveWorkspaceAvailability(workspace, plugins);
 	}
 
-	return { create, read, list, rename, delete: remove, inspect, recoverOrphan, removeMissingReference, availability };
+	return {
+		create,
+		read,
+		list,
+		rename,
+		delete: remove,
+		inspect,
+		recoverOrphan,
+		removeMissingReference,
+		availability,
+		readDeletionJournal,
+		recordPendingDeletion,
+		clearPendingDeletion,
+	};
 }
 
 export const workspaceService = createWorkspaceService({

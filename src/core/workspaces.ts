@@ -32,12 +32,20 @@ export interface WorkspaceDirectory {
 	issues: WorkspaceDirectoryIssue[];
 }
 
+export interface WorkspaceDeletionJournalEntry {
+	workspaceId: WorkspaceId;
+	pluginId: string;
+	stage: "started" | "state-deleted" | "metadata-deleted";
+	startedAt: string;
+}
+
 export interface WorkspaceReconciliation {
 	orphanIds: WorkspaceId[];
 	missingIds: WorkspaceId[];
 	invalidOrphanIds: WorkspaceId[];
 	invalidRecordIds: WorkspaceId[];
 	unreadableRecordIds: WorkspaceId[];
+	interruptedDeletionIds?: WorkspaceId[];
 }
 
 export type WorkspaceAvailability = "available" | "plugin-disabled" | "plugin-missing" | "mode-missing";

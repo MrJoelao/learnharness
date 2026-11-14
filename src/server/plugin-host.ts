@@ -17,7 +17,7 @@ import type { ServerEvent } from "../core/events.ts";
 import { safePluginDataDirectory } from "../store/plugin-data-paths.ts";
 import { PLUGIN_MODE_ID_PATTERN, preparePluginMode } from "../core/plugin-modes.ts";
 import type { PluginModeMetadata, PluginWorkspaceCreateContext } from "../core/plugins.ts";
-import { parseWorkspaceId, parseWorkspaceTitle, resolveWorkspaceAvailability, type WorkspaceId, type WorkspaceRecord } from "../core/workspaces.ts";
+import { parseWorkspaceId, parseWorkspaceTitle, resolveWorkspaceAvailability, type WorkspaceDeletionJournalEntry, type WorkspaceId, type WorkspaceReconciliation, type WorkspaceRecord } from "../core/workspaces.ts";
 import type { PluginWorkspaceStateStore } from "../core/ports.ts";
 
 /** Expected host/transport failure. Exceptions thrown by plugin handlers stay ordinary 500 errors. */
@@ -59,6 +59,12 @@ export interface PluginHostDependencies {
 		read(id: WorkspaceId): WorkspaceRecord | null;
 		rename(id: WorkspaceId, title: string): WorkspaceRecord;
 		delete(id: WorkspaceId): void;
+		inspect?(): WorkspaceReconciliation;
+		recoverOrphan?(id: WorkspaceId): void;
+		removeMissingReference?(id: WorkspaceId): void;
+		readDeletionJournal?(): WorkspaceDeletionJournalEntry[];
+		recordPendingDeletion?(entry: WorkspaceDeletionJournalEntry): void;
+		clearPendingDeletion?(id: WorkspaceId): void;
 	};
 	workspaceStateStore?: PluginWorkspaceStateStore;
 	onWorkspaceDeleted?: (id: WorkspaceId) => void;
@@ -417,6 +423,108 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			pkg.info.error = [pkg.restart, pkg.contributionWarning].filter(Boolean).join("; ");
 		}
 	}
+	const inMemoryJournal = new Map<WorkspaceId, WorkspaceDeletionJournalEntry>();
+
+	function getJournalEntries(): WorkspaceDeletionJournalEntry[] {
+		if (deps.workspaces?.readDeletionJournal) {
+			try {
+				return deps.workspaces.readDeletionJournal();
+			} catch {
+				return [...inMemoryJournal.values()];
+			}
+		}
+		return [...inMemoryJournal.values()];
+	}
+
+	function recordJournal(entry: WorkspaceDeletionJournalEntry): void {
+		inMemoryJournal.set(entry.workspaceId, entry);
+		if (deps.workspaces?.recordPendingDeletion) {
+			try {
+				deps.workspaces.recordPendingDeletion(entry);
+			} catch (error) {
+				console.warn(`[plugin-host] failed to persist deletion journal for ${entry.workspaceId}: ${errorText(error)}`);
+			}
+		}
+	}
+
+	function clearJournal(id: WorkspaceId): void {
+		inMemoryJournal.delete(id);
+		if (deps.workspaces?.clearPendingDeletion) {
+			try {
+				deps.workspaces.clearPendingDeletion(id);
+			} catch (error) {
+				console.warn(`[plugin-host] failed to clear deletion journal for ${id}: ${errorText(error)}`);
+			}
+		}
+	}
+
+	async function deleteWorkspaceInternal(id: WorkspaceId, existingEntry?: WorkspaceDeletionJournalEntry): Promise<void> {
+		const pendingEntry = existingEntry ?? getJournalEntries().find((e) => e.workspaceId === id);
+		const workspace = deps.workspaces?.read(id);
+
+		if (!workspace && !pendingEntry) {
+			// Workspace record not found and no deletion was in progress.
+			// Clean up any dangling placement in directory.
+			if (deps.onWorkspaceDeleted) {
+				try { deps.onWorkspaceDeleted(id); } catch { /* ignore */ }
+			}
+			throw new PluginHostError(404, "Workspace not found");
+		}
+
+		const pluginId = workspace ? workspace.pluginId : pendingEntry!.pluginId;
+		let stage: "started" | "state-deleted" | "metadata-deleted" = pendingEntry ? pendingEntry.stage : "started";
+
+		if (!pendingEntry) {
+			recordJournal({ workspaceId: id, pluginId, stage: "started", startedAt: new Date().toISOString() });
+		}
+
+		// Phase 1: remove persistent plugin state
+		let stateRemoved = stage === "state-deleted" || stage === "metadata-deleted";
+		if (!stateRemoved) {
+			const dataDirectory = safePluginDataDirectory(directory, pluginId, coreData, false);
+			if (deps.workspaceStateStore && dataDirectory) {
+				try {
+					deps.workspaceStateStore.remove(dataDirectory, id);
+					stateRemoved = true;
+					stage = "state-deleted";
+					recordJournal({ workspaceId: id, pluginId, stage: "state-deleted", startedAt: pendingEntry?.startedAt || new Date().toISOString() });
+				} catch (error) {
+					throw new PluginHostError(500, `Failed to delete plugin workspace state: ${errorText(error)} (workspace metadata remains intact)`);
+				}
+			} else {
+				stateRemoved = true;
+				stage = "state-deleted";
+				recordJournal({ workspaceId: id, pluginId, stage: "state-deleted", startedAt: pendingEntry?.startedAt || new Date().toISOString() });
+			}
+		}
+
+		// Phase 2: remove workspace metadata
+		let metadataRemoved = stage === "metadata-deleted";
+		if (!metadataRemoved) {
+			try {
+				deps.workspaces!.delete(id);
+				metadataRemoved = true;
+				stage = "metadata-deleted";
+				recordJournal({ workspaceId: id, pluginId, stage: "metadata-deleted", startedAt: pendingEntry?.startedAt || new Date().toISOString() });
+			} catch (error) {
+				const stateNote = stateRemoved ? " (plugin state was already deleted; metadata remains)" : "";
+				throw new PluginHostError(500, `Failed to delete workspace metadata: ${errorText(error)}${stateNote}`);
+			}
+		}
+
+		// Phase 3: remove directory placement
+		if (deps.onWorkspaceDeleted) {
+			try {
+				deps.onWorkspaceDeleted(id);
+			} catch (error) {
+				throw new PluginHostError(500, `Failed to remove workspace placement from directory: ${errorText(error)} (workspace metadata and state were deleted)`);
+			}
+		}
+
+		// All phases completed successfully: clear journal entry
+		clearJournal(id);
+	}
+
 	async function initializeInternal(): Promise<void> {
 		assertOpen();
 		if (initialized) return;
@@ -424,6 +532,16 @@ export function createPluginHost(deps: PluginHostDependencies) {
 		fs.mkdirSync(directory, { recursive: true });
 		if (!fs.lstatSync(directory).isDirectory() || fs.lstatSync(directory).isSymbolicLink()) throw new Error("Unsafe plugins directory");
 		await discover(state);
+		if (deps.workspaces) {
+			const pendingJournal = getJournalEntries();
+			for (const entry of pendingJournal) {
+				try {
+					await deleteWorkspaceInternal(entry.workspaceId, entry);
+				} catch (error) {
+					console.warn(`[plugin-host] failed to resume interrupted deletion for workspace ${entry.workspaceId}: ${errorText(error)}`);
+				}
+			}
+		}
 		initialized = true; change();
 	}
 
@@ -655,30 +773,55 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			if (!deps.workspaces) throw new PluginHostError(503, "Workspace storage is unavailable");
 			let id: WorkspaceId;
 			try { id = parseWorkspaceId(idValue); } catch { throw new PluginHostError(400, "Invalid workspace ID"); }
-			const workspace = deps.workspaces.read(id);
-			if (!workspace) throw new PluginHostError(404, "Workspace not found");
-			const dataDirectory = safePluginDataDirectory(directory, workspace.pluginId, coreData, false);
-			let stateRemoved = false;
-			if (deps.workspaceStateStore && dataDirectory) {
-				try {
-					deps.workspaceStateStore.remove(dataDirectory, id);
-					stateRemoved = true;
-				} catch (error) {
-					throw new PluginHostError(500, `Failed to delete plugin workspace state: ${errorText(error)} (workspace metadata remains intact)`);
+			await deleteWorkspaceInternal(id);
+		},
+		inspectWorkspaces(): WorkspaceReconciliation & { interruptedDeletions: WorkspaceDeletionJournalEntry[] } {
+			assertOpen();
+			if (!deps.workspaces) throw new PluginHostError(503, "Workspace storage is unavailable");
+			const reconciliation = deps.workspaces.inspect ? deps.workspaces.inspect() : { orphanIds: [], missingIds: [], invalidOrphanIds: [], invalidRecordIds: [], unreadableRecordIds: [] };
+			const journal = getJournalEntries();
+			return {
+				...reconciliation,
+				interruptedDeletions: journal,
+			};
+		},
+		async recoverWorkspace(input: { id: string; action: "recover-orphan" | "remove-missing-reference" | "resume-deletion" }): Promise<{ ok: boolean; message: string; reconciliation: WorkspaceReconciliation }> {
+			assertOpen();
+			if (!deps.workspaces) throw new PluginHostError(503, "Workspace storage is unavailable");
+			let id: WorkspaceId;
+			try { id = parseWorkspaceId(input.id); } catch { throw new PluginHostError(400, "Invalid workspace ID"); }
+
+			switch (input.action) {
+				case "recover-orphan": {
+					if (!deps.workspaces.recoverOrphan) throw new PluginHostError(501, "Orphan recovery is not supported");
+					try {
+						deps.workspaces.recoverOrphan(id);
+						const reconciliation = deps.workspaces.inspect ? deps.workspaces.inspect() : { orphanIds: [], missingIds: [], invalidOrphanIds: [], invalidRecordIds: [], unreadableRecordIds: [] };
+						return { ok: true, message: `Orphan workspace ${id} successfully recovered`, reconciliation };
+					} catch (error) {
+						throw new PluginHostError(400, error instanceof Error ? error.message : "Failed to recover orphan workspace");
+					}
 				}
-			}
-			try {
-				deps.workspaces.delete(id);
-			} catch (error) {
-				const stateNote = stateRemoved ? " (plugin state was already deleted; metadata remains)" : "";
-				throw new PluginHostError(500, `Failed to delete workspace metadata: ${errorText(error)}${stateNote}`);
-			}
-			if (deps.onWorkspaceDeleted) {
-				try {
-					deps.onWorkspaceDeleted(id);
-				} catch (error) {
-					throw new PluginHostError(500, `Failed to remove workspace placement from directory: ${errorText(error)} (workspace metadata and state were deleted)`);
+				case "remove-missing-reference": {
+					if (!deps.workspaces.removeMissingReference) throw new PluginHostError(501, "Missing reference removal is not supported");
+					try {
+						deps.workspaces.removeMissingReference(id);
+						if (deps.onWorkspaceDeleted) {
+							try { deps.onWorkspaceDeleted(id); } catch { /* ignore */ }
+						}
+						const reconciliation = deps.workspaces.inspect ? deps.workspaces.inspect() : { orphanIds: [], missingIds: [], invalidOrphanIds: [], invalidRecordIds: [], unreadableRecordIds: [] };
+						return { ok: true, message: `Missing reference for workspace ${id} successfully removed`, reconciliation };
+					} catch (error) {
+						throw new PluginHostError(400, error instanceof Error ? error.message : "Failed to remove missing reference");
+					}
 				}
+				case "resume-deletion": {
+					await deleteWorkspaceInternal(id);
+					const reconciliation = deps.workspaces.inspect ? deps.workspaces.inspect() : { orphanIds: [], missingIds: [], invalidOrphanIds: [], invalidRecordIds: [], unreadableRecordIds: [] };
+					return { ok: true, message: `Interrupted deletion for workspace ${id} successfully completed`, reconciliation };
+				}
+				default:
+					throw new PluginHostError(400, `Unknown recovery action: ${(input as any).action}`);
 			}
 		},
 		setEnabled(id: string, enabled: boolean): Promise<void> {

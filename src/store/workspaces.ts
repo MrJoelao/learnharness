@@ -7,6 +7,7 @@ import {
 	parseWorkspaceIndex,
 	parseWorkspaceRecord,
 	WORKSPACE_ID_PATTERN,
+	type WorkspaceDeletionJournalEntry,
 	type WorkspaceDirectory,
 	type WorkspaceDirectoryIssue,
 	type WorkspaceId,
@@ -153,8 +154,12 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 
 	function remove(id: WorkspaceId): void {
 		const index = readIndex();
-		if (!index.workspaceIds.includes(id)) throw new Error(`Workspace is not indexed: ${id}.`);
 		const result = readRecord(id);
+		if (!index.workspaceIds.includes(id)) {
+			// Idempotent delete: if already unindexed and file does not exist, succeed.
+			if (result.kind === "missing") return;
+			throw new Error(`Workspace is not indexed: ${id}.`);
+		}
 		if (result.kind === "invalid" || result.kind === "unreadable") {
 			throw new Error(`Cannot delete workspace record ${id}: ${result.kind}.`);
 		}
@@ -174,6 +179,63 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 		}
 	}
 
+	const journalFile = path.join(/* turbopackIgnore: true */ root, "deletions.json");
+
+	function readDeletionJournal(): WorkspaceDeletionJournalEntry[] {
+		if (!ensureRoot(false)) return [];
+		try {
+			const stat = fs.lstatSync(/* turbopackIgnore: true */ journalFile);
+			if (!stat.isFile() || stat.isSymbolicLink()) return [];
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+			return [];
+		}
+		try {
+			const text = fs.readFileSync(/* turbopackIgnore: true */ journalFile, "utf8");
+			const parsed = JSON.parse(text);
+			if (!Array.isArray(parsed)) return [];
+			return parsed.filter((e): e is WorkspaceDeletionJournalEntry =>
+				e !== null &&
+				typeof e === "object" &&
+				!Array.isArray(e) &&
+				typeof e.workspaceId === "string" &&
+				WORKSPACE_ID_PATTERN.test(e.workspaceId) &&
+				typeof e.pluginId === "string" &&
+				(e.stage === "started" || e.stage === "state-deleted" || e.stage === "metadata-deleted") &&
+				typeof e.startedAt === "string"
+			);
+		} catch {
+			return [];
+		}
+	}
+
+	function writeDeletionJournal(entries: WorkspaceDeletionJournalEntry[]): void {
+		ensureRoot(true);
+		writeFileAtomicSync(journalFile, `${JSON.stringify(entries, null, "\t")}\n`);
+	}
+
+	function recordPendingDeletion(entry: WorkspaceDeletionJournalEntry): void {
+		const current = readDeletionJournal().filter((e) => e.workspaceId !== entry.workspaceId);
+		current.push(entry);
+		writeDeletionJournal(current);
+	}
+
+	function clearPendingDeletion(id: WorkspaceId): void {
+		const current = readDeletionJournal().filter((e) => e.workspaceId !== id);
+		if (current.length === 0) {
+			try {
+				if (fileExists(journalFile)) {
+					fs.unlinkSync(/* turbopackIgnore: true */ journalFile);
+					removeLeftoverTemps(journalFile);
+				}
+			} catch {
+				writeDeletionJournal([]);
+			}
+		} else {
+			writeDeletionJournal(current);
+		}
+	}
+
 	function inspect(): WorkspaceReconciliation {
 		const directory = list();
 		const index = readIndex();
@@ -184,6 +246,7 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 			const names = fs.readdirSync(/* turbopackIgnore: true */ root).sort();
 			for (const name of names) {
 				if (!name.endsWith(".json")) continue;
+				if (name === "index.json" || name === "deletions.json") continue;
 				const rawId = name.slice(0, -5);
 				if (!WORKSPACE_ID_PATTERN.test(rawId)) continue;
 				const id = parseWorkspaceId(rawId);
@@ -193,12 +256,14 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 				else invalidOrphanIds.push(id);
 			}
 		}
+		const journal = readDeletionJournal();
 		return {
 			orphanIds,
 			missingIds: directory.issues.filter((issue) => issue.kind === "missing-record").map((issue) => issue.id),
 			invalidOrphanIds,
 			invalidRecordIds: directory.issues.filter((issue) => issue.kind === "invalid-record").map((issue) => issue.id),
 			unreadableRecordIds: directory.issues.filter((issue) => issue.kind === "unreadable-record").map((issue) => issue.id),
+			...(journal.length > 0 ? { interruptedDeletionIds: journal.map((entry) => entry.workspaceId) } : {}),
 		};
 	}
 
@@ -218,7 +283,19 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 		writeIndex({ version: 1, workspaceIds: index.workspaceIds.filter((workspaceId) => workspaceId !== id) });
 	}
 
-	return { list, read, create, update, delete: remove, inspect, recoverOrphan, removeMissingReference };
+	return {
+		list,
+		read,
+		create,
+		update,
+		delete: remove,
+		inspect,
+		recoverOrphan,
+		removeMissingReference,
+		readDeletionJournal,
+		recordPendingDeletion,
+		clearPendingDeletion,
+	};
 }
 
 export const workspaceStore = createWorkspaceStore(path.dirname(WORKSPACE_INDEX_FILE));

@@ -1,0 +1,486 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { after, it } from "node:test";
+
+import {
+	chatKey,
+	emptyOrganizationV2,
+	migrateV1toV2,
+	parseOrganizationV2,
+	workspaceKey,
+	type OrganizationV2,
+} from "../src/core/organization.ts";
+import {
+	parseWorkspaceId,
+	parseWorkspaceRecord,
+	type WorkspaceId,
+	type WorkspaceRecord,
+} from "../src/core/workspaces.ts";
+import { createWorkspaceStore } from "../src/store/workspaces.ts";
+import { createPluginWorkspaceStateStore } from "../src/store/plugin-workspace-state.ts";
+import { createPluginHost, isPluginHostError } from "../src/server/plugin-host.ts";
+import { createPluginTransport } from "../src/server/plugin-transport.ts";
+import { createWorkspaceService } from "../src/server/workspaces.ts";
+import { createDirectoryService } from "../src/server/directory.ts";
+
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-study-hub-hardening-"));
+after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+const NOW = "2026-11-14T12:00:00.000Z";
+
+function makeRecord(id: WorkspaceId, overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
+	return parseWorkspaceRecord({
+		version: 1,
+		id,
+		pluginId: "test-plugin",
+		modeId: "test-mode",
+		title: "Test Workspace",
+		createdAt: NOW,
+		updatedAt: NOW,
+		...overrides,
+	});
+}
+
+// ─── 1. P1: Resilient Workspace Deletion & Recovery ─────────────────────────
+
+it("P1: deletion phase 1 failure leaves workspace metadata, journal, and placement intact", async () => {
+	const dir = path.join(root, "p1-phase1-fail");
+	fs.mkdirSync(path.join(dir, "plugins", "test-plugin", "data"), { recursive: true });
+	const store = createWorkspaceStore(dir);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000101");
+	store.create(makeRecord(targetId));
+
+	let placementRemoved = false;
+	const failingStateStore = {
+		open: () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
+		remove: () => {
+			throw new Error("Disk permission denied during state removal");
+		},
+	};
+
+	const service = createWorkspaceService({ store });
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		workspaces: service,
+		workspaceStateStore: failingStateStore,
+		onWorkspaceDeleted: () => {
+			placementRemoved = true;
+		},
+		createServices: () => ({} as any),
+	});
+	await host.initialize();
+
+	let err: any;
+	try {
+		await host.deleteWorkspace(targetId);
+	} catch (e) {
+		err = e;
+	}
+
+	assert.ok(isPluginHostError(err) && err.status === 500);
+	assert.match(err.message, /Failed to delete plugin workspace state.*workspace metadata remains intact/i);
+
+	// Verification of actual disk state
+	assert.ok(fs.existsSync(path.join(dir, `${targetId}.json`)), "Record file must remain on disk");
+	assert.ok(store.read(targetId), "Workspace must still be readable");
+	assert.equal(placementRemoved, false, "Directory placement must not be removed");
+
+	// Journal records stage: started
+	const journal = store.readDeletionJournal?.() ?? [];
+	assert.equal(journal.length, 1);
+	const entry = journal[0]!;
+	assert.equal(entry.workspaceId, targetId);
+	assert.equal(entry.stage, "started");
+});
+
+it("P1: deletion phase 2 failure records state-deleted in journal and keeps metadata for recovery", async () => {
+	const dir = path.join(root, "p1-phase2-fail");
+	fs.mkdirSync(path.join(dir, "plugins", "test-plugin", "data"), { recursive: true });
+	const store = createWorkspaceStore(dir);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000102");
+	store.create(makeRecord(targetId));
+
+	let stateRemoved = false;
+	const stateStore = {
+		open: () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
+		remove: () => {
+			stateRemoved = true;
+		},
+	};
+
+	const originalDelete = store.delete;
+	store.delete = () => {
+		throw new Error("EIO: metadata disk write failure");
+	};
+
+	let placementRemoved = false;
+	const service = createWorkspaceService({ store });
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		workspaces: service,
+		workspaceStateStore: stateStore,
+		onWorkspaceDeleted: () => {
+			placementRemoved = true;
+		},
+		createServices: () => ({} as any),
+	});
+	await host.initialize();
+
+	let err: any;
+	try {
+		await host.deleteWorkspace(targetId);
+	} catch (e) {
+		err = e;
+	}
+
+	assert.ok(isPluginHostError(err) && err.status === 500);
+	assert.match(err.message, /Failed to delete workspace metadata.*plugin state was already deleted; metadata remains/i);
+	assert.equal(stateRemoved, true, "State was deleted");
+	assert.equal(placementRemoved, false, "Placement was not removed");
+
+	// Journal records state-deleted stage
+	const journal = store.readDeletionJournal?.() ?? [];
+	assert.equal(journal.length, 1);
+	const entry = journal[0]!;
+	assert.equal(entry.workspaceId, targetId);
+	assert.equal(entry.stage, "state-deleted");
+
+	store.delete = originalDelete;
+});
+
+it("P1: deletion phase 3 failure records metadata-deleted in journal and leaves placement for retry", async () => {
+	const dir = path.join(root, "p1-phase3-fail");
+	const store = createWorkspaceStore(dir);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000103");
+	store.create(makeRecord(targetId));
+
+	const stateStore = {
+		open: () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
+		remove: () => {},
+	};
+
+	const service = createWorkspaceService({ store });
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		workspaces: service,
+		workspaceStateStore: stateStore,
+		onWorkspaceDeleted: () => {
+			throw new Error("Organization store ENOSPC");
+		},
+		createServices: () => ({} as any),
+	});
+	await host.initialize();
+
+	let err: any;
+	try {
+		await host.deleteWorkspace(targetId);
+	} catch (e) {
+		err = e;
+	}
+
+	assert.ok(isPluginHostError(err) && err.status === 500);
+	assert.match(err.message, /Failed to remove workspace placement.*metadata and state were deleted/i);
+
+	// Metadata is deleted on disk
+	assert.equal(fs.existsSync(path.join(dir, `${targetId}.json`)), false);
+	assert.equal(store.read(targetId), null);
+
+	// Journal retains interrupted entry with metadata-deleted stage
+	const journal = store.readDeletionJournal?.() ?? [];
+	assert.equal(journal.length, 1);
+	const entry = journal[0]!;
+	assert.equal(entry.workspaceId, targetId);
+	assert.equal(entry.stage, "metadata-deleted");
+
+	// Reconciliation reports this interrupted deletion
+	assert.deepEqual(store.inspect().interruptedDeletionIds, [targetId]);
+});
+
+it("P1: idempotent repetition completes an interrupted deletion and cleans up journal", async () => {
+	const dir = path.join(root, "p1-retry");
+	const store = createWorkspaceStore(dir);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000104");
+	store.create(makeRecord(targetId));
+
+	let throwPlacement = true;
+	let placementCleaned = false;
+
+	const service = createWorkspaceService({ store });
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		workspaces: service,
+		workspaceStateStore: {
+			open: () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
+			remove: () => {},
+		},
+		onWorkspaceDeleted: () => {
+			if (throwPlacement) throw new Error("Transient network failure");
+			placementCleaned = true;
+		},
+		createServices: () => ({} as any),
+	});
+	await host.initialize();
+
+	// First attempt fails at Phase 3
+	await assert.rejects(() => host.deleteWorkspace(targetId), /Failed to remove workspace placement/);
+	assert.equal(store.readDeletionJournal?.().length, 1);
+
+	// Retry after transient error clears: completes successfully without 404!
+	throwPlacement = false;
+	await host.deleteWorkspace(targetId);
+	assert.equal(placementCleaned, true, "Placement was removed on retry");
+
+	// Journal is now completely clean
+	assert.equal(store.readDeletionJournal?.().length, 0);
+	assert.equal(fs.existsSync(path.join(dir, "deletions.json")), false, "Journal file removed after completion");
+
+	// Third attempt now returns 404 (fully deleted and no dangling traces)
+	await assert.rejects(() => host.deleteWorkspace(targetId), status(404));
+});
+
+it("P1: system restart with incomplete deletion automatically recovers and cleans up", async () => {
+	const dir = path.join(root, "p1-restart");
+	const store = createWorkspaceStore(dir);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000105");
+
+	// Pre-populate journal simulating crash after metadata deletion (Phase 2 done)
+	store.recordPendingDeletion?.({
+		workspaceId: targetId,
+		pluginId: "test-plugin",
+		stage: "metadata-deleted",
+		startedAt: NOW,
+	});
+
+	let placementCleaned = false;
+	const service = createWorkspaceService({ store });
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		workspaces: service,
+		workspaceStateStore: {
+			open: () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
+			remove: () => {},
+		},
+		onWorkspaceDeleted: (id) => {
+			if (id === targetId) placementCleaned = true;
+		},
+		createServices: () => ({} as any),
+	});
+
+	// Booting the host triggers initializeInternal() which recovers interrupted deletions
+	await host.initialize();
+
+	assert.equal(placementCleaned, true, "Interrupted deletion was resumed and placement removed on restart");
+	assert.equal(store.readDeletionJournal?.().length, 0, "Journal was cleared on recovery");
+});
+
+// ─── 2. P2: Inconsistent Workspace Recovery via API & Transport ──────────────
+
+it("P2: recovery endpoint identifies issues, recovers orphan, and removes missing references", async () => {
+	const dir = path.join(root, "p2-recovery");
+	const store = createWorkspaceStore(dir);
+	const ws1 = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000201");
+	const ws2 = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000202");
+	const orphan = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000203");
+
+	store.create(makeRecord(ws1));
+	store.create(makeRecord(ws2));
+
+	// 1. Create an orphan file on disk (valid record not in index)
+	fs.writeFileSync(path.join(dir, `${orphan}.json`), JSON.stringify(makeRecord(orphan), null, 2));
+
+	// 2. Create a missing record reference (in index, file deleted)
+	fs.unlinkSync(path.join(dir, `${ws2}.json`));
+
+	const service = createWorkspaceService({ store });
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		workspaces: service,
+		createServices: () => ({} as any),
+	});
+	await host.initialize();
+
+	const transport = createPluginTransport({
+		getHost: async () => host,
+		directory: dir,
+	});
+
+	// Inspect via transport
+	const inspectRes = await transport.inspectWorkspaces();
+	assert.equal(inspectRes.status, 200);
+	const inspectBody = await inspectRes.json();
+	assert.deepEqual(inspectBody.orphanIds, [orphan]);
+	assert.deepEqual(inspectBody.missingIds, [ws2]);
+
+	// Recover orphan via transport
+	const recoverReq = new Request("http://localhost/api/workspaces/recovery", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ action: "recover-orphan", id: orphan }),
+	});
+	const recoverRes = await transport.recoverWorkspace(recoverReq);
+	assert.equal(recoverRes.status, 200);
+	const recoverBody = await recoverRes.json();
+	assert.equal(recoverBody.ok, true);
+	assert.deepEqual(store.read(orphan)?.id, orphan, "Orphan is now indexed and readable");
+
+	// Remove missing reference via transport
+	const removeMissingReq = new Request("http://localhost/api/workspaces/recovery", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ action: "remove-missing-reference", id: ws2 }),
+	});
+	const removeMissingRes = await transport.recoverWorkspace(removeMissingReq);
+	assert.equal(removeMissingRes.status, 200);
+	const removeMissingBody = await removeMissingRes.json();
+	assert.equal(removeMissingBody.ok, true);
+
+	// After recovery, both anomalies are resolved
+	const finalInspect = await (await transport.inspectWorkspaces()).json();
+	assert.deepEqual(finalInspect.orphanIds, []);
+	assert.deepEqual(finalInspect.missingIds, []);
+});
+
+it("P2: recovery endpoint rejects invalid actions and does not overwrite corrupt records", async () => {
+	const dir = path.join(root, "p2-corrupt-reject");
+	fs.mkdirSync(dir, { recursive: true });
+	const store = createWorkspaceStore(dir);
+	const corruptId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000204");
+	// Write corrupt JSON on disk
+	fs.writeFileSync(path.join(dir, `${corruptId}.json`), "{ corrupt json");
+
+	const service = createWorkspaceService({ store });
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		workspaces: service,
+		createServices: () => ({} as any),
+	});
+	await host.initialize();
+
+	const transport = createPluginTransport({
+		getHost: async () => host,
+		directory: dir,
+	});
+
+	// Attempting to recover corrupt orphan must be rejected with 400
+	const badReq = new Request("http://localhost/api/workspaces/recovery", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ action: "recover-orphan", id: corruptId }),
+	});
+	const badRes = await transport.recoverWorkspace(badReq);
+	assert.equal(badRes.status, 400);
+
+	// File on disk remains untouched (not overwritten with empty record)
+	assert.equal(fs.readFileSync(path.join(dir, `${corruptId}.json`), "utf8"), "{ corrupt json");
+});
+
+// ─── 3. P2: Organization V2 Strict Validation ────────────────────────────────
+
+it("P2: parseOrganizationV2 rejects placements pointing to nonexistent folders", () => {
+	const invalidState = {
+		version: 2,
+		folders: [{ id: "f1", name: "Folder 1", parentId: null, createdAt: NOW }],
+		placements: {
+			[chatKey("c1")]: { folderId: "f1" },
+			[workspaceKey("w1")]: { folderId: "f-nonexistent" }, // Non-existent folder!
+		},
+	};
+	assert.throws(
+		() => parseOrganizationV2(invalidState),
+		/placement references nonexistent folder f-nonexistent/i,
+	);
+});
+
+it("P2: parseOrganizationV2 rejects folder self-reference and cycles", () => {
+	const selfCycle = {
+		version: 2,
+		folders: [{ id: "f1", name: "Folder 1", parentId: "f1", createdAt: NOW }],
+		placements: {},
+	};
+	assert.throws(() => parseOrganizationV2(selfCycle), /folder cycle/i);
+
+	const deepCycle = {
+		version: 2,
+		folders: [
+			{ id: "f1", name: "Folder 1", parentId: "f2", createdAt: NOW },
+			{ id: "f2", name: "Folder 2", parentId: "f1", createdAt: NOW },
+		],
+		placements: {},
+	};
+	assert.throws(() => parseOrganizationV2(deepCycle), /folder cycle/i);
+});
+
+it("P2: parseOrganizationV2 rejects duplicate folder IDs and unknown properties", () => {
+	const duplicateIds = {
+		version: 2,
+		folders: [
+			{ id: "f1", name: "Folder 1", parentId: null, createdAt: NOW },
+			{ id: "f1", name: "Folder 2", parentId: null, createdAt: NOW },
+		],
+		placements: {},
+	};
+	assert.throws(() => parseOrganizationV2(duplicateIds), /duplicate folder id/i);
+
+	const unknownTopKey = {
+		version: 2,
+		folders: [],
+		placements: {},
+		extraField: "bad",
+	};
+	assert.throws(() => parseOrganizationV2(unknownTopKey), /unknown top-level property/i);
+
+	const unknownPlacementKey = {
+		version: 2,
+		folders: [{ id: "f1", name: "Folder 1", parentId: null, createdAt: NOW }],
+		placements: {
+			[chatKey("c1")]: { folderId: "f1", unknownProp: 123 },
+		},
+	};
+	assert.throws(() => parseOrganizationV2(unknownPlacementKey), /unknown placement property/i);
+});
+
+it("P2: parseOrganizationV2 rejects non-finite order and invalid timestamps", () => {
+	const nanOrder = {
+		version: 2,
+		folders: [{ id: "f1", name: "Folder 1", parentId: null, createdAt: NOW, order: Number.NaN }],
+		placements: {},
+	};
+	assert.throws(() => parseOrganizationV2(nanOrder), /invalid folder entry/i);
+
+	const badDate = {
+		version: 2,
+		folders: [{ id: "f1", name: "Folder 1", parentId: null, createdAt: "not-a-date" }],
+		placements: {},
+	};
+	assert.throws(() => parseOrganizationV2(badDate), /invalid folder entry/i);
+});
+
+it("P2: migrateV1toV2 normalizes dangling folderId to root (null) without losing chat", () => {
+	const v1WithDangling = {
+		version: 1 as const,
+		folders: [{ id: "f1", name: "Folder 1", parentId: null, createdAt: NOW }],
+		placements: {
+			c1: { folderId: "f1" },
+			c2: { folderId: "missing-folder" }, // Dangling in v1
+		},
+	};
+	const migrated = migrateV1toV2(v1WithDangling);
+	assert.equal(migrated.version, 2);
+	assert.deepEqual(migrated.placements[chatKey("c1")], { folderId: "f1" });
+	assert.deepEqual(migrated.placements[chatKey("c2")], { folderId: null }, "Dangling folder reference normalized to root");
+	// Output of migration passes strict parseOrganizationV2
+	assert.doesNotThrow(() => parseOrganizationV2(migrated));
+});
+
+function status(code: number) {
+	return (err: unknown) => isPluginHostError(err) && err.status === code;
+}

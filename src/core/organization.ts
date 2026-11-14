@@ -116,6 +116,9 @@ export function parseOrganizationV2(raw: unknown): OrganizationV2 {
 	};
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) return fail("not an object");
 	const r = raw as Partial<OrganizationV2>;
+	if (typeof r.version === "number" && r.version > 2) {
+		return fail("newer version than supported");
+	}
 	if (
 		r.version !== 2 ||
 		!Array.isArray(r.folders) ||
@@ -126,20 +129,40 @@ export function parseOrganizationV2(raw: unknown): OrganizationV2 {
 		return fail("invalid version or structure");
 	}
 
+	const allowedTopKeys = new Set(["version", "folders", "placements"]);
+	for (const key of Object.keys(r)) {
+		if (!allowedTopKeys.has(key)) {
+			return fail(`unknown top-level property "${key}"`);
+		}
+	}
+
 	const folderIds = new Set<string>();
+	const allowedFolderKeys = new Set(["id", "name", "parentId", "createdAt", "updatedAt", "archivedAt", "order"]);
+
 	for (const f of r.folders) {
+		if (!f || typeof f !== "object" || Array.isArray(f)) {
+			return fail("invalid folder entry");
+		}
+		for (const key of Object.keys(f)) {
+			if (!allowedFolderKeys.has(key)) {
+				return fail(`unknown folder property "${key}"`);
+			}
+		}
+		if (folderIds.has(f.id)) {
+			return fail(`duplicate folder id: ${f.id}`);
+		}
 		if (
-			!f ||
 			typeof f.id !== "string" ||
-			!f.id ||
-			folderIds.has(f.id) ||
+			!f.id.trim() ||
 			typeof f.name !== "string" ||
 			!f.name.trim() ||
-			(f.parentId !== null && typeof f.parentId !== "string") ||
+			(f.parentId !== null && (typeof f.parentId !== "string" || !f.parentId.trim())) ||
 			typeof f.createdAt !== "string" ||
-			(f.updatedAt !== undefined && typeof f.updatedAt !== "string") ||
-			(f.archivedAt !== undefined && f.archivedAt !== null && typeof f.archivedAt !== "string") ||
-			(f.order !== undefined && typeof f.order !== "number")
+			!f.createdAt.trim() ||
+			Number.isNaN(Date.parse(f.createdAt)) ||
+			(f.updatedAt !== undefined && (typeof f.updatedAt !== "string" || !f.updatedAt.trim() || Number.isNaN(Date.parse(f.updatedAt)))) ||
+			(f.archivedAt !== undefined && f.archivedAt !== null && (typeof f.archivedAt !== "string" || !f.archivedAt.trim() || Number.isNaN(Date.parse(f.archivedAt)))) ||
+			(f.order !== undefined && (typeof f.order !== "number" || !Number.isFinite(f.order)))
 		) {
 			return fail("invalid folder entry");
 		}
@@ -148,8 +171,13 @@ export function parseOrganizationV2(raw: unknown): OrganizationV2 {
 
 	// Validate folder references and cycles
 	for (const f of r.folders) {
-		if (f.parentId !== null && !folderIds.has(f.parentId)) {
-			return fail(`missing parent folder ${f.parentId}`);
+		if (f.parentId !== null) {
+			if (!folderIds.has(f.parentId)) {
+				return fail(`missing parent folder ${f.parentId}`);
+			}
+			if (f.parentId === f.id) {
+				return fail(`folder cycle detected on ${f.id}`);
+			}
 		}
 	}
 	// Cycle check using canMoveFolderV2
@@ -159,17 +187,33 @@ export function parseOrganizationV2(raw: unknown): OrganizationV2 {
 		}
 	}
 
+	const allowedPlacementKeys = new Set(["folderId", "archivedAt", "order"]);
 	for (const [key, p] of Object.entries(r.placements)) {
 		// All keys must be valid ItemKeys
 		if (!key || parseItemKey(key) === null) {
 			return fail(`invalid placement key: ${key}`);
 		}
+		const itemId = itemKeyId(key as ItemKey);
+		if (!itemId.trim()) {
+			return fail(`empty item id in placement key: ${key}`);
+		}
+		if (!p || typeof p !== "object" || Array.isArray(p)) {
+			return fail("invalid placement");
+		}
+		for (const key of Object.keys(p)) {
+			if (!allowedPlacementKeys.has(key)) {
+				return fail(`unknown placement property "${key}"`);
+			}
+		}
+		if (p.folderId !== null && (typeof p.folderId !== "string" || !p.folderId.trim())) {
+			return fail("invalid placement");
+		}
+		if (p.folderId !== null && !folderIds.has(p.folderId)) {
+			return fail(`placement references nonexistent folder ${p.folderId}`);
+		}
 		if (
-			!p ||
-			typeof p !== "object" ||
-			(p.folderId !== null && (typeof p.folderId !== "string" || !p.folderId)) ||
-			(p.archivedAt !== undefined && p.archivedAt !== null && typeof p.archivedAt !== "string") ||
-			(p.order !== undefined && typeof p.order !== "number")
+			(p.archivedAt !== undefined && p.archivedAt !== null && (typeof p.archivedAt !== "string" || !p.archivedAt.trim() || Number.isNaN(Date.parse(p.archivedAt)))) ||
+			(p.order !== undefined && (typeof p.order !== "number" || !Number.isFinite(p.order)))
 		) {
 			return fail("invalid placement");
 		}
@@ -314,9 +358,10 @@ export function migrateV1toV2(v1: {
 	folders: ChatFolder[];
 	placements: Record<string, unknown>;
 }): OrganizationV2 {
+	const folderIds = new Set(v1.folders.map((f) => f.id));
 	const placements: Record<string, ItemPlacement> = {};
 	for (const [rawId, raw] of Object.entries(v1.placements)) {
-		if (!rawId) continue;
+		if (!rawId || typeof rawId !== "string" || !rawId.trim()) continue;
 		if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
 			console.warn(`[organization] skipping corrupt v1 placement for key "${rawId}"`);
 			continue;
@@ -325,17 +370,17 @@ export function migrateV1toV2(v1: {
 		const folderId =
 			p.folderId === null
 				? null
-				: typeof p.folderId === "string" && p.folderId
+				: typeof p.folderId === "string" && p.folderId && folderIds.has(p.folderId)
 					? p.folderId
 					: null;
 		const archivedAt =
 			p.archivedAt === null
 				? null
-				: typeof p.archivedAt === "string"
+				: typeof p.archivedAt === "string" && p.archivedAt.trim() && !Number.isNaN(Date.parse(p.archivedAt))
 					? p.archivedAt
 					: undefined;
-		const order = typeof p.order === "number" && !Number.isNaN(p.order) ? p.order : undefined;
-		const key = chatKey(rawId);
+		const order = typeof p.order === "number" && Number.isFinite(p.order) ? p.order : undefined;
+		const key = chatKey(rawId.trim());
 		placements[key] = {
 			folderId,
 			...(archivedAt !== undefined ? { archivedAt } : {}),

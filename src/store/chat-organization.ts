@@ -112,9 +112,40 @@ export const chatOrganizationStore: ChatOrganizationStore = {
 		// lazy migration) so recorded workspace placements survive.
 		const valid = parseChatOrganization(state);
 		const current = organizationV2Store.read();
+
+		// Preserve folders referenced by workspace placements (and their ancestor chains)
+		// so chat-only writes cannot accidentally delete folders containing workspaces.
+		const currentFolderMap = new Map(current.folders.map((f) => [f.id, f]));
+		const workspaceFolderIds = new Set<string>();
+		for (const [key, p] of Object.entries(current.placements)) {
+			if (key.startsWith("workspace:") && p.folderId) {
+				workspaceFolderIds.add(p.folderId);
+			}
+		}
+		const requiredFolderIds = new Set<string>();
+		for (const wsFolderId of workspaceFolderIds) {
+			let curr: string | null = wsFolderId;
+			while (curr !== null) {
+				requiredFolderIds.add(curr);
+				curr = currentFolderMap.get(curr)?.parentId ?? null;
+			}
+		}
+
+		const validFolderIds = new Set(valid.folders.map((f) => f.id));
+		const mergedFolders = [...valid.folders];
+		for (const reqId of requiredFolderIds) {
+			if (!validFolderIds.has(reqId)) {
+				const folderToKeep = currentFolderMap.get(reqId);
+				if (folderToKeep) {
+					mergedFolders.push(folderToKeep);
+					validFolderIds.add(reqId);
+				}
+			}
+		}
+
 		const next: OrganizationV2 = {
 			version: 2,
-			folders: valid.folders,
+			folders: mergedFolders,
 			placements: { ...current.placements },
 		};
 		for (const key of Object.keys(next.placements)) {
@@ -123,6 +154,14 @@ export const chatOrganizationStore: ChatOrganizationStore = {
 		for (const [id, placement] of Object.entries(valid.placements)) {
 			next.placements[chatKey(id)] = placement;
 		}
+
+		// Ensure no workspace placement is left pointing to an unpreserved folder
+		for (const [key, p] of Object.entries(next.placements)) {
+			if (key.startsWith("workspace:") && p.folderId !== null && !validFolderIds.has(p.folderId)) {
+				next.placements[key] = { ...p, folderId: null };
+			}
+		}
+
 		organizationV2Store.write(next);
 	},
 };
