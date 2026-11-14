@@ -28,6 +28,7 @@ export const PATHS = {
 	data: DATA_ROOT,
 	/** Chat sessions (AI SDK UIMessage transcripts, one JSON file per chat). */
 	chats: path.join(/* turbopackIgnore: true */ DATA_ROOT, "chats"),
+	workspaces: path.join(/* turbopackIgnore: true */ DATA_ROOT, "workspaces"),
 	graph: path.join(/* turbopackIgnore: true */ DATA_ROOT, "graph"),
 	materials: path.join(/* turbopackIgnore: true */ DATA_ROOT, "graph", "materials"),
 	study: path.join(/* turbopackIgnore: true */ DATA_ROOT, "study"),
@@ -91,6 +92,7 @@ export const SOURCES_FILE = path.join(/* turbopackIgnore: true */ PATHS.graph, "
 export const SOURCE_ORGANIZATION_FILE = path.join(/* turbopackIgnore: true */ PATHS.graph, "source-organization.json");
 /** Chat folder organization, ordering, and archive metadata. */
 export const CHAT_ORGANIZATION_FILE = path.join(/* turbopackIgnore: true */ DATA_ROOT, "chat-organization.json");
+export const WORKSPACE_INDEX_FILE = path.join(/* turbopackIgnore: true */ PATHS.workspaces, "index.json");
 /** The layout ledger (read-modify-write like sources.json): nodeId →
  *  {x,y} resting positions from the incremental settle (core/layout.ts).
  *  Carries an updatedAt stamp for future live-physics conflict handling. */

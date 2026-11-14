@@ -22,6 +22,7 @@ export * from "./ports.ts";
 export * from "./chains.ts";
 export * from "./source-organization.ts";
 export * from "./chat-organization.ts";
+export * from "./workspaces.ts";
 export * from "./topic-organization.ts";
 export * from "./source-selection.ts";
 export * from "./source-label.ts";

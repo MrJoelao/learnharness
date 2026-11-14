@@ -178,6 +178,18 @@ export interface ChatOrganizationStore {
 	write(state: import("./chat-organization.ts").ChatOrganization): void;
 }
 
+/** host-owned workspace metadata, separate from chat transcripts and plugin state. */
+export interface WorkspaceStore {
+	list(): import("./workspaces.ts").WorkspaceDirectory;
+	read(id: import("./workspaces.ts").WorkspaceId): import("./workspaces.ts").WorkspaceRecord | null;
+	create(record: import("./workspaces.ts").WorkspaceRecord): void;
+	update(record: import("./workspaces.ts").WorkspaceRecord): void;
+	delete(id: import("./workspaces.ts").WorkspaceId): void;
+	inspect(): import("./workspaces.ts").WorkspaceReconciliation;
+	recoverOrphan(id: import("./workspaces.ts").WorkspaceId): void;
+	removeMissingReference(id: import("./workspaces.ts").WorkspaceId): void;
+}
+
 /** Semantic topic groupings (topics.json): LLM-assigned, user-correctable.
  *  Presentation metadata separate from graph ledgers — same pattern as
  *  source-organization.ts. */
