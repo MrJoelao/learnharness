@@ -15,6 +15,10 @@ import type { PluginAgentService } from "../core/plugin-agents.ts";
 import type { PluginWorkerService } from "../core/plugin-workers.ts";
 import type { ServerEvent } from "../core/events.ts";
 import { safePluginDataDirectory } from "../store/plugin-data-paths.ts";
+import { createPluginWorkspaceState } from "../store/plugin-workspace-state.ts";
+import { PLUGIN_MODE_ID_PATTERN, preparePluginMode } from "../core/plugin-modes.ts";
+import type { PluginModeMetadata, PluginWorkspaceCreateContext } from "../core/plugins.ts";
+import { parseWorkspaceId, parseWorkspaceTitle, type WorkspaceId, type WorkspaceRecord } from "../core/workspaces.ts";
 
 /** Expected host/transport failure. Exceptions thrown by plugin handlers stay ordinary 500 errors. */
 export class PluginHostError extends Error {
@@ -50,6 +54,12 @@ export interface PluginHostDependencies {
 	subscribeEvents?: (listener: (event: ServerEvent) => void) => () => void;
 	/** Startup installation/recovery failures, including failures before a package directory exists. */
 	installationErrors?: Record<string, string>;
+	workspaces?: {
+		create(input: { pluginId: string; modeId: string; title: string }): WorkspaceRecord;
+		read(id: WorkspaceId): WorkspaceRecord | null;
+		rename(id: WorkspaceId, title: string): WorkspaceRecord;
+		delete(id: WorkspaceId): void;
+	};
 }
 interface Instructions { agents: Set<PluginAgentKind>; text: string }
 interface Tools { agents: Set<PluginAgentKind>; create: PluginTools["create"] }
@@ -78,6 +88,8 @@ interface Activation {
 	tools: Set<Tools>;
 	questions: Map<string, QuestionDefinition>;
 	problems: Map<string, NativePluginProblemDefinition>;
+	modes: Map<string, { metadata: PluginModeMetadata; initializeWorkspace: (context: PluginWorkspaceCreateContext) => void | Promise<void> }>;
+	dataDirectory: string;
 	ready: boolean;
 }
 interface Package {
@@ -216,6 +228,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 		activation.tools.clear();
 		activation.questions.clear();
 		activation.problems.clear();
+		activation.modes.clear();
 		activation.controller.abort();
 		const failures: string[] = [];
 		for (const cleanup of activation.cleanups.splice(0).reverse()) {
@@ -230,7 +243,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			return;
 		}
 		const manifest = pkg.info.manifest;
-		const activation: Activation = { controller: new AbortController(), cleanups: [], handlers: new Map(), instructions: new Set(), tools: new Set(), questions: new Map(), problems: new Map(), ready: false };
+		const activation: Activation = { controller: new AbortController(), cleanups: [], handlers: new Map(), instructions: new Set(), tools: new Set(), questions: new Map(), problems: new Map(), modes: new Map(), dataDirectory: "", ready: false };
 		pkg.activation = activation;
 		const requireLive = () => { if (!live(pkg, activation)) throw new Error("Plugin activation is no longer active"); };
 		const cleanup = (fn: PluginCleanup) => {
@@ -241,7 +254,8 @@ export function createPluginHost(deps: PluginHostDependencies) {
 		try {
 			if (manifest.backend) {
 				pluginRoot(pkg.rootDirectory);
-				const dataDirectory = safePluginDataDirectory(directory, manifest.id, coreData, true)!;
+				activation.dataDirectory = safePluginDataDirectory(directory, manifest.id, coreData, true)!;
+				const dataDirectory = activation.dataDirectory;
 				const services = deps.createServices({ manifest, directory: pkg.directory, dataDirectory, signal: activation.controller.signal, cleanup });
 				cleanup(() => services.agents.dispose());
 				cleanup(() => services.workers.dispose());
@@ -291,6 +305,18 @@ export function createPluginHost(deps: PluginHostDependencies) {
 							if (activation.problems.get(registered.id) !== registered) return;
 							activation.problems.delete(registered.id);
 							controller.abort();
+							if (activation.ready && live(pkg, activation)) change();
+						};
+					},
+					registerMode(definition) {
+						requireLive();
+						const registered = preparePluginMode(definition, manifest.id);
+						if (activation.modes.has(registered.metadata.id)) throw new Error(`Duplicate plugin mode: ${registered.metadata.id}`);
+						activation.modes.set(registered.metadata.id, registered);
+						if (activation.ready) change();
+						return () => {
+							if (activation.modes.get(registered.metadata.id) !== registered) return;
+							activation.modes.delete(registered.metadata.id);
 							if (activation.ready && live(pkg, activation)) change();
 						};
 					},
@@ -542,6 +568,69 @@ export function createPluginHost(deps: PluginHostDependencies) {
 		list(): PluginInfo[] {
 			assertOpen();
 			return [...packages.values()].map(({ info }) => ({ ...info, ...(info.manifest ? { manifest: { ...info.manifest } } : {}) })).sort((a, b) => a.id.localeCompare(b.id));
+		},
+		modes(): PluginModeMetadata[] {
+			assertOpen();
+			if (!initialized) throw new PluginHostError(503, "Plugin host is not initialized");
+			return [...packages.values()].flatMap(pkg => {
+				const activation = pkg.activation;
+				if (!pkg.info.enabled || pkg.restart || !activation?.ready || !live(pkg, activation)) return [];
+				return [...activation.modes.values()].map(mode => ({ ...mode.metadata }));
+			}).sort((a, b) => a.name.localeCompare(b.name) || a.pluginId.localeCompare(b.pluginId) || a.id.localeCompare(b.id));
+		},
+		async createWorkspace(input: { pluginId: string; modeId: string; title?: string }): Promise<WorkspaceRecord> {
+			assertOpen();
+			if (!initialized) throw new PluginHostError(503, "Plugin host is not initialized");
+			if (!deps.workspaces) throw new PluginHostError(503, "Workspace creation is unavailable");
+			if (!input || typeof input !== "object" || typeof input.pluginId !== "string" || !PLUGIN_ID_PATTERN.test(input.pluginId)
+				|| typeof input.modeId !== "string" || !PLUGIN_MODE_ID_PATTERN.test(input.modeId)) throw new PluginHostError(400, "Invalid workspace mode identity");
+			const pkg = packages.get(input.pluginId), activation = pkg?.activation;
+			if (!pkg || !pkg.info.enabled || pkg.restart || !activation?.ready || !live(pkg, activation)) throw new PluginHostError(409, "Plugin is disabled or unavailable");
+			const mode = activation.modes.get(input.modeId);
+			if (!mode) throw new PluginHostError(404, "Mode is not registered or available");
+			let title: string;
+			try { title = parseWorkspaceTitle(input.title ?? mode.metadata.name); } catch (error) { throw new PluginHostError(400, error instanceof Error ? error.message : "Invalid workspace title"); }
+			const workspace = deps.workspaces.create({ pluginId: pkg.info.id, modeId: mode.metadata.id, title });
+			try {
+				const signal = activation.controller.signal;
+				signal.throwIfAborted();
+				await mode.initializeWorkspace(Object.freeze({
+					workspace, signal,
+					storage: createPluginWorkspaceState(activation.dataDirectory, workspace.id),
+				}));
+				if (!live(pkg, activation) || activation.modes.get(input.modeId) !== mode) throw new PluginHostError(409, "Mode became unavailable during workspace creation");
+				return workspace;
+			} catch (error) {
+				try { deps.workspaces.delete(workspace.id); } catch { /* Preserve the primary initialization failure. */ }
+				throw error;
+			}
+		},
+		workspaceState(idValue: string, key: string, operation: "get" | "set" | "delete", value?: unknown): { found: boolean; value?: unknown } {
+			assertOpen();
+			if (!initialized) throw new PluginHostError(503, "Plugin host is not initialized");
+			if (!deps.workspaces) throw new PluginHostError(503, "Workspace storage is unavailable");
+			let id: WorkspaceId;
+			try { id = parseWorkspaceId(idValue); } catch { throw new PluginHostError(400, "Invalid workspace ID"); }
+			if (typeof key !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(key)) throw new PluginHostError(400, "Invalid workspace state key");
+			const workspace = deps.workspaces.read(id);
+			if (!workspace) throw new PluginHostError(404, "Workspace not found");
+			const pkg = packages.get(workspace.pluginId), activation = pkg?.activation;
+			if (!pkg || !pkg.info.enabled || pkg.restart || !activation?.ready || !live(pkg, activation)) throw new PluginHostError(409, "Workspace plugin is disabled or unavailable");
+			if (!activation.modes.has(workspace.modeId)) throw new PluginHostError(409, "Workspace mode is unavailable");
+			const storage = createPluginWorkspaceState(activation.dataDirectory, id);
+			if (operation === "get") { const stored = storage.get(key); return stored === undefined ? { found: false } : { found: true, value: stored }; }
+			if (operation === "set") { storage.set(key, value); return { found: true }; }
+			storage.delete(key); return { found: false };
+		},
+		renameWorkspace(idValue: string, title: string): WorkspaceRecord {
+			assertOpen();
+			if (!initialized) throw new PluginHostError(503, "Plugin host is not initialized");
+			if (!deps.workspaces) throw new PluginHostError(503, "Workspace metadata is unavailable");
+			let id: WorkspaceId;
+			try { id = parseWorkspaceId(idValue); } catch { throw new PluginHostError(400, "Invalid workspace ID"); }
+			if (!deps.workspaces.read(id)) throw new PluginHostError(404, "Workspace not found");
+			try { return deps.workspaces.rename(id, parseWorkspaceTitle(title)); }
+			catch (error) { if (error instanceof PluginHostError) throw error; throw new PluginHostError(400, error instanceof Error ? error.message : "Invalid workspace title"); }
 		},
 		setEnabled(id: string, enabled: boolean): Promise<void> {
 			// Let a cooperative in-flight activation finish so queued teardown cannot deadlock.

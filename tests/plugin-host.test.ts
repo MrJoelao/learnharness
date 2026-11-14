@@ -12,6 +12,8 @@ import type { PluginWorkerService } from "../src/core/plugin-workers.ts";
 import type { ServerEvent } from "../src/core/events.ts";
 import { createPluginWorkerService } from "../src/agent/plugin-workers.ts";
 import { createPluginTaskRecordStore } from "../src/store/plugin-task-records.ts";
+import { createWorkspaceStore } from "../src/store/workspaces.ts";
+import { createWorkspaceService } from "../src/server/workspaces.ts";
 
 function fixture(t: TestContext) {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-host-"));
@@ -21,9 +23,10 @@ function fixture(t: TestContext) {
 	const listeners = new Set<(event: ServerEvent) => void>();
 	const history: string[] = [];
 	const notifications: unknown[] = [];
+	const workspaces = createWorkspaceService({ store: createWorkspaceStore(path.join(root, "workspaces")) });
 	let servicesCreated = 0;
 	const deps: PluginHostDependencies = {
-		directory, appVersion: "0.3.7",
+		directory, appVersion: "0.3.7", workspaces,
 		createServices() {
 			servicesCreated++;
 			return { learning: { directory: root, history } as unknown as PluginLearningData, inference: {} as PluginInference,
@@ -73,6 +76,40 @@ test("factory has no IO; disabled discovery never evaluates backend; broken pack
 	await f.host.setEnabled("example", true);
 	assert.match(f.host.list().find(p => p.id === "example")!.error!, /evaluated disabled code/);
 	assert.equal(f.history.at(-1), "agents");
+});
+
+test("backend modes are validated, projected only while active, and initialize independent workspace state", async t => {
+	const f = fixture(t);
+	f.plugin("modes", {}, `exports.activate = ctx => {
+	  ctx.registerMode({ id: "memory-lab", name: "Memory Lab", description: "Practice recall", category: "Practice", tags: ["memory"], initializeWorkspace: ({ workspace, storage }) => storage.set("seed", { id: workspace.id }) });
+	  ctx.registerMode({ id: "tree-lab", name: "Tree Lab", description: "Explore trees", category: "Visual", initializeWorkspace() {} });
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("modes", true);
+	assert.deepEqual(f.host.modes().map(mode => mode.id), ["memory-lab", "tree-lab"]);
+	const first = await f.host.createWorkspace({ pluginId: "modes", modeId: "memory-lab" });
+	const second = await f.host.createWorkspace({ pluginId: "modes", modeId: "memory-lab" });
+	assert.notEqual(first.id, second.id);
+	assert.deepEqual(f.host.workspaceState(first.id, "seed", "get"), { found: true, value: { id: first.id } });
+	assert.deepEqual(f.host.workspaceState(second.id, "seed", "get"), { found: true, value: { id: second.id } });
+	await f.host.setEnabled("modes", false);
+	assert.deepEqual(f.host.modes(), []);
+	await assert.rejects(f.host.createWorkspace({ pluginId: "modes", modeId: "memory-lab" }), status(409));
+});
+
+test("invalid and duplicate backend mode declarations fail plugin admission", async t => {
+	const f = fixture(t);
+	f.plugin("invalid-mode", {}, `exports.activate = ctx => ctx.registerMode({ id: "../escape", name: "Bad", description: "Bad", category: "Bad", initializeWorkspace() {} });`);
+	f.plugin("duplicate-mode", {}, `exports.activate = ctx => {
+	  const definition = { id: "same", name: "Same", description: "Same", category: "Test", initializeWorkspace() {} };
+	  ctx.registerMode(definition); ctx.registerMode(definition);
+	};`);
+	await f.host.initialize();
+	await f.host.setEnabled("invalid-mode", true);
+	await f.host.setEnabled("duplicate-mode", true);
+	assert.match(f.host.list().find(plugin => plugin.id === "invalid-mode")!.error!, /Mode id/);
+	assert.match(f.host.list().find(plugin => plugin.id === "duplicate-mode")!.error!, /Duplicate plugin mode/);
+	assert.deepEqual(f.host.modes(), []);
 });
 
 test("native backend path/require, fresh activations, reverse cleanup, stale callbacks and unregister guards", async t => {

@@ -23,6 +23,7 @@ these are separate numbers, not interchangeable compatibility guarantees.
 | Submission interception, images and surfaces | [Session extensions](plugin-session-extension-contract.md) |
 | Current session snapshots and drafts | [View context](plugin-view-context.md) |
 | Controlled trees | [Tree contract](plugin-tree-contract.md) |
+| Backend-owned learning modes and workspaces | [Mode/workspace contract](plugin-mode-contract.md) |
 | Modal, menu, focus and Escape rules | [Interaction contract](dialog-overlay-contract.md) |
 | Host ownership and implementation boundaries | [Architecture](plugin-architecture.md) |
 
@@ -526,6 +527,34 @@ writes for important plugin-owned state under `ctx.dataDirectory`.
 Read transcripts for learner answers/thinking/mistakes: the graph is extracted from
 teacher prose, not a complete learner-response record. Cross-file reads are not
 transactional. Write derived feature data to plugin state, never core learning files.
+
+### Optional workspace modes
+
+Modes extend Plugin API v1 additively. A backend declares each mode with
+`ctx.registerMode({ id, name, description, category, initializeWorkspace, ... })`.
+IDs are stable and scoped to the owning plugin. Metadata is validated and detached
+at registration; unknown properties, duplicate IDs, invalid lengths/tags and missing
+initializers fail that plugin's activation visibly. No mode configuration object is
+accepted in this API version.
+
+The backend registration is authoritative for the catalog and every launch. The host
+rejects launches for disabled, removed, failed or unregistered modes. Initialization
+receives the new immutable workspace record, an activation-scoped abort signal and
+`storage.get/set/delete`; values are JSON and bounded to 1 MiB per key. Storage is
+namespaced by plugin and workspace ID under the plugin's writable data directory.
+The host owns workspace identity/title/timestamps; the plugin owns stored values and
+their schema. If initialization fails, the host removes the new metadata record and
+reports the failure. Existing workspaces/data remain when a mode is unregistered or
+its plugin is disabled/uninstalled.
+
+The frontend separately calls `ctx.registerModeRenderer(modeId, { mount })`. It can
+only bind to a mode declared by that same plugin's active backend, and it cannot
+create catalog entries or workspaces. Mount receives the workspace record, an
+abort signal, plugin-owned storage methods and `setTitle`. Renderer lookup uses the
+explicit `(pluginId, modeId)` pair. Missing/disabled renderers leave the saved
+workspace recoverable. The host owns route, title shell and unavailable state; the
+plugin owns the body and interaction model. See the separate
+[mode/workspace contract](plugin-mode-contract.md) and the [multi-mode example](plugin-examples.md#multi-mode-example).
 
 ## Existing agents and content renderers
 

@@ -1,10 +1,15 @@
 import { isPluginHostError } from "./plugin-host.ts";
 import { apiRequestRefusal } from "./desktop-access.ts";
-import type { PluginFrontendContext, PluginInfo } from "../core/plugins.ts";
+import type { PluginFrontendContext, PluginInfo, PluginModeMetadata } from "../core/plugins.ts";
+import type { WorkspaceRecord } from "../core/workspaces.ts";
 
 /** Thin HTTP adapter, separately injectable so its tests never boot plugins. */
 export interface PluginTransportHost {
 	list(): PluginInfo[];
+	modes(): PluginModeMetadata[];
+	createWorkspace(input: { pluginId: string; modeId: string; title?: string }): Promise<WorkspaceRecord>;
+	workspaceState(id: string, key: string, operation: "get" | "set" | "delete", value?: unknown): { found: boolean; value?: unknown };
+	renameWorkspace(id: string, title: string): WorkspaceRecord;
 	conflicts(): { id: string; error: string }[];
 	refresh(): Promise<void>;
 	setEnabled(id: string, enabled: boolean): Promise<void>;
@@ -14,9 +19,13 @@ export interface PluginTransportHost {
 }
 class InputError extends Error {}
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-async function objectBody(request: Request): Promise<Record<string, unknown>> {
+async function objectBody(request: Request, maxBytes = 1_048_576): Promise<Record<string, unknown>> {
 	let body: unknown;
-	try { body = await request.json(); } catch { throw new InputError("Expected a JSON object"); }
+	try {
+		const text = await request.text();
+		if (new TextEncoder().encode(text).byteLength > maxBytes) throw new InputError("Request body is too large");
+		body = JSON.parse(text);
+	} catch (error) { if (error instanceof InputError) throw error; throw new InputError("Expected a JSON object"); }
 	if (!body || typeof body !== "object" || Array.isArray(body)) throw new InputError("Expected a JSON object");
 	return body as Record<string, unknown>;
 }
@@ -31,6 +40,24 @@ export function createPluginTransport(deps: { getHost(): Promise<PluginTransport
 	const catalog = (host: PluginTransportHost) => ({ plugins: host.list(), directory: deps.directory, conflicts: host.conflicts() });
 	return {
 		list: () => guarded(async () => json(catalog(await deps.getHost()))),
+		modes: () => guarded(async () => json({ modes: (await deps.getHost()).modes() })),
+		createWorkspace: (request: Request) => guarded(async () => {
+			const body = await objectBody(request);
+			if (Object.keys(body).some(key => !["pluginId", "modeId", "title"].includes(key)) || typeof body.pluginId !== "string" || typeof body.modeId !== "string" || (body.title !== undefined && typeof body.title !== "string")) throw new InputError("Invalid workspace creation request");
+			return json({ workspace: await (await deps.getHost()).createWorkspace({ pluginId: body.pluginId, modeId: body.modeId, ...(body.title === undefined ? {} : { title: body.title }) }) });
+		}),
+		workspaceTitle: (id: string, request: Request) => guarded(async () => {
+			const body = await objectBody(request);
+			if (Object.keys(body).length !== 1 || typeof body.title !== "string") throw new InputError("Expected a workspace title");
+			return json({ workspace: (await deps.getHost()).renameWorkspace(id, body.title) });
+		}),
+		workspaceState: (id: string, key: string, request: Request, operation: "get" | "set" | "delete") => guarded(async () => {
+			const host = await deps.getHost();
+			if (operation === "get" || operation === "delete") return json(host.workspaceState(id, key, operation));
+			const body = await objectBody(request, 2_097_152);
+			if (Object.keys(body).length !== 1 || !Object.hasOwn(body, "value")) throw new InputError("Expected a value field");
+			return json(host.workspaceState(id, key, operation, body.value));
+		}),
 		refresh: (request: Request) => guarded(async () => {
 			const body = await objectBody(request);
 			if (body.action !== "refresh") throw new InputError("Expected action: refresh");

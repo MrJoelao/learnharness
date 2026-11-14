@@ -25,12 +25,13 @@ source management in the knowledge picker is not a programmable graph-write API.
 
 | Boundary | Main implementation |
 | --- | --- |
-| Public browser-safe contracts | `src/core/plugins.ts`, `plugin-ui.ts`, `plugin-agents.ts`, `plugin-workers.ts`, `plugin-questions.ts`, `plugin-problems.ts`, `plugin-submissions.ts`, `plugin-view-context.ts`, `plugin-tree.ts` |
+| Public browser-safe contracts | `src/core/plugins.ts`, `plugin-modes.ts`, `plugin-ui.ts`, `plugin-agents.ts`, `plugin-workers.ts`, `plugin-questions.ts`, `plugin-problems.ts`, `plugin-submissions.ts`, `plugin-view-context.ts`, `plugin-tree.ts` |
 | Server composition and runtime | `src/server/plugins.ts`, `plugin-host.ts` |
 | Native external backend loading | `scripts/plugin-loader.cjs` |
 | Browser module loading | `public/plugin-loader.js`, `components/plugin-manager.ts`, `plugins.tsx` |
 | Core selection/build staging | `core-plugins.json`, `scripts/build-core-plugins.mjs` |
 | Origin-aware writable data paths | `src/store/plugin-data-paths.ts` |
+| Workspace metadata and plugin state | `src/server/workspaces.ts`, `src/store/workspaces.ts`, `src/store/plugin-workspace-state.ts` |
 | Data/model adapters | `src/server/plugin-learning.ts`, `plugin-inference.ts` |
 | Persistent conversations/tasks | `src/agent/plugin-agents.ts`, `plugin-workers.ts`; `src/store/plugin-agent-records.ts`, `plugin-task-records.ts` |
 | Background result delivery/activity | `src/server/plugin-background-tools.ts`, `plugin-worker-activity.ts` and existing host jobs/steers |
@@ -97,6 +98,15 @@ Only declared frontend/style entries and `assets/` are publicly served, never ba
 code or persistent data. The frontend JSON operation bridge routes to the owning
 backend's registered handlers; it is not an arbitrary router. Document conversion uses
 a separate bounded multipart path, not that JSON bridge.
+
+Study Hub mode metadata is registered only by an active backend. `registerMode`
+validates and publishes metadata plus a server initialization hook; backend code never
+imports or executes a browser renderer. Frontends independently register a renderer for
+an explicitly declared `(pluginId, modeId)`. The host validates that pair against the
+server catalog, creates unique workspace records, and scopes JSON state beneath the
+owner plugin's data. Disable, unregister and missing renderer revoke availability but
+preserve existing host metadata and plugin state. See the
+[mode/workspace contract](plugin-mode-contract.md).
 
 ## Frontend presentation and interaction
 

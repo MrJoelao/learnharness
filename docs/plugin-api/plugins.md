@@ -23,6 +23,9 @@
 - [PluginInstructions](#plugininstructions)
 - [PluginLearningData](#pluginlearningdata)
 - [PluginManifest](#pluginmanifest)
+- [PluginModeDefinition](#pluginmodedefinition)
+- [PluginModeMetadata](#pluginmodemetadata)
+- [PluginModeRenderer](#pluginmoderenderer)
 - [PluginNotification](#pluginnotification)
 - [PluginPageActionContext](#pluginpageactioncontext)
 - [PluginSettingsRegistration](#pluginsettingsregistration)
@@ -31,6 +34,8 @@
 - [PluginToolRenderProps](#plugintoolrenderprops)
 - [PluginTools](#plugintools)
 - [PluginView](#pluginview)
+- [PluginWorkspaceCreateContext](#pluginworkspacecreatecontext)
+- [PluginWorkspaceRendererContext](#pluginworkspacerenderercontext)
 
 ## PluginAction
 
@@ -264,6 +269,7 @@ export interface PluginBackendContext {
     registerTools(contribution: PluginTools): () => void;
     registerQuestionType<Q extends TSchema, A extends TSchema>(definition: PluginQuestionTypeDefinition<Q, A>): () => void;
     registerProblemType<Q extends TSchema, S extends TSchema>(definition: PluginProblemTypeDefinition<Q, S>): () => void;
+    registerMode(definition: PluginModeDefinition): () => void;
     handle(name: string, handler: (input: unknown) => unknown | Promise<unknown>): () => void;
     events: {
         on(listener: (event: ServerEvent) => void): () => void;
@@ -272,7 +278,7 @@ export interface PluginBackendContext {
 }
 ```
 
-**Related types:** [PluginAgentService](plugin-agents.md#pluginagentservice), [PluginBackgroundTool](plugin-workers.md#pluginbackgroundtool), [PluginCleanup](plugins.md#plugincleanup), [PluginInference](plugins.md#plugininference), [PluginInstructions](plugins.md#plugininstructions), [PluginLearningData](plugins.md#pluginlearningdata), [PluginManifest](plugins.md#pluginmanifest), [PluginProblemTypeDefinition](plugin-problems.md#pluginproblemtypedefinition), [PluginQuestionTypeDefinition](plugin-questions.md#pluginquestiontypedefinition), [PluginToolContext](plugins.md#plugintoolcontext), [PluginTools](plugins.md#plugintools), [PluginWorkerService](plugin-workers.md#pluginworkerservice), [ServerEvent](events.md#serverevent).
+**Related types:** [PluginAgentService](plugin-agents.md#pluginagentservice), [PluginBackgroundTool](plugin-workers.md#pluginbackgroundtool), [PluginCleanup](plugins.md#plugincleanup), [PluginInference](plugins.md#plugininference), [PluginInstructions](plugins.md#plugininstructions), [PluginLearningData](plugins.md#pluginlearningdata), [PluginManifest](plugins.md#pluginmanifest), [PluginModeDefinition](plugins.md#pluginmodedefinition), [PluginProblemTypeDefinition](plugin-problems.md#pluginproblemtypedefinition), [PluginQuestionTypeDefinition](plugin-questions.md#pluginquestiontypedefinition), [PluginToolContext](plugins.md#plugintoolcontext), [PluginTools](plugins.md#plugintools), [PluginWorkerService](plugin-workers.md#pluginworkerservice), [ServerEvent](events.md#serverevent).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -290,6 +296,7 @@ export interface PluginBackendContext {
 - [registerTools](#pluginbackendcontext-registertools)
 - [registerQuestionType](#pluginbackendcontext-registerquestiontype)
 - [registerProblemType](#pluginbackendcontext-registerproblemtype)
+- [registerMode](#pluginbackendcontext-registermode)
 - [handle](#pluginbackendcontext-handle)
 - [events](#pluginbackendcontext-events)
 - [events.on](#pluginbackendcontext-eventson)
@@ -451,6 +458,23 @@ registerProblemType<Q extends TSchema, S extends TSchema>(definition: PluginProb
 | Parameter | Type |
 | --- | --- |
 | `definition` | `PluginProblemTypeDefinition<Q, S>` |
+
+**Returns:** `() => void`.
+
+### PluginBackendContext registerMode
+
+Register an optional Study Hub mode. Metadata and initialization run only
+on the server; the matching browser renderer registers separately. Duplicate
+IDs within a plugin throw. Unregistering makes new launches unavailable but
+leaves existing workspace records and plugin state intact.
+
+```ts
+registerMode(definition: PluginModeDefinition): () => void;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `definition` | `PluginModeDefinition` |
 
 **Returns:** `() => void`.
 
@@ -665,6 +689,7 @@ export interface PluginFrontendContext {
     readonly signal: AbortSignal;
     cleanup(dispose: PluginCleanup): void;
     registerView(view: PluginView): () => void;
+    registerModeRenderer(pluginId: string, modeId: string, renderer: PluginModeRenderer): () => void;
     registerAction(action: PluginAction): () => void;
     placeAction(placement: PluginActionPlacement): () => void;
     refreshActions(): void;
@@ -701,7 +726,7 @@ export interface PluginFrontendContext {
 }
 ```
 
-**Related types:** [PluginAction](plugins.md#pluginaction), [PluginActionPlacement](plugins.md#pluginactionplacement), [PluginCleanup](plugins.md#plugincleanup), [PluginCodeBlockRenderer](plugins.md#plugincodeblockrenderer), [PluginManifest](plugins.md#pluginmanifest), [PluginNotification](plugins.md#pluginnotification), [PluginProblemRenderer](plugin-problems.md#pluginproblemrenderer), [PluginQuestionRenderer](plugin-questions.md#pluginquestionrenderer), [PluginSettingsRegistration](plugins.md#pluginsettingsregistration), [PluginSettingsSchema](plugin-ui.md#pluginsettingsschema), [PluginSubmissionInterceptor](plugin-submissions.md#pluginsubmissioninterceptor), [PluginToolRenderer](plugins.md#plugintoolrenderer), [PluginUi](plugin-ui.md#pluginui), [PluginView](plugins.md#pluginview), [PluginWidgetHandle](plugin-ui.md#pluginwidgethandle), [ServerEvent](events.md#serverevent).
+**Related types:** [PluginAction](plugins.md#pluginaction), [PluginActionPlacement](plugins.md#pluginactionplacement), [PluginCleanup](plugins.md#plugincleanup), [PluginCodeBlockRenderer](plugins.md#plugincodeblockrenderer), [PluginManifest](plugins.md#pluginmanifest), [PluginModeRenderer](plugins.md#pluginmoderenderer), [PluginNotification](plugins.md#pluginnotification), [PluginProblemRenderer](plugin-problems.md#pluginproblemrenderer), [PluginQuestionRenderer](plugin-questions.md#pluginquestionrenderer), [PluginSettingsRegistration](plugins.md#pluginsettingsregistration), [PluginSettingsSchema](plugin-ui.md#pluginsettingsschema), [PluginSubmissionInterceptor](plugin-submissions.md#pluginsubmissioninterceptor), [PluginToolRenderer](plugins.md#plugintoolrenderer), [PluginUi](plugin-ui.md#pluginui), [PluginView](plugins.md#pluginview), [PluginWidgetHandle](plugin-ui.md#pluginwidgethandle), [ServerEvent](events.md#serverevent).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -709,6 +734,7 @@ export interface PluginFrontendContext {
 - [signal](#pluginfrontendcontext-signal)
 - [cleanup](#pluginfrontendcontext-cleanup)
 - [registerView](#pluginfrontendcontext-registerview)
+- [registerModeRenderer](#pluginfrontendcontext-registermoderenderer)
 - [registerAction](#pluginfrontendcontext-registeraction)
 - [placeAction](#pluginfrontendcontext-placeaction)
 - [refreshActions](#pluginfrontendcontext-refreshactions)
@@ -775,6 +801,23 @@ registerView(view: PluginView): () => void;
 | Parameter | Type |
 | --- | --- |
 | `view` | `PluginView` |
+
+**Returns:** `() => void`.
+
+### PluginFrontendContext registerModeRenderer
+
+Register the explicit browser renderer corresponding to a backend-declared
+mode. This cannot create catalog entries or authorize workspace creation.
+
+```ts
+registerModeRenderer(pluginId: string, modeId: string, renderer: PluginModeRenderer): () => void;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `pluginId` | `string` |
+| `modeId` | `string` |
+| `renderer` | `PluginModeRenderer` |
 
 **Returns:** `() => void`.
 
@@ -1670,6 +1713,160 @@ backend?: string;
 styles?: string;
 ```
 
+## PluginModeDefinition
+
+Public SDK type, exported as `PluginModeDefinition`. Import with `import type`; the SDK has no runtime exports.
+
+Backend-owned mode definition. It is data plus a server initialization hook;
+it never contains or imports a browser renderer.
+
+```ts
+export interface PluginModeDefinition {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    icon?: string;
+    tags?: string[];
+    difficulty?: "beginner" | "intermediate" | "advanced";
+    activityType?: string;
+    capabilities?: string[];
+    initializeWorkspace(context: PluginWorkspaceCreateContext): void | Promise<void>;
+}
+```
+
+**Related types:** [PluginWorkspaceCreateContext](plugins.md#pluginworkspacecreatecontext).
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [id](#pluginmodedefinition-id)
+- [name](#pluginmodedefinition-name)
+- [description](#pluginmodedefinition-description)
+- [category](#pluginmodedefinition-category)
+- [icon](#pluginmodedefinition-icon)
+- [tags](#pluginmodedefinition-tags)
+- [difficulty](#pluginmodedefinition-difficulty)
+- [activityType](#pluginmodedefinition-activitytype)
+- [capabilities](#pluginmodedefinition-capabilities)
+- [initializeWorkspace](#pluginmodedefinition-initializeworkspace)
+
+### PluginModeDefinition id
+
+```ts
+id: string;
+```
+
+### PluginModeDefinition name
+
+```ts
+name: string;
+```
+
+### PluginModeDefinition description
+
+```ts
+description: string;
+```
+
+### PluginModeDefinition category
+
+```ts
+category: string;
+```
+
+### PluginModeDefinition icon
+
+```ts
+icon?: string;
+```
+
+### PluginModeDefinition tags
+
+```ts
+tags?: string[];
+```
+
+### PluginModeDefinition difficulty
+
+```ts
+difficulty?: "beginner" | "intermediate" | "advanced";
+```
+
+### PluginModeDefinition activityType
+
+```ts
+activityType?: string;
+```
+
+### PluginModeDefinition capabilities
+
+```ts
+capabilities?: string[];
+```
+
+### PluginModeDefinition initializeWorkspace
+
+```ts
+initializeWorkspace(context: PluginWorkspaceCreateContext): void | Promise<void>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `context` | `PluginWorkspaceCreateContext` |
+
+**Returns:** `void \| Promise<void>`.
+
+## PluginModeMetadata
+
+Public SDK type, exported as `PluginModeMetadata`. Import with `import type`; the SDK has no runtime exports.
+
+```ts
+export interface PluginModeMetadata extends Omit<PluginModeDefinition, "initializeWorkspace"> {
+    pluginId: string;
+}
+```
+
+**Related types:** [PluginModeDefinition](plugins.md#pluginmodedefinition).
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [pluginId](#pluginmodemetadata-pluginid)
+
+### PluginModeMetadata pluginId
+
+```ts
+pluginId: string;
+```
+
+## PluginModeRenderer
+
+Public SDK type, exported as `PluginModeRenderer`. Import with `import type`; the SDK has no runtime exports.
+
+```ts
+export interface PluginModeRenderer {
+    mount(container: HTMLElement, context: PluginWorkspaceRendererContext): void | PluginCleanup | Promise<void | PluginCleanup>;
+}
+```
+
+**Related types:** [PluginCleanup](plugins.md#plugincleanup), [PluginWorkspaceRendererContext](plugins.md#pluginworkspacerenderercontext).
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [mount](#pluginmoderenderer-mount)
+
+### PluginModeRenderer mount
+
+```ts
+mount(container: HTMLElement, context: PluginWorkspaceRendererContext): void | PluginCleanup | Promise<void | PluginCleanup>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `container` | `HTMLElement` |
+| `context` | `PluginWorkspaceRendererContext` |
+
+**Returns:** `void \| PluginCleanup \| Promise<void \| PluginCleanup>`.
+
 ## PluginNotification
 
 Public SDK type, exported as `PluginNotification`. Import with `import type`; the SDK has no runtime exports.
@@ -2069,3 +2266,189 @@ mount(container: HTMLElement, signal: AbortSignal): void | PluginCleanup | Promi
 | `signal` | `AbortSignal` |
 
 **Returns:** `void \| PluginCleanup \| Promise<void \| PluginCleanup>`.
+
+## PluginWorkspaceCreateContext
+
+Public SDK type, exported as `PluginWorkspaceCreateContext`. Import with `import type`; the SDK has no runtime exports.
+
+```ts
+export interface PluginWorkspaceCreateContext {
+    readonly workspace: import("./workspaces.ts").WorkspaceRecord;
+    readonly signal: AbortSignal;
+    readonly storage: {
+        get<T = unknown>(key: string): T | undefined;
+        set(key: string, value: unknown): void;
+        delete(key: string): void;
+    };
+}
+```
+
+**Related types:** [WorkspaceRecord](workspaces.md#workspacerecord).
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [workspace](#pluginworkspacecreatecontext-workspace)
+- [signal](#pluginworkspacecreatecontext-signal)
+- [storage](#pluginworkspacecreatecontext-storage)
+- [storage.get](#pluginworkspacecreatecontext-storageget)
+- [storage.set](#pluginworkspacecreatecontext-storageset)
+- [storage.delete](#pluginworkspacecreatecontext-storagedelete)
+
+### PluginWorkspaceCreateContext workspace
+
+```ts
+readonly workspace: import("./workspaces.ts").WorkspaceRecord;
+```
+
+### PluginWorkspaceCreateContext signal
+
+```ts
+readonly signal: AbortSignal;
+```
+
+### PluginWorkspaceCreateContext storage
+
+```ts
+readonly storage: {
+    get<T = unknown>(key: string): T | undefined;
+    set(key: string, value: unknown): void;
+    delete(key: string): void;
+};
+```
+
+### PluginWorkspaceCreateContext storage.get
+
+```ts
+get<T = unknown>(key: string): T | undefined;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `key` | `string` |
+
+**Returns:** `T \| undefined`.
+
+### PluginWorkspaceCreateContext storage.set
+
+```ts
+set(key: string, value: unknown): void;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `key` | `string` |
+| `value` | `unknown` |
+
+**Returns:** `void`.
+
+### PluginWorkspaceCreateContext storage.delete
+
+```ts
+delete(key: string): void;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `key` | `string` |
+
+**Returns:** `void`.
+
+## PluginWorkspaceRendererContext
+
+Public SDK type, exported as `PluginWorkspaceRendererContext`. Import with `import type`; the SDK has no runtime exports.
+
+```ts
+export interface PluginWorkspaceRendererContext {
+    readonly workspace: import("./workspaces.ts").WorkspaceRecord;
+    readonly signal: AbortSignal;
+    readonly storage: {
+        get<T = unknown>(key: string): Promise<T | undefined>;
+        set(key: string, value: unknown): Promise<void>;
+        delete(key: string): Promise<void>;
+    };
+    setTitle(title: string): Promise<void>;
+}
+```
+
+**Related types:** [WorkspaceRecord](workspaces.md#workspacerecord).
+
+**Member index** (including nested object members; inherited members are defined in the linked base types):
+
+- [workspace](#pluginworkspacerenderercontext-workspace)
+- [signal](#pluginworkspacerenderercontext-signal)
+- [storage](#pluginworkspacerenderercontext-storage)
+- [storage.get](#pluginworkspacerenderercontext-storageget)
+- [storage.set](#pluginworkspacerenderercontext-storageset)
+- [storage.delete](#pluginworkspacerenderercontext-storagedelete)
+- [setTitle](#pluginworkspacerenderercontext-settitle)
+
+### PluginWorkspaceRendererContext workspace
+
+```ts
+readonly workspace: import("./workspaces.ts").WorkspaceRecord;
+```
+
+### PluginWorkspaceRendererContext signal
+
+```ts
+readonly signal: AbortSignal;
+```
+
+### PluginWorkspaceRendererContext storage
+
+```ts
+readonly storage: {
+    get<T = unknown>(key: string): Promise<T | undefined>;
+    set(key: string, value: unknown): Promise<void>;
+    delete(key: string): Promise<void>;
+};
+```
+
+### PluginWorkspaceRendererContext storage.get
+
+```ts
+get<T = unknown>(key: string): Promise<T | undefined>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `key` | `string` |
+
+**Returns:** `Promise<T \| undefined>`.
+
+### PluginWorkspaceRendererContext storage.set
+
+```ts
+set(key: string, value: unknown): Promise<void>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `key` | `string` |
+| `value` | `unknown` |
+
+**Returns:** `Promise<void>`.
+
+### PluginWorkspaceRendererContext storage.delete
+
+```ts
+delete(key: string): Promise<void>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `key` | `string` |
+
+**Returns:** `Promise<void>`.
+
+### PluginWorkspaceRendererContext setTitle
+
+```ts
+setTitle(title: string): Promise<void>;
+```
+
+| Parameter | Type |
+| --- | --- |
+| `title` | `string` |
+
+**Returns:** `Promise<void>`.

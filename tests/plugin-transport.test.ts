@@ -7,7 +7,8 @@ const request = (body: unknown) => new Request("http://localhost/api/plugins", {
 function fixture() {
 	const calls: unknown[] = [];
 	const host: PluginTransportHost = {
-		list: () => [], conflicts: () => [], refresh: async () => { calls.push("refresh"); },
+		list: () => [], modes: () => [], createWorkspace: async input => ({ ...input, title: input.title ?? "Fixture", id: "workspace_00000000-0000-4000-8000-000000000001" as never, version: 1, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }),
+		workspaceState: () => ({ found: false }), renameWorkspace: () => { throw new Error("Unexpected rename"); }, conflicts: () => [], refresh: async () => { calls.push("refresh"); },
 		setEnabled: async (id, enabled) => { calls.push({ id, enabled }); },
 		call: async (id, operation, input) => { calls.push({ id, operation, input }); return input; },
 		convertDocument: async (id, request) => { calls.push({ id, request }); return { name: "fixture.txt", markdown: "Text", notices: [] }; },
@@ -23,6 +24,17 @@ it("plugin HTTP adapter preserves list, explicit toggles and JSON operation resu
 	const call = await transport.call("example", request({ operation: "snapshot", input: { id: 1 } }));
 	assert.deepEqual(await call.json(), { result: { id: 1 } });
 	assert.deepEqual(calls, [{ id: "example", enabled: false }, "refresh", { id: "example", operation: "snapshot", input: { id: 1 } }]);
+});
+it("mode/workspace transport exposes the backend catalog and validates workspace creation", async () => {
+	const { transport, host } = fixture();
+	const metadata = { pluginId: "example", id: "lab", name: "Lab", description: "Practice", category: "Practice" };
+	host.modes = () => [metadata];
+	assert.deepEqual(await (await transport.modes()).json(), { modes: [metadata] });
+	const created = await transport.createWorkspace(request({ pluginId: "example", modeId: "lab", title: "My Lab" }));
+	assert.equal(created.status, 200);
+	assert.deepEqual(await created.json(), { workspace: { pluginId: "example", modeId: "lab", title: "My Lab", id: "workspace_00000000-0000-4000-8000-000000000001", version: 1, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" } });
+	assert.equal((await transport.createWorkspace(request({ pluginId: "example", modeId: "lab", extra: true }))).status, 400);
+	assert.equal((await transport.createWorkspace(request({ pluginId: "example", modeId: "lab", title: 12 }))).status, 400);
 });
 it("plugin document transport forwards the untouched binary request and returns the exact uncached DTO", async () => {
 	const { transport, calls, host } = fixture();

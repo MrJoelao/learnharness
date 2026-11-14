@@ -15,6 +15,11 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 - [PluginBackendModule](plugins.md#pluginbackendmodule)
 - [PluginFrontendContext](plugins.md#pluginfrontendcontext)
 - [PluginBackendContext](plugins.md#pluginbackendcontext)
+- [PluginModeDefinition](plugins.md#pluginmodedefinition)
+- [PluginModeMetadata](plugins.md#pluginmodemetadata)
+- [PluginWorkspaceCreateContext](plugins.md#pluginworkspacecreatecontext)
+- [PluginWorkspaceRendererContext](plugins.md#pluginworkspacerenderercontext)
+- [PluginModeRenderer](plugins.md#pluginmoderenderer)
 - [PluginUi](plugin-ui.md#pluginui)
 - [PluginLearningData](plugins.md#pluginlearningdata)
 - [PluginInference](plugins.md#plugininference)
@@ -44,6 +49,7 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 - [question-core](question-core.md)
 - [settings](settings.md)
 - [view](view.md)
+- [workspaces](workspaces.md)
 
 ## Public types
 
@@ -103,9 +109,12 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 | [PluginMarkdownProps](plugin-ui.md#pluginmarkdownprops) | `plugin-ui` |
 | [PluginMenuItem](plugin-ui.md#pluginmenuitem) | `plugin-ui` |
 | [PluginMenuProps](plugin-ui.md#pluginmenuprops) | `plugin-ui` |
+| [PluginModeDefinition](plugins.md#pluginmodedefinition) | `plugins` |
 | [PluginModelPickerProps](plugin-ui.md#pluginmodelpickerprops) | `plugin-ui` |
 | [PluginModelSpec](plugin-agents.md#pluginmodelspec) | `plugin-agents` |
 | [PluginModelValue](plugin-ui.md#pluginmodelvalue) | `plugin-ui` |
+| [PluginModeMetadata](plugins.md#pluginmodemetadata) | `plugins` |
+| [PluginModeRenderer](plugins.md#pluginmoderenderer) | `plugins` |
 | [PluginNativeQuestionViewDraft](plugin-view-context.md#pluginnativequestionviewdraft) | `plugin-view-context` |
 | [PluginNotification](plugins.md#pluginnotification) | `plugins` |
 | [PluginPageActionContext](plugins.md#pluginpageactioncontext) | `plugins` |
@@ -187,6 +196,8 @@ The SDK is **type-only**. Call the contexts supplied by LearnHarness, not runtim
 | [PluginWorkerResultProps](plugin-ui.md#pluginworkerresultprops) | `plugin-ui` |
 | [PluginWorkerService](plugin-workers.md#pluginworkerservice) | `plugin-workers` |
 | [PluginWorkerStartOptions](plugin-workers.md#pluginworkerstartoptions) | `plugin-workers` |
+| [PluginWorkspaceCreateContext](plugins.md#pluginworkspacecreatecontext) | `plugins` |
+| [PluginWorkspaceRendererContext](plugins.md#pluginworkspacerenderercontext) | `plugins` |
 | [Position](contracts-graph.md#position) | `contracts-graph` |
 | [SessionCheckpoint](contracts-graph.md#sessioncheckpoint) | `contracts-graph` |
 
@@ -253,9 +264,12 @@ These are reachable through public data, event, inheritance or helper-type relat
 - [ModelSlotName](settings.md#modelslotname) — `settings`
 - [LhViewMessage](view.md#lhviewmessage) — `view`
 - [LhViewPart](view.md#lhviewpart) — `view`
+- [WorkspaceId](workspaces.md#workspaceid) — `workspaces`
+- [workspaceIdBrand](workspaces.md#workspaceidbrand) — `workspaces`
+- [WorkspaceRecord](workspaces.md#workspacerecord) — `workspaces`
 
 ## External types
 
 Standard JavaScript/DOM types (`Promise`, `AbortSignal`, `File`, `HTMLElement`, and utility types) use their standard contracts. Pi model/messages/tools and TypeBox schemas use the exact peer versions declared by the bundled SDK's `package.json`. Supply those peers when typechecking; they are development types, not permission to import private LearnHarness runtime modules.
 
-Coverage: **140 public types**, **59 supporting declarations**, **906 declared member signatures/variants**. Generation contains no build timestamps or absolute source paths.
+Coverage: **145 public types**, **62 supporting declarations**, **942 declared member signatures/variants**. Generation contains no build timestamps or absolute source paths.

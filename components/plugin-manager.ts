@@ -2,6 +2,7 @@ import type {
 	PluginAction, PluginCleanup, PluginFrontendContext, PluginFrontendModule, PluginInfo,
 	PluginNotification, PluginView, ServerEvent, PluginCodeBlockRenderer, PluginToolRenderer,
 	PluginActionContext, PluginActionPlacement, PluginSettingsRegistration, PluginPageActionContext, PluginActionShortcut,
+	PluginModeRenderer, PluginModeMetadata,
 } from "@/src/core";
 
 import { preparePluginShortcut, copyPluginSubmissionTarget, preparePluginSubmissionInterceptor, type PluginSubmissionInterceptor, type PluginSubmissionTarget } from "../src/core/index.ts";
@@ -16,6 +17,7 @@ export type CodeBlockRegistration = PluginRendererRegistration<PluginCodeBlockRe
 export type ToolRendererRegistration = PluginRendererRegistration<PluginToolRenderer>;
 export type QuestionRendererRegistration = PluginRendererRegistration<import("@/src/core").PluginQuestionRenderer>;
 export type ProblemRendererRegistration = PluginRendererRegistration<import("@/src/core").PluginProblemRenderer>;
+export interface ModeRendererRegistration extends PluginRendererRegistration<PluginModeRenderer> { readonly modeId: string }
 export interface FrontendPlugin {
 	info: PluginInfo;
 	phase: "disabled" | "loading" | "active" | "error";
@@ -34,6 +36,8 @@ export interface PluginSnapshot {
 	readonly toolRenderers: readonly ToolRendererRegistration[];
 	readonly questionRenderers?: readonly QuestionRendererRegistration[];
 	readonly problemRenderers?: readonly ProblemRendererRegistration[];
+	readonly modeRenderers?: readonly ModeRendererRegistration[];
+	readonly modes?: readonly PluginModeMetadata[];
 	directory: string;
 	conflicts: readonly { id: string; error: string }[];
 	loading: boolean;
@@ -58,6 +62,7 @@ interface Lifecycle {
 	toolRenderers: Map<string, ToolRendererRegistration>;
 	questionRenderers: Map<string, QuestionRendererRegistration>;
 	problemRenderers: Map<string, ProblemRendererRegistration>;
+	modeRenderers: Map<string, ModeRendererRegistration>;
 	submissionInterceptors: Map<string, SubmissionInterceptorRegistration>;
 	settings?: PluginSettingsRegistration;
 	notifications: Set<(event: PluginNotification) => void>;
@@ -119,6 +124,7 @@ function validateSettingsSchema(value: unknown): asserts value is import("@/src/
  * still own that exact object before registering or publishing anything. */
 export class PluginFrontendManager {
 	private infos: PluginInfo[] = [];
+	private backendModes: PluginModeMetadata[] = [];
 	private lives = new Map<string, Lifecycle>();
 	private teardowns = new Map<string, Promise<void>>();
 	private listeners = new Set<() => void>();
@@ -131,7 +137,7 @@ export class PluginFrontendManager {
 	private disposed = false;
 	private started = false;
 	private shortcutPages = new Map<string, { read: () => PluginPageActionContext | undefined }>();
-	private snapshot: PluginSnapshot = { plugins: [], codeBlocks: [], toolRenderers: [], directory: "", conflicts: [], loading: true, refreshing: false };
+	private snapshot: PluginSnapshot = { plugins: [], codeBlocks: [], toolRenderers: [], modeRenderers: [], modes: [], directory: "", conflicts: [], loading: true, refreshing: false };
 	constructor(private host: PluginHost) {}
 	getSnapshot = () => this.snapshot;
 	subscribe = (listener: () => void) => {
@@ -145,6 +151,7 @@ export class PluginFrontendManager {
 			toolRenderers: Object.freeze([...this.lives.values()].flatMap(life => [...life.toolRenderers.values()])),
 			questionRenderers: Object.freeze([...this.lives.values()].flatMap(life => [...life.questionRenderers.values()])),
 			problemRenderers: Object.freeze([...this.lives.values()].flatMap(life => [...life.problemRenderers.values()])),
+			modeRenderers: Object.freeze([...this.lives.values()].flatMap(life => [...life.modeRenderers.values()])),
 			plugins: this.infos.map(info => {
 			const life = this.lives.get(info.id);
 			return {
@@ -202,7 +209,7 @@ export class PluginFrontendManager {
 		if (life.teardown) return life.teardown;
 		life.controller.abort();
 		life.views.clear(); life.actions.clear(); life.placements.clear(); life.actionBusy.clear(); life.settings = undefined;
-		life.codeBlocks.clear(); life.toolRenderers.clear(); life.questionRenderers.clear(); life.problemRenderers.clear(); life.submissionInterceptors.clear();
+		life.codeBlocks.clear(); life.toolRenderers.clear(); life.questionRenderers.clear(); life.problemRenderers.clear(); life.modeRenderers.clear(); life.submissionInterceptors.clear();
 		life.notifications.clear(); life.events.clear(); life.resyncs.clear();
 		const cleanups = [...life.cleanups].reverse();
 		life.cleanups.clear();
@@ -233,10 +240,23 @@ export class PluginFrontendManager {
 		try {
 			const body = await this.json("/api/plugins") as { plugins: PluginInfo[]; directory: string; conflicts?: { id: string; error: string }[] };
 			if (this.disposed || generation !== this.requestGeneration) return;
+			try {
+				const modeBody = await this.json("/api/plugins/modes") as { modes?: PluginModeMetadata[] };
+				this.backendModes = Array.isArray(modeBody.modes) ? modeBody.modes.filter(mode => mode && typeof mode.pluginId === "string" && typeof mode.id === "string") : [];
+			} catch { this.backendModes = []; }
+			if (this.disposed || generation !== this.requestGeneration) return;
+			this.pruneUnavailableModeRenderers();
 			this.reconcile(body.plugins);
-			this.publish({ directory: body.directory, conflicts: body.conflicts ?? [], loading: false, ...(clearError ? { error: undefined } : {}) });
+			this.publish({ directory: body.directory, conflicts: body.conflicts ?? [], modes: Object.freeze([...this.backendModes]), loading: false, ...(clearError ? { error: undefined } : {}) });
 		} catch (error) {
 			if (generation === this.requestGeneration) this.publish({ loading: false, error: message(error) });
+		}
+	}
+	private pruneUnavailableModeRenderers() {
+		for (const life of this.lives.values()) for (const [modeId, registration] of life.modeRenderers) {
+			if (this.backendModes.some(mode => mode.pluginId === life.id && mode.id === modeId)) continue;
+			life.modeRenderers.delete(modeId);
+			for (const off of [...(this.rendererMounts.get(registration) ?? [])]) off();
 		}
 	}
 	/** Also the test seam for server-truth lifecycle transitions. */
@@ -252,7 +272,7 @@ export class PluginFrontendManager {
 			const life: Lifecycle = {
 				id: info.id, revision: info.revision, controller: new AbortController(), cleanups: new Set(),
 				activation: Promise.resolve(), tasks: new Set(),
-				views: new Map(), actions: new Map(), shortcuts: new Map(), placements: new Map(), actionBusy: new Set(), codeBlocks: new Map(), toolRenderers: new Map(), questionRenderers: new Map(), problemRenderers: new Map(), submissionInterceptors: new Map(),
+				views: new Map(), actions: new Map(), shortcuts: new Map(), placements: new Map(), actionBusy: new Set(), codeBlocks: new Map(), toolRenderers: new Map(), questionRenderers: new Map(), problemRenderers: new Map(), modeRenderers: new Map(), submissionInterceptors: new Map(),
 				notifications: new Set(), events: new Set(), resyncs: new Set(), phase: "loading",
 			};
 			this.cleanupErrors.delete(info.id);
@@ -360,6 +380,23 @@ export class PluginFrontendManager {
 			manifest, signal: life.controller.signal,
 			cleanup: cleanup => { this.addCleanup(life, cleanup); },
 			registerView: view => register(life.views, view, "mount"),
+			registerModeRenderer: (pluginId, modeId, renderer) => {
+				if (!this.current(life)) return () => {};
+				if (pluginId !== life.id || typeof modeId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(modeId) || !renderer || typeof renderer.mount !== "function") rejectRenderer("Invalid workspace mode renderer identity or mount");
+				if (!this.backendModes.some(mode => mode.pluginId === pluginId && mode.id === modeId)) rejectRenderer(`Mode renderer has no active backend declaration: ${pluginId}/${modeId}`);
+				if (life.modeRenderers.has(modeId)) rejectRenderer(`Duplicate mode renderer: ${modeId}`);
+				const owned = Object.freeze({ mount: renderer.mount.bind(renderer) });
+				const registration: ModeRendererRegistration = Object.freeze({ pluginId, modeId, renderer: owned });
+				const mounts = new Set<() => void>();
+				this.rendererMounts.set(registration, mounts);
+				life.modeRenderers.set(modeId, registration); this.publish();
+				return () => {
+					if (life.modeRenderers.get(modeId) !== registration) return;
+					life.modeRenderers.delete(modeId);
+					for (const off of [...mounts]) off();
+					this.publish();
+				};
+			},
 			registerAction: action => register(life.actions, action, "run"),
 			placeAction: placement => {
 				if (!this.current(life)) return () => {};
@@ -607,6 +644,36 @@ export class PluginFrontendManager {
 			const registration = life.toolRenderers.get(toolName);
 			if (this.current(life) && registration) return registration;
 		}
+	}
+	getModeRenderer(pluginId: string, modeId: string): ModeRendererRegistration | undefined {
+		const life = this.lives.get(pluginId);
+		if (!life || !this.current(life)) return;
+		return life.modeRenderers.get(modeId);
+	}
+	async createWorkspace(pluginId: string, modeId: string, title?: string): Promise<import("@/src/core").WorkspaceRecord> {
+		if (!this.backendModes.some(mode => mode.pluginId === pluginId && mode.id === modeId)) throw new Error("Mode is not registered or available");
+		const body = await this.json("/api/workspaces", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pluginId, modeId, ...(title === undefined ? {} : { title }) }) }) as { workspace: import("@/src/core").WorkspaceRecord };
+		return body.workspace;
+	}
+	/** Resolve a registered browser renderer for persisted workspace identity. */
+	mountWorkspace(workspace: import("@/src/core").WorkspaceRecord, container: HTMLElement, onError: (error: string) => void): () => void {
+		const registration = this.getModeRenderer(workspace.pluginId, workspace.modeId);
+		if (!registration) { onError("Workspace renderer is unavailable"); return () => {}; }
+		const modes = this.rendererMounts.get(registration) ?? new Set<() => void>();
+		this.rendererMounts.set(registration, modes);
+		const thisManager = this;
+		const off = this.mount(workspace.pluginId, (child, signal) => registration.renderer.mount(child, {
+			workspace, signal,
+			storage: {
+				async get<T>(key: string) { const response = await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`) as { value?: T; found: boolean }; return response.found ? response.value : undefined; },
+			async set(key: string, value: unknown) { await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }) }); },
+			async delete(key: string) { await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { method: "DELETE" }); },
+			},
+			async setTitle(title: string) { await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }) }); },
+		}), container, onError);
+		const release = () => { modes.delete(release); off(); };
+		modes.add(release);
+		return release;
 	}
 	/** Bind a renderer mount to the registration as well as its activation.
 	 * Unregistering aborts these mounts immediately, not just after React renders. */

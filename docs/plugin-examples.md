@@ -10,6 +10,7 @@ building or exercising it: plugins are trusted local code, not sandboxed extensi
 | Start here | Role | What to learn |
 | --- | --- | --- |
 | [Hello plugin](../examples/plugins/hello-plugin/README.md) | Minimal starter; no build | Frontend activation, a view, explicit action placements, a host button/dialog and per-mount cleanup |
+| [Multi Mode Example](../examples/plugins/multi-mode/README.md) | No-build API v1 example | Two backend-declared modes, explicit frontend renderer pairing and workspace-scoped persistence |
 | [UI Showcase](../plugins/ui-showcase/README.md) | Runnable Community developer gallery | All 15 public UI methods, controlled values, family-local Reset and overlay ownership |
 | [Flashcards](../plugins/flashcards/README.md) | Core source reference | A complete feature: knowledge/document input, durable worker outcomes, plugin-owned storage, tree, review surfaces and settings |
 | [Coding questions](../plugins/coding-questions/README.md) | Core source reference | Teaching questions and repeated practice submissions, controlled editors, processing observations and saved-result rendering |
@@ -42,6 +43,13 @@ do not infer one from the other.
 UI Showcase uses the ordinary Community workflow in its README. Hello and the focused
 recipes contain ready-to-load `dist/` files. Nothing in this reference is installed,
 enabled or run automatically.
+
+## Multi Mode Example
+
+The [multi-mode example](../examples/plugins/multi-mode/README.md) declares two
+catalog definitions from one backend and registers a renderer for each in the browser.
+It demonstrates separate metadata/initialization and presentation lifecycles, plus
+state isolation by workspace ID.
 
 ## Source layout and prerequisites
 

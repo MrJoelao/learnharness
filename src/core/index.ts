@@ -106,6 +106,7 @@ export * from "./session-markdown.ts";
 // thread lookup and the side model's lesson document. Pure, browser-safe.
 export * from "./side-chat.ts";
 export * from "./plugins.ts";
+export * from "./plugin-modes.ts";
 export * from "./study-time.ts";
 export * from "./plugin-questions.ts";
 export * from "./plugin-problems.ts";

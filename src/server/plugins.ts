@@ -22,6 +22,7 @@ import type { AgentBuildOptions } from "../agent/teacher-agent.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
 import { compactionInFlight } from "./compaction.ts";
+import { workspaceService } from "./workspaces.ts";
 
 export const pluginDirectory = path.join(/* turbopackIgnore: true */ PATHS.data, "plugins");
 // Explicitly staged by build-server, not discovered by Next's filesystem tracer.
@@ -52,6 +53,7 @@ function runtime(): Runtime {
 	const installationErrors: Record<string, string> = Object.create(null);
 	const host = createPluginHost({
 		directory: pluginDirectory, core, appVersion: packageJson.version, installationErrors,
+		workspaces: workspaceService,
 		// The process-global runtime owns one admission slot across all plugins
 		// and every separately compiled Next route module.
 		convertDocument: createPluginDocumentConverter().convert,

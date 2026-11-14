@@ -173,6 +173,11 @@ export interface PluginBackendContext {
 	 * lifecycle. Invalid/duplicate definitions throw; returned unregister removes
 	 * availability and aborts this definition's scope, not saved history. */
 	registerProblemType<Q extends TSchema, S extends TSchema>(definition: PluginProblemTypeDefinition<Q, S>): () => void;
+	/** Register an optional Study Hub mode. Metadata and initialization run only
+	 * on the server; the matching browser renderer registers separately. Duplicate
+	 * IDs within a plugin throw. Unregistering makes new launches unavailable but
+	 * leaves existing workspace records and plugin state intact. */
+	registerMode(definition: PluginModeDefinition): () => void;
 	/** Register a named operation for this plugin's frontend call bridge. Inputs and
 	 * results must be JSON-compatible; validate input in the handler. Invalid or
 	 * duplicate names throw. Returns unregister; this is not an arbitrary HTTP API. */
@@ -187,6 +192,33 @@ export interface PluginBackendContext {
 		 * Invalid topics throw while active; expired activations emit nothing. No
 		 * persistence, replay or acknowledgement of frontend handling is supplied. */
 		emit(topic: string, data?: unknown): void;
+	};
+}
+
+/** Backend-owned mode definition. It is data plus a server initialization hook;
+ * it never contains or imports a browser renderer. */
+export interface PluginModeDefinition {
+	id: string;
+	name: string;
+	description: string;
+	category: string;
+	icon?: string;
+	tags?: string[];
+	difficulty?: "beginner" | "intermediate" | "advanced";
+	activityType?: string;
+	capabilities?: string[];
+	initializeWorkspace(context: PluginWorkspaceCreateContext): void | Promise<void>;
+}
+export interface PluginModeMetadata extends Omit<PluginModeDefinition, "initializeWorkspace"> {
+	pluginId: string;
+}
+export interface PluginWorkspaceCreateContext {
+	readonly workspace: import("./workspaces.ts").WorkspaceRecord;
+	readonly signal: AbortSignal;
+	readonly storage: {
+		get<T = unknown>(key: string): T | undefined;
+		set(key: string, value: unknown): void;
+		delete(key: string): void;
 	};
 }
 export interface PluginBackendModule {
@@ -284,6 +316,9 @@ export interface PluginFrontendContext {
 	/** Register a plugin-owned body view with host chrome. Invalid/duplicate IDs
 	 * throw; returned unregister removes the view without deleting plugin data. */
 	registerView(view: PluginView): () => void;
+	/** Register the explicit browser renderer corresponding to a backend-declared
+	 * mode. This cannot create catalog entries or authorize workspace creation. */
+	registerModeRenderer(pluginId: string, modeId: string, renderer: PluginModeRenderer): () => void;
 	/** Register an invokable action and optional shortcut, but no button placement.
 	 * Invalid/duplicate registrations throw. Returns unregister; shortcut scope and
 	 * default are captured here, not changed by refreshActions. */
@@ -364,6 +399,19 @@ export interface PluginFrontendContext {
 		/** Open this plugin's dedicated Settings page, not package management. */
 		openSettings(): void;
 	};
+}
+export interface PluginWorkspaceRendererContext {
+	readonly workspace: import("./workspaces.ts").WorkspaceRecord;
+	readonly signal: AbortSignal;
+	readonly storage: {
+		get<T = unknown>(key: string): Promise<T | undefined>;
+		set(key: string, value: unknown): Promise<void>;
+		delete(key: string): Promise<void>;
+	};
+	setTitle(title: string): Promise<void>;
+}
+export interface PluginModeRenderer {
+	mount(container: HTMLElement, context: PluginWorkspaceRendererContext): void | PluginCleanup | Promise<void | PluginCleanup>;
 }
 export interface PluginFrontendModule {
 	/** Initialize window-scoped registrations/resources; optionally return cleanup.

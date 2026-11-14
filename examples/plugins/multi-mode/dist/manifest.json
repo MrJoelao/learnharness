@@ -1,0 +1,9 @@
+{
+	"apiVersion": 1,
+	"id": "multi-mode",
+	"name": "Multi Mode Example",
+	"version": "1.0.0",
+	"minAppVersion": "0.7.0",
+	"main": "main.js",
+	"backend": "backend.cjs"
+}
