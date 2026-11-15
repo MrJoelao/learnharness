@@ -733,11 +733,18 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				return workspace;
 			} catch (error) {
 				const rollbackErrors: string[] = [];
+				let recordDeleted = false;
 				try { deps.workspaceStateStore?.remove(activation.dataDirectory, workspace.id); }
 				catch (rollbackError) { rollbackErrors.push(`state namespace rollback failed: ${errorText(rollbackError)}`); }
 				if (!rollbackErrors.length) {
-					try { deps.workspaces.delete(workspace.id); }
+					try {
+						deps.workspaces.delete(workspace.id);
+						recordDeleted = true;
+					}
 					catch (rollbackError) { rollbackErrors.push(`host record rollback failed: ${errorText(rollbackError)}`); }
+				}
+				if (!recordDeleted) {
+					try { deps.onWorkspaceChanged?.(); } catch { /* ignore */ }
 				}
 				throw new PluginHostError(500, `Workspace initialization failed (${workspace.id}): ${errorText(error)}${rollbackErrors.length ? `; rollback diagnostics: ${rollbackErrors.join("; ")}${rollbackErrors.some(item => item.startsWith("state namespace")) ? "; host record rollback was skipped to preserve the workspace identity" : ""}; workspace remains identifiable for recovery` : "; workspace record and plugin state namespace were rolled back"}`);
 			}

@@ -814,7 +814,10 @@ it("backward compatibility: folder archive and restore cascades to both chats an
 
 // ─── 7. Workspace Event Invalidation (Pre-Phase 4 Hardening) ───────────────
 
-function setupEventHost(subDir: string, options: { onWorkspaceDeleted?: (id: WorkspaceId) => void } = {}) {
+function setupEventHost(subDir: string, options: {
+	onWorkspaceDeleted?: (id: WorkspaceId) => void;
+	workspaceStateStore?: ReturnType<typeof createPluginWorkspaceStateStore>;
+} = {}) {
 	const dir = path.join(root, subDir);
 	const pluginDist = path.join(dir, "plugins", "event-plugin", "dist");
 	fs.mkdirSync(pluginDist, { recursive: true });
@@ -851,7 +854,7 @@ function setupEventHost(subDir: string, options: { onWorkspaceDeleted?: (id: Wor
 
 	const store = createWorkspaceStore(dir);
 	const service = createWorkspaceService({ store });
-	const stateStore = createPluginWorkspaceStateStore();
+	const stateStore = options.workspaceStateStore ?? createPluginWorkspaceStateStore();
 
 	const host = createPluginHost({
 		directory: path.join(dir, "plugins"),
@@ -1015,6 +1018,49 @@ it("event invalidation: failed creation with successful rollback does not emit w
 		);
 		assert.equal(eventCount, 0, "Failed creation with successful rollback must NOT emit workspaces-changed");
 		assert.deepEqual(store.list().workspaces, [], "No workspace record should exist");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: failed creation with incomplete rollback emits workspaces-changed once for recoverable record", async () => {
+	const failingStateStore = {
+		open: () => ({ get: () => undefined, set: () => {}, delete: () => {} }),
+		remove: () => {
+			throw new Error("Disk permission denied during state rollback");
+		},
+	};
+	const { host, store } = setupEventHost("ev-incomplete-rollback", {
+		workspaceStateStore: failingStateStore as any,
+	});
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		let caughtError: unknown;
+		try {
+			await host.createWorkspace({ pluginId: "event-plugin", modeId: "failing-mode", title: "Incomplete Rollback WS" });
+		} catch (error) {
+			caughtError = error;
+		}
+
+		assert.ok(isPluginHostError(caughtError) && caughtError.status === 500);
+		assert.match(caughtError.message, /state namespace rollback failed.*workspace remains identifiable for recovery/i);
+
+		// Record remains on disk and is recoverable
+		const workspaces = store.list().workspaces;
+		assert.equal(workspaces.length, 1);
+		assert.equal(workspaces[0]?.title, "Incomplete Rollback WS");
+		assert.ok(store.read(workspaces[0]!.id));
+
+		// Event was emitted exactly once
+		assert.equal(eventCount, 1, "Incomplete rollback leaving persistent record must emit workspaces-changed exactly once");
 	} finally {
 		unsub();
 		await host.dispose();
