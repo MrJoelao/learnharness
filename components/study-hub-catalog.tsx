@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/top-bar";
@@ -30,6 +30,11 @@ import {
 	TargetIcon,
 	XIcon,
 } from "lucide-react";
+
+/** Stably identify a mode by its canonical (pluginId, modeId) pair to prevent collisions. */
+export function getModeKey(pluginId: string, modeId: string): string {
+	return `${pluginId}:${modeId}`;
+}
 
 function useSafeRouter() {
 	try {
@@ -77,6 +82,20 @@ export interface StudyHubCatalogProps {
 	modeRenderers?: readonly { pluginId: string; modeId: string }[];
 	/** Optional list of plugins for state checking. */
 	plugins?: readonly { info: { id: string; enabled: boolean }; phase: string; error?: string }[];
+	/** Optional plugin manager override (for direct testing or custom host). */
+	manager?: {
+		createWorkspace(pluginId: string, modeId: string, title?: string): Promise<import("@/src/core").WorkspaceRecord>;
+		getModeRenderer?(pluginId: string, modeId: string): any;
+		reload?(): Promise<void>;
+		refresh?(): Promise<void>;
+		[key: string]: any;
+	} | null;
+	/** Optional router override (for testing navigation destinations). */
+	router?: {
+		push: (url: string) => void;
+		back?: () => void;
+		[key: string]: any;
+	};
 	/** Explicit loading override. */
 	isLoading?: boolean;
 	/** Explicit error message override. */
@@ -91,23 +110,30 @@ export function StudyHubCatalog({
 	modes: propModes,
 	modeRenderers: propModeRenderers,
 	plugins: propPlugins,
+	manager: propManager,
+	router: propRouter,
 	isLoading: propIsLoading,
 	error: propError,
 	onLaunch: propOnLaunch,
 	onRetry: propOnRetry,
 }: StudyHubCatalogProps) {
-	const { manager, snapshot } = usePlugins();
-	const router = useSafeRouter();
+	const { manager: contextManager, snapshot } = usePlugins();
+	const safeRouter = useSafeRouter();
+
+	const activeManager = propManager !== undefined ? propManager : contextManager;
+	const activeRouter = propRouter ?? safeRouter;
 
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedCategory, setSelectedCategory] = useState<string>("all");
 	const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
-	const [launchingModeId, setLaunchingModeId] = useState<string | null>(null);
-	const [launchError, setLaunchError] = useState<{ modeId: string; message: string } | null>(null);
+	const [launchingModeKey, setLaunchingModeKey] = useState<string | null>(null);
+	const [launchError, setLaunchError] = useState<{ modeKey: string; message: string } | null>(null);
 	const [isRetrying, startRetryTransition] = useTransition();
 
 	// Modes resolution
 	const activeModes = propModes ?? snapshot?.modes ?? [];
+	const activeModesRef = useRef(activeModes);
+	activeModesRef.current = activeModes;
 	const isLoading = propIsLoading ?? snapshot?.loading ?? false;
 	const errorMessage = propError ?? snapshot?.error;
 
@@ -174,20 +200,22 @@ export function StudyHubCatalog({
 		startRetryTransition(async () => {
 			if (propOnRetry) {
 				await propOnRetry();
-			} else if (manager) {
-				await manager.reload();
+			} else if (activeManager?.reload) {
+				await activeManager.reload();
 			}
 		});
 	};
 
 	const handleLaunch = async (mode: PluginModeMetadata) => {
-		// 1. Verify availability
-		const isModeStillPresent = activeModes.some(
+		const modeKey = getModeKey(mode.pluginId, mode.id);
+
+		// 1. Verify availability against latest modes
+		const isModeStillPresent = activeModesRef.current.some(
 			m => m.pluginId === mode.pluginId && m.id === mode.id
 		);
 		if (!isModeStillPresent) {
 			setLaunchError({
-				modeId: mode.id,
+				modeKey,
 				message: `Mode "${mode.name}" is no longer available.`,
 			});
 			return;
@@ -198,14 +226,14 @@ export function StudyHubCatalog({
 		if (owningPlugin) {
 			if (!owningPlugin.info.enabled || owningPlugin.phase === "disabled") {
 				setLaunchError({
-					modeId: mode.id,
+					modeKey,
 					message: `Plugin "${mode.pluginId}" is disabled. Enable the plugin in Settings to launch this mode.`,
 				});
 				return;
 			}
 			if (owningPlugin.phase === "error") {
 				setLaunchError({
-					modeId: mode.id,
+					modeKey,
 					message: `Plugin "${mode.pluginId}" encountered an error: ${owningPlugin.error || "Initialization failed"}.`,
 				});
 				return;
@@ -215,11 +243,11 @@ export function StudyHubCatalog({
 		// 3. Verify frontend renderer
 		const hasRenderer = activeModeRenderers.some(
 			r => r.pluginId === mode.pluginId && r.modeId === mode.id
-		) || (manager?.getModeRenderer(mode.pluginId, mode.id) !== undefined);
+		) || (activeManager?.getModeRenderer?.(mode.pluginId, mode.id) !== undefined);
 
 		if (!hasRenderer) {
 			setLaunchError({
-				modeId: mode.id,
+				modeKey,
 				message: `Interactive renderer for "${mode.name}" is not registered in the browser.`,
 			});
 			return;
@@ -227,15 +255,16 @@ export function StudyHubCatalog({
 
 		// 4. Proceed with launch
 		setLaunchError(null);
-		setLaunchingModeId(mode.id);
+		setLaunchingModeKey(modeKey);
 
 		try {
 			if (propOnLaunch) {
 				await propOnLaunch(mode);
-				setLaunchingModeId(null);
-			} else if (manager) {
-				const workspace = await manager.createWorkspace(mode.pluginId, mode.id);
-				router.push(`/workspaces/${encodeURIComponent(workspace.id)}`);
+				setLaunchingModeKey(null);
+			} else if (activeManager) {
+				const workspace = await activeManager.createWorkspace(mode.pluginId, mode.id);
+				activeRouter.push(`/workspaces/${encodeURIComponent(workspace.id)}`);
+				setLaunchingModeKey(null);
 			} else {
 				const res = await fetch("/api/workspaces", {
 					method: "POST",
@@ -247,14 +276,15 @@ export function StudyHubCatalog({
 					throw new Error(data.error || `Failed to create workspace (${res.status})`);
 				}
 				const data = await res.json();
-				router.push(`/workspaces/${encodeURIComponent(data.workspace.id)}`);
+				activeRouter.push(`/workspaces/${encodeURIComponent(data.workspace.id)}`);
+				setLaunchingModeKey(null);
 			}
 		} catch (err) {
 			setLaunchError({
-				modeId: mode.id,
+				modeKey,
 				message: err instanceof Error ? err.message : "Failed to launch workspace",
 			});
-			setLaunchingModeId(null);
+			setLaunchingModeKey(null);
 		}
 	};
 
@@ -299,7 +329,7 @@ export function StudyHubCatalog({
 								Discover and launch interactive visual environments, simulators, and domain workspaces powered by LearnHarness plugins.
 							</p>
 						</div>
-						{(manager || propOnRetry) && (
+						{(activeManager || propOnRetry) && (
 							<Button
 								variant="outline"
 								size="sm"
@@ -560,13 +590,14 @@ export function StudyHubCatalog({
 						className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
 					>
 						{filteredModes.map(mode => {
+							const modeKey = getModeKey(mode.pluginId, mode.id);
 							const IconComponent = getModeIcon(mode.icon);
-							const isLaunching = launchingModeId === mode.id;
+							const isLaunching = launchingModeKey === modeKey;
 
 							// Renderer check
 							const hasRenderer = activeModeRenderers.some(
 								r => r.pluginId === mode.pluginId && r.modeId === mode.id
-							) || (manager?.getModeRenderer(mode.pluginId, mode.id) !== undefined);
+							) || (activeManager?.getModeRenderer?.(mode.pluginId, mode.id) !== undefined);
 
 							// Plugin check
 							const plugin = activePlugins.find(p => p.info.id === mode.pluginId);
@@ -587,7 +618,10 @@ export function StudyHubCatalog({
 							return (
 								<div
 									key={`${mode.pluginId}:${mode.id}`}
-									data-testid={`study-hub-mode-card-${mode.id}`}
+									data-testid={`study-hub-mode-card-${modeKey}`}
+									data-mode-key={modeKey}
+									data-plugin-id={mode.pluginId}
+									data-mode-id={mode.id}
 									className={`group rounded-2xl border bg-card p-6 shadow-xs flex flex-col justify-between transition-all ${
 										isUnavailable
 											? "border-border/40 opacity-75"
@@ -671,7 +705,7 @@ export function StudyHubCatalog({
 											onClick={() => handleLaunch(mode)}
 											disabled={isUnavailable || isLaunching}
 											aria-label={`Launch ${mode.name}`}
-											data-testid={`launch-mode-${mode.id}`}
+											data-testid={`launch-mode-${modeKey}`}
 											className="gap-1.5 cursor-pointer shrink-0 ml-auto"
 										>
 											{isLaunching ? (

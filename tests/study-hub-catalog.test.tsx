@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot } from "react-dom/client";
 import { parseHTML } from "linkedom";
 
-import { StudyHubCatalog, getModeIcon } from "../components/study-hub-catalog.tsx";
+import { StudyHubCatalog, getModeIcon, getModeKey } from "../components/study-hub-catalog.tsx";
 import type { PluginModeMetadata } from "../src/core";
 import {
 	BookOpenIcon,
@@ -127,7 +127,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.equal(getModeIcon("NonExistentIcon"), LayoutGridIcon);
 	});
 
-	it("2. Populated catalog displays all registered modes with required and optional metadata", () => {
+	it("2. Populated catalog displays all registered modes with composite key testids", () => {
 		const html = renderToStaticMarkup(
 			<StudyHubCatalog
 				modes={sampleModes}
@@ -141,8 +141,12 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(html.includes('data-testid="study-hub-title"'), "Study Hub title rendered");
 		assert.ok(html.includes('data-testid="study-hub-grid"'), "Mode cards grid rendered");
 
-		// Check mode cards
-		assert.ok(html.includes('data-testid="study-hub-mode-card-paging-lab"'), "Paging lab card rendered");
+		// Check mode cards with composite key testids
+		const pagingKey = getModeKey("os-simulators", "paging-lab");
+		const tcpKey = getModeKey("network-tools", "tcp-simulator");
+		const treeKey = getModeKey("algo-tools", "tree-viz");
+
+		assert.ok(html.includes(`data-testid="study-hub-mode-card-${pagingKey}"`), "Paging lab card rendered with composite key");
 		assert.ok(html.includes("Memory &amp; Paging Lab") || html.includes("Memory & Paging Lab"), "Mode name displayed");
 		assert.ok(html.includes("Interactive virtual memory and multi-level page table simulator."), "Description displayed");
 		assert.ok(html.includes("Operating Systems"), "Category displayed");
@@ -151,10 +155,10 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(html.includes("intermediate"), "Difficulty badge rendered");
 		assert.ok(html.includes("simulation"), "Activity type rendered");
 
-		// Launch buttons
-		assert.ok(html.includes('data-testid="launch-mode-paging-lab"'), "Launch button for paging lab");
-		assert.ok(html.includes('data-testid="launch-mode-tcp-simulator"'), "Launch button for tcp simulator");
-		assert.ok(html.includes('data-testid="launch-mode-tree-viz"'), "Launch button for tree viz");
+		// Launch buttons with composite key testids
+		assert.ok(html.includes(`data-testid="launch-mode-${pagingKey}"`), "Launch button for paging lab");
+		assert.ok(html.includes(`data-testid="launch-mode-${tcpKey}"`), "Launch button for tcp simulator");
+		assert.ok(html.includes(`data-testid="launch-mode-${treeKey}"`), "Launch button for tree viz");
 	});
 
 	it("3. Empty catalog renders informative explanation pointing to plugins management", () => {
@@ -226,9 +230,9 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		// Initially all 3 cards present
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-paging-lab"]'));
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-tcp-simulator"]'));
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-tree-viz"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-network-tools:tcp-simulator"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:tree-viz"]'));
 
 		const searchInput = dom.document.querySelector('[data-testid="study-hub-search-input"]') as HTMLInputElement;
 		assert.ok(searchInput, "Search input exists");
@@ -239,9 +243,9 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		// Only tcp-simulator should be visible
-		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-paging-lab"]'), "Paging lab hidden");
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-tcp-simulator"]'), "TCP simulator visible");
-		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-tree-viz"]'), "Tree viz hidden");
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'), "Paging lab hidden");
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-network-tools:tcp-simulator"]'), "TCP simulator visible");
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:tree-viz"]'), "Tree viz hidden");
 
 		// Clear search button should appear
 		const clearBtn = dom.document.querySelector('[data-testid="study-hub-clear-search"]') as HTMLButtonElement;
@@ -252,9 +256,9 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		// All 3 cards restored
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-paging-lab"]'), "Paging lab restored");
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-tcp-simulator"]'), "TCP simulator restored");
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-tree-viz"]'), "Tree viz restored");
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'), "Paging lab restored");
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-network-tools:tcp-simulator"]'), "TCP simulator restored");
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:tree-viz"]'), "Tree viz restored");
 	}));
 
 	it("7. Category filters narrow down displayed modes and toggle back to all", withDom(async (dom) => {
@@ -280,9 +284,9 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		// Only tree-viz belongs to Algorithms
-		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-paging-lab"]'));
-		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-tcp-simulator"]'));
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-tree-viz"]'));
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'));
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-network-tools:tcp-simulator"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:tree-viz"]'));
 
 		// Click "All" category
 		const allCategoryBtn = dom.document.querySelector('[data-testid="filter-category-all"]') as HTMLButtonElement;
@@ -293,9 +297,9 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		// All 3 cards visible again
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-paging-lab"]'));
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-tcp-simulator"]'));
-		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-tree-viz"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-network-tools:tcp-simulator"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:tree-viz"]'));
 	}));
 
 	it("8. No search results state displays reset button that clears active query", withDom(async (dom) => {
@@ -343,9 +347,6 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			/>,
 		);
 
-		// Paging lab has renderer
-		assert.ok(!html.includes('data-testid="study-hub-mode-card-paging-lab" data-testid="mode-renderer-unavailable"'));
-
 		// TCP simulator does NOT have renderer
 		assert.ok(html.includes('data-testid="mode-renderer-unavailable"'), "Renderer unavailable badge rendered");
 	});
@@ -387,7 +388,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			);
 		});
 
-		const launchPagingBtn = dom.document.querySelector('[data-testid="launch-mode-paging-lab"]') as HTMLButtonElement;
+		const launchPagingBtn = dom.document.querySelector('[data-testid="launch-mode-os-simulators:paging-lab"]') as HTMLButtonElement;
 		assert.ok(launchPagingBtn, "Launch button for paging lab exists");
 		assert.equal(launchPagingBtn.disabled, false, "Launch button is enabled");
 
@@ -425,7 +426,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			);
 		});
 
-		const launchTreeBtn = dom.document.querySelector('[data-testid="launch-mode-tree-viz"]') as HTMLButtonElement;
+		const launchTreeBtn = dom.document.querySelector('[data-testid="launch-mode-algo-tools:tree-viz"]') as HTMLButtonElement;
 		assert.ok(launchTreeBtn);
 
 		await act(async () => {
@@ -499,7 +500,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		// Paging lab is no longer present in DOM
-		assert.equal(dom.document.querySelector('[data-testid="study-hub-mode-card-paging-lab"]'), null);
+		assert.equal(dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'), null);
 	}));
 
 	it("15. Attempting to launch when renderer is missing is prevented with error notification", withDom(async (dom) => {
@@ -519,7 +520,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			);
 		});
 
-		const launchTcpBtn = dom.document.querySelector('[data-testid="launch-mode-tcp-simulator"]') as HTMLButtonElement;
+		const launchTcpBtn = dom.document.querySelector('[data-testid="launch-mode-network-tools:tcp-simulator"]') as HTMLButtonElement;
 		assert.ok(launchTcpBtn);
 		assert.equal(launchTcpBtn.disabled, true, "Launch button is disabled when renderer is missing");
 
@@ -530,5 +531,239 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		// Verify Renderer Unavailable notice exists on card
 		assert.ok(dom.document.querySelector('[data-testid="mode-renderer-unavailable"]'));
+	}));
+
+	// =========================================================================
+	// CORREZIONE 1: IDENTITÀ UNIVOCA DELLE MODALITÀ (pluginId + modeId)
+	// =========================================================================
+	it("16. Composite mode identity: two plugins with identical modeId render independently without collision", withDom(async (dom) => {
+		const root = createRoot(dom.document.getElementById("root")!);
+		const collisionModes: PluginModeMetadata[] = [
+			{
+				pluginId: "plugin-alpha",
+				id: "quiz",
+				name: "Quiz Alpha",
+				description: "Alpha version of interactive quiz",
+				category: "Testing",
+			},
+			{
+				pluginId: "plugin-beta",
+				id: "quiz",
+				name: "Quiz Beta",
+				description: "Beta version of interactive quiz",
+				category: "Testing",
+			},
+		];
+
+		const collisionRenderers = [
+			{ pluginId: "plugin-alpha", modeId: "quiz" },
+			{ pluginId: "plugin-beta", modeId: "quiz" },
+		];
+
+		const collisionPlugins = [
+			{ info: { id: "plugin-alpha", enabled: true }, phase: "active" },
+			{ info: { id: "plugin-beta", enabled: true }, phase: "active" },
+		];
+
+		let finishLaunchAlpha: (() => void) | null = null;
+		const launchAlphaPromise = new Promise<void>((resolve) => {
+			finishLaunchAlpha = resolve;
+		});
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={collisionModes}
+					modeRenderers={collisionRenderers}
+					plugins={collisionPlugins}
+					isLoading={false}
+					onLaunch={async (mode) => {
+						if (mode.pluginId === "plugin-alpha") {
+							await launchAlphaPromise;
+						}
+					}}
+				/>,
+			);
+		});
+
+		// 1. Both cards are rendered
+		const cardAlpha = dom.document.querySelector('[data-testid="study-hub-mode-card-plugin-alpha:quiz"]');
+		const cardBeta = dom.document.querySelector('[data-testid="study-hub-mode-card-plugin-beta:quiz"]');
+		assert.ok(cardAlpha, "Card for plugin-alpha:quiz rendered");
+		assert.ok(cardBeta, "Card for plugin-beta:quiz rendered");
+
+		// 2. Both cards have distinct test identifiers
+		assert.notEqual(
+			cardAlpha.getAttribute("data-testid"),
+			cardBeta.getAttribute("data-testid"),
+			"Test identifiers are distinct"
+		);
+
+		const launchAlphaBtn = dom.document.querySelector('[data-testid="launch-mode-plugin-alpha:quiz"]') as HTMLButtonElement;
+		const launchBetaBtn = dom.document.querySelector('[data-testid="launch-mode-plugin-beta:quiz"]') as HTMLButtonElement;
+		assert.ok(launchAlphaBtn, "Launch button for alpha quiz exists");
+		assert.ok(launchBetaBtn, "Launch button for beta quiz exists");
+		assert.equal(launchAlphaBtn.disabled, false);
+		assert.equal(launchBetaBtn.disabled, false);
+
+		// 3. Start launching plugin-alpha / quiz (in flight)
+		act(() => {
+			launchAlphaBtn.click();
+		});
+
+		// 4. Only plugin-alpha / quiz shows loading state and is disabled
+		assert.ok(launchAlphaBtn.textContent?.includes("Launching..."), "Alpha button displays launching state");
+		assert.equal(launchAlphaBtn.disabled, true, "Alpha button is disabled while launching");
+
+		// 5. plugin-beta / quiz is NOT disabled and does NOT show loading state
+		assert.ok(!launchBetaBtn.textContent?.includes("Launching..."), "Beta button does not show launching state");
+		assert.equal(launchBetaBtn.disabled, false, "Beta button remains enabled and unhindered");
+
+		// 6. Complete the launch and verify state restoration
+		await act(async () => {
+			finishLaunchAlpha!();
+		});
+
+		assert.ok(!launchAlphaBtn.textContent?.includes("Launching..."), "Alpha button restored after launch");
+		assert.equal(launchAlphaBtn.disabled, false, "Alpha button re-enabled");
+		assert.equal(launchBetaBtn.disabled, false, "Beta button remains enabled");
+	}));
+
+	// =========================================================================
+	// CORREZIONE 2: TEST REALISTICO CREAZIONE WORKSPACE TRAMITE MANAGER MOCKATO
+	// =========================================================================
+	it("17. Realistic workspace creation: exercises manager.createWorkspace() and router navigation for consecutive distinct instances", withDom(async (dom) => {
+		const root = createRoot(dom.document.getElementById("root")!);
+		const createCalls: Array<{ pluginId: string; modeId: string }> = [];
+		const pushedUrls: string[] = [];
+		let workspaceSeq = 1;
+
+		const mockRouter = {
+			push: (url: string) => {
+				pushedUrls.push(url);
+			},
+		};
+
+		const mockManager = {
+			getModeRenderer: (pluginId: string, modeId: string) => ({ pluginId, modeId }),
+			createWorkspace: async (pluginId: string, modeId: string) => {
+				createCalls.push({ pluginId, modeId });
+				const id = workspaceSeq === 1 ? "workspace-001" : "workspace-002";
+				workspaceSeq++;
+				return {
+					version: 1 as const,
+					id: id as any,
+					pluginId,
+					modeId,
+					title: `Workspace ${id}`,
+					createdAt: "2026-11-15T10:00:00.000Z",
+					updatedAt: "2026-11-15T10:00:00.000Z",
+					state: "ready" as const,
+				};
+			},
+		};
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={sampleModes}
+					modeRenderers={sampleRenderers}
+					plugins={samplePlugins}
+					manager={mockManager}
+					router={mockRouter}
+					isLoading={false}
+				/>,
+			);
+		});
+
+		const launchBtn = dom.document.querySelector('[data-testid="launch-mode-os-simulators:paging-lab"]') as HTMLButtonElement;
+		assert.ok(launchBtn, "Launch button for os-simulators:paging-lab exists");
+
+		// 1. First launch operation
+		await act(async () => {
+			launchBtn.click();
+		});
+
+		// Verify first call
+		assert.equal(createCalls.length, 1, "manager.createWorkspace called once");
+		assert.deepEqual(createCalls[0], { pluginId: "os-simulators", modeId: "paging-lab" });
+		assert.equal(pushedUrls.length, 1, "router.push called once");
+		assert.equal(pushedUrls[0], "/workspaces/workspace-001");
+
+		// 2. Second launch operation on the same mode
+		await act(async () => {
+			launchBtn.click();
+		});
+
+		// Verify second call and distinct workspace ID
+		assert.equal(createCalls.length, 2, "manager.createWorkspace called exactly twice");
+		assert.deepEqual(createCalls[1], { pluginId: "os-simulators", modeId: "paging-lab" });
+		assert.equal(pushedUrls.length, 2, "router.push called twice");
+		assert.equal(pushedUrls[1], "/workspaces/workspace-002");
+
+		// Verify distinct IDs and no workspace reuse
+		assert.notEqual(pushedUrls[0], pushedUrls[1], "Consecutive launches navigate to distinct workspace IDs");
+		assert.equal(pushedUrls[0], "/workspaces/workspace-001");
+		assert.equal(pushedUrls[1], "/workspaces/workspace-002");
+	}));
+
+	it("18. Removed mode between rendering and launch attempt: refuses launch, does not invoke manager.createWorkspace, and displays error notice", withDom(async (dom) => {
+		const root = createRoot(dom.document.getElementById("root")!);
+		let managerCallCount = 0;
+
+		const mockManager = {
+			getModeRenderer: (pluginId: string, modeId: string) => ({ pluginId, modeId }),
+			createWorkspace: async (pluginId: string, modeId: string) => {
+				managerCallCount++;
+				return {
+					version: 1 as const,
+					id: "workspace-unexpected" as any,
+					pluginId,
+					modeId,
+					title: "Unexpected",
+					createdAt: "2026-11-15T10:00:00.000Z",
+					updatedAt: "2026-11-15T10:00:00.000Z",
+					state: "ready" as const,
+				};
+			},
+		};
+
+		// Initial render with liveModes array
+		const liveModes = [...sampleModes];
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={liveModes}
+					modeRenderers={sampleRenderers}
+					plugins={samplePlugins}
+					manager={mockManager}
+					isLoading={false}
+				/>,
+			);
+		});
+
+		const launchPagingBtn = dom.document.querySelector('[data-testid="launch-mode-os-simulators:paging-lab"]') as HTMLButtonElement;
+		assert.ok(launchPagingBtn, "Button rendered in initial catalog");
+
+		// Catalog is updated before user clicks: paging-lab is removed from available modes
+		const removedIndex = liveModes.findIndex((m) => m.id === "paging-lab");
+		liveModes.splice(removedIndex, 1);
+
+		// Now attempt to launch the removed mode
+		await act(async () => {
+			launchPagingBtn.click();
+		});
+
+		// Verify manager.createWorkspace was NEVER invoked
+		assert.equal(managerCallCount, 0, "manager.createWorkspace must not be called for an unavailable mode");
+
+		// Verify appropriate error message is displayed
+		const errorNotice = dom.document.querySelector('[data-testid="study-hub-launch-error"]');
+		assert.ok(errorNotice, "Launch error notice displayed");
+		assert.ok(
+			errorNotice.textContent?.includes("no longer available"),
+			"Explains mode is no longer available"
+		);
 	}));
 });
