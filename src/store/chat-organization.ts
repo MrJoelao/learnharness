@@ -155,9 +155,9 @@ export const chatOrganizationStore: ChatOrganizationStore = {
 			next.placements[chatKey(id)] = placement;
 		}
 
-		// Ensure no workspace placement is left pointing to an unpreserved folder
+		// Ensure no placement is left pointing to an unpreserved folder
 		for (const [key, p] of Object.entries(next.placements)) {
-			if (key.startsWith("workspace:") && p.folderId !== null && !validFolderIds.has(p.folderId)) {
+			if (p.folderId !== null && !validFolderIds.has(p.folderId)) {
 				next.placements[key] = { ...p, folderId: null };
 			}
 		}

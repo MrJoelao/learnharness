@@ -9,7 +9,8 @@ export async function GET(request: Request) {
 			return Response.json(directoryService.readArchived());
 		}
 		const includeArchived = url.searchParams.get("includeArchived") === "true";
-		return Response.json(directoryService.read({ includeArchived }));
+		const includeIssues = url.searchParams.get("includeIssues") === "true" || url.searchParams.get("inspect") === "true";
+		return Response.json(directoryService.read({ includeArchived, includeIssues }));
 	} catch (error) {
 		return Response.json({ error: (error as Error).message }, { status: 500 });
 	}

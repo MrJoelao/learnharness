@@ -74,6 +74,11 @@ export const emptyOrganizationV2 = (): OrganizationV2 => ({
 
 export type OrganizationItemKind = "chat" | "workspace" | "folder";
 
+export interface SiblingEntry {
+	kind: "chat" | "workspace";
+	id: string;
+}
+
 export type OrganizationAction =
 	| { action: "create-folder"; name: string; parentId: string | null; order?: number }
 	| { action: "rename-folder"; id: string; name: string }
@@ -97,6 +102,16 @@ export type OrganizationAction =
 			parentId: string | null;
 			kind: "chat" | "workspace" | "folder";
 			ids: string[];
+	  }
+	| {
+			action: "reorder-siblings";
+			parentId: string | null;
+			entries: SiblingEntry[];
+	  }
+	| {
+			action: "reorder-mixed-siblings";
+			parentId: string | null;
+			entries: SiblingEntry[];
 	  }
 	| { action: "archive"; kind: "chat" | "workspace" | "folder"; id: string }
 	| {
@@ -222,6 +237,43 @@ export function parseOrganizationV2(raw: unknown): OrganizationV2 {
 	return r as OrganizationV2;
 }
 
+function parseMixedSiblingEntries<T extends "reorder-siblings" | "reorder-mixed-siblings">(
+	rawEntries: unknown,
+	parentId: string | null,
+	actionName: T,
+): { action: T; parentId: string | null; entries: SiblingEntry[] } {
+	if (!Array.isArray(rawEntries)) {
+		throw new Error("entries must be an array.");
+	}
+	const entries: SiblingEntry[] = [];
+	const seen = new Set<string>();
+	for (const item of rawEntries) {
+		if (!item || typeof item !== "object" || Array.isArray(item)) {
+			throw new Error("Each entry must be an object with kind and id.");
+		}
+		const obj = item as Record<string, unknown>;
+		if (obj.kind !== "chat" && obj.kind !== "workspace") {
+			throw new Error("Invalid entry kind: expected 'chat' or 'workspace'.");
+		}
+		if (typeof obj.id !== "string" || !obj.id.trim()) {
+			throw new Error("Entry id must be a non-empty string.");
+		}
+		const id = obj.id.trim();
+		const kind = obj.kind;
+		const key = `${kind}:${id}`;
+		if (seen.has(key)) {
+			throw new Error(`Duplicate entry in reorder: ${key}`);
+		}
+		seen.add(key);
+		entries.push({ kind, id });
+	}
+	return {
+		action: actionName,
+		parentId,
+		entries,
+	};
+}
+
 export function parseOrganizationAction(raw: unknown): OrganizationAction {
 	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
 		throw new Error("Invalid organization action.");
@@ -280,6 +332,10 @@ export function parseOrganizationAction(raw: unknown): OrganizationAction {
 			};
 		}
 		case "reorder": {
+			const rawEntries = r.entries ?? r.items;
+			if (Array.isArray(rawEntries)) {
+				return parseMixedSiblingEntries(rawEntries, parent(), "reorder-siblings");
+			}
 			const kind = itemKind("reorder");
 			// Support array of ids: reorder-siblings
 			if (Array.isArray(r.ids)) {
@@ -306,6 +362,10 @@ export function parseOrganizationAction(raw: unknown): OrganizationAction {
 			};
 		}
 		case "reorder-siblings": {
+			const rawEntries = r.entries ?? r.items;
+			if (Array.isArray(rawEntries)) {
+				return parseMixedSiblingEntries(rawEntries, parent(), "reorder-siblings");
+			}
 			const kind = itemKind("reorder");
 			if (!Array.isArray(r.ids) || !r.ids.every((x) => typeof x === "string" && (x as string).trim())) {
 				throw new Error("ids must be an array of non-empty strings.");
@@ -316,6 +376,10 @@ export function parseOrganizationAction(raw: unknown): OrganizationAction {
 				kind,
 				ids: (r.ids as string[]).map((x) => x.trim()),
 			};
+		}
+		case "reorder-mixed-siblings": {
+			const rawEntries = r.entries ?? r.items;
+			return parseMixedSiblingEntries(rawEntries, parent(), "reorder-mixed-siblings");
 		}
 		case "archive": {
 			const kind = itemKind("archive");
@@ -507,7 +571,7 @@ export function applyOrganizationAction(
 	if ("parentId" in action && action.parentId !== null) {
 		const parentFolder = next.folders.find((f) => f.id === action.parentId);
 		if (!parentFolder) throw new Error("Parent folder no longer exists.");
-		if (parentFolder.archivedAt && action.action !== "reorder-siblings") {
+		if (parentFolder.archivedAt && action.action !== "reorder-siblings" && action.action !== "reorder-mixed-siblings") {
 			throw new Error("Cannot add or move items into an archived folder.");
 		}
 	}
@@ -591,6 +655,44 @@ export function applyOrganizationAction(
 			...next.placements,
 			[key]: { ...existing, folderId: existing?.folderId ?? null, order: targetOrder },
 		};
+		return next;
+	}
+
+	if (
+		action.action === "reorder-mixed-siblings" ||
+		(action.action === "reorder-siblings" && "entries" in action)
+	) {
+		const seenKeys = new Set<ItemKey>();
+		for (const entry of action.entries) {
+			const key = entry.kind === "chat" ? chatKey(entry.id) : workspaceKey(entry.id);
+			if (seenKeys.has(key)) {
+				throw new Error(`Duplicate entry in reorder: ${entry.kind} ${entry.id}.`);
+			}
+			seenKeys.add(key);
+
+			if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
+				throw new Error(`${entry.kind === "chat" ? "Chat" : "Workspace"} no longer exists: ${entry.id}.`);
+			}
+
+			const existing = placementOf(next, key);
+			const currentParent = existing?.folderId ?? null;
+			if (currentParent !== action.parentId) {
+				throw new Error(
+					`${entry.kind === "chat" ? "Chat" : "Workspace"} ${entry.id} does not belong to parent ${action.parentId ?? "root"}.`,
+				);
+			}
+		}
+
+		action.entries.forEach((entry, index) => {
+			const key = entry.kind === "chat" ? chatKey(entry.id) : workspaceKey(entry.id);
+			const existing = placementOf(next, key);
+			next.placements[key] = {
+				...existing,
+				folderId: action.parentId,
+				order: index,
+			};
+		});
+
 		return next;
 	}
 

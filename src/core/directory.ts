@@ -7,7 +7,7 @@
 
 import type { ChatFolder } from "./chat-organization.ts";
 import type { ChatKind } from "./contracts/chat.ts";
-import type { WorkspaceAvailability } from "./workspaces.ts";
+import type { WorkspaceAvailability, WorkspaceDirectoryIssue } from "./workspaces.ts";
 import type { OrganizationV2 } from "./organization.ts";
 
 export interface ChatDirectoryEntry {
@@ -50,6 +50,11 @@ export interface SharedDirectory {
 	folders: ChatFolder[];
 	/** Merged, sorted items. Active-only by default; pass includeArchived for all. */
 	items: DirectoryEntry[];
+	/**
+	 * Non-fatal issues encountered in workspace records (missing, invalid, or unreadable files).
+	 * Preserves recovery visibility without removing or corrupting valid entries.
+	 */
+	issues?: WorkspaceDirectoryIssue[];
 }
 
 export interface ArchivedSharedDirectory {

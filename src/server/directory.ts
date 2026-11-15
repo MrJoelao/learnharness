@@ -33,7 +33,7 @@ import {
 	type WorkspaceDirectoryEntry,
 } from "../core/directory.ts";
 import type { ChatStore, WorkspaceStore } from "../core/ports.ts";
-import type { WorkspaceAvailability, WorkspaceRecord } from "../core/workspaces.ts";
+import type { WorkspaceAvailability, WorkspaceDirectoryIssue, WorkspaceRecord } from "../core/workspaces.ts";
 import type { OrganizationV2Store } from "../store/chat-organization.ts";
 import { stores } from "./stores.ts";
 
@@ -68,6 +68,7 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 
 	function buildItems(
 		org: OrganizationV2,
+		wsDir: ReturnType<WorkspaceStore["list"]>,
 		options?: { includeArchived?: boolean },
 	): DirectoryEntry[] {
 		const folderIds = new Set(org.folders.map((f) => f.id));
@@ -103,7 +104,6 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 		}
 
 		// ── Workspaces ────────────────────────────────────────────────────
-		const wsDir = deps.workspaceStore.list();
 		for (const ws of wsDir.workspaces) {
 			const key = workspaceKey(ws.id);
 			const placement = org.placements[key];
@@ -162,20 +162,31 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 		return items;
 	}
 
-	function read(options?: { includeArchived?: boolean }): SharedDirectory {
+	function read(options?: { includeArchived?: boolean; includeIssues?: boolean }): SharedDirectory {
 		const org = readOrganization();
-		const items = buildItems(org, options);
-		return { organization: org, folders: org.folders, items };
+		const wsDir = deps.workspaceStore.list();
+		const items = buildItems(org, wsDir, options);
+		const result: SharedDirectory = { organization: org, folders: org.folders, items };
+		if (options?.includeIssues) {
+			result.issues = wsDir.issues;
+		}
+		return result;
 	}
 
 	function readArchived(): ArchivedSharedDirectory {
 		const org = readOrganization();
-		const allItems = buildItems(org, { includeArchived: true });
+		const wsDir = deps.workspaceStore.list();
+		const allItems = buildItems(org, wsDir, { includeArchived: true });
 		return {
 			archivedFolders: org.folders.filter((f) => Boolean(f.archivedAt)),
 			activeFolders: org.folders.filter((f) => !f.archivedAt),
 			items: allItems.filter((item) => Boolean(item.archivedAt)),
 		};
+	}
+
+	function inspect(): { issues: WorkspaceDirectoryIssue[] } {
+		const wsDir = deps.workspaceStore.list();
+		return { issues: wsDir.issues };
 	}
 
 	function change(raw: unknown): SharedDirectory & { createdFolderId?: string } {
@@ -222,8 +233,10 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 		}
 	}
 
-	return { read, readArchived, change, removePlacement };
+	return { read, readArchived, change, removePlacement, inspect };
 }
+
+export type DirectoryService = ReturnType<typeof createDirectoryService>;
 
 // ─── Availability wiring ─────────────────────────────────────────────────────
 

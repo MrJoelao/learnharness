@@ -5,12 +5,16 @@ import path from "node:path";
 import { after, it } from "node:test";
 
 import {
+	applyOrganizationAction,
 	chatKey,
 	emptyOrganizationV2,
 	migrateV1toV2,
+	parseOrganizationAction,
 	parseOrganizationV2,
 	workspaceKey,
+	type ItemKey,
 	type OrganizationV2,
+	type SiblingEntry,
 } from "../src/core/organization.ts";
 import {
 	parseWorkspaceId,
@@ -479,6 +483,332 @@ it("P2: migrateV1toV2 normalizes dangling folderId to root (null) without losing
 	assert.deepEqual(migrated.placements[chatKey("c2")], { folderId: null }, "Dangling folder reference normalized to root");
 	// Output of migration passes strict parseOrganizationV2
 	assert.doesNotThrow(() => parseOrganizationV2(migrated));
+});
+
+// ─── 4. Mixed Sibling Ordering ──────────────────────────────────────────────
+
+let folderCounter = 0;
+const testFolderFactory = () => ({ id: `folder_${++folderCounter}`, createdAt: NOW });
+
+it("mixed sibling ordering: root-level ordering deterministically orders mixed chats and workspaces", () => {
+	const c1 = "c1";
+	const c2 = "c2";
+	const w1 = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000301");
+	const w2 = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000302");
+	const itemKeys = new Set<ItemKey>([chatKey(c1), chatKey(c2), workspaceKey(w1), workspaceKey(w2)]);
+
+	let state: OrganizationV2 = {
+		version: 2,
+		folders: [],
+		placements: {
+			[chatKey(c1)]: { folderId: null, order: 10 },
+			[chatKey(c2)]: { folderId: null, order: 20 },
+			[workspaceKey(w1)]: { folderId: null, order: 30 },
+			[workspaceKey(w2)]: { folderId: null, order: 40 },
+		},
+	};
+
+	const action = parseOrganizationAction({
+		action: "reorder-siblings",
+		parentId: null,
+		entries: [
+			{ kind: "workspace", id: w2 },
+			{ kind: "chat", id: c1 },
+			{ kind: "workspace", id: w1 },
+			{ kind: "chat", id: c2 },
+		],
+	});
+
+	state = applyOrganizationAction(state, action, itemKeys, testFolderFactory());
+
+	assert.equal(state.placements[workspaceKey(w2)]?.order, 0);
+	assert.equal(state.placements[chatKey(c1)]?.order, 1);
+	assert.equal(state.placements[workspaceKey(w1)]?.order, 2);
+	assert.equal(state.placements[chatKey(c2)]?.order, 3);
+});
+
+it("mixed sibling ordering: nested folders support mixed ordering and keep folder ordering separate", () => {
+	const c1 = "c1";
+	const w1 = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000303");
+	const itemKeys = new Set<ItemKey>([chatKey(c1), workspaceKey(w1)]);
+
+	let state: OrganizationV2 = {
+		version: 2,
+		folders: [
+			{ id: "parent_f", name: "Parent", parentId: null, createdAt: NOW, order: 0 },
+			{ id: "child_f", name: "Child", parentId: "parent_f", createdAt: NOW, order: 0 },
+		],
+		placements: {
+			[chatKey(c1)]: { folderId: "child_f", order: 5 },
+			[workspaceKey(w1)]: { folderId: "child_f", order: 2 },
+		},
+	};
+
+	const action = parseOrganizationAction({
+		action: "reorder-mixed-siblings",
+		parentId: "child_f",
+		entries: [
+			{ kind: "chat", id: c1 },
+			{ kind: "workspace", id: w1 },
+		],
+	});
+
+	state = applyOrganizationAction(state, action, itemKeys, testFolderFactory());
+
+	assert.equal(state.placements[chatKey(c1)]?.order, 0);
+	assert.equal(state.placements[workspaceKey(w1)]?.order, 1);
+	// Folder orders remain completely untouched
+	assert.equal(state.folders[0]?.order, 0);
+	assert.equal(state.folders[1]?.order, 0);
+});
+
+it("mixed sibling ordering: rejects duplicate IDs, missing entries, and mismatched parents", () => {
+	const c1 = "c1";
+	const w1 = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000304");
+	const itemKeys = new Set<ItemKey>([chatKey(c1), workspaceKey(w1)]);
+
+	const state: OrganizationV2 = {
+		version: 2,
+		folders: [{ id: "f1", name: "F1", parentId: null, createdAt: NOW }],
+		placements: {
+			[chatKey(c1)]: { folderId: "f1", order: 0 },
+			[workspaceKey(w1)]: { folderId: null, order: 0 }, // Belongs to root, not f1
+		},
+	};
+
+	// Duplicate entries rejected by parseOrganizationAction
+	assert.throws(
+		() =>
+			parseOrganizationAction({
+				action: "reorder-siblings",
+				parentId: "f1",
+				entries: [
+					{ kind: "chat", id: c1 },
+					{ kind: "chat", id: c1 },
+				],
+			}),
+		/duplicate entry in reorder/i,
+	);
+
+	// Missing entry rejected by applyOrganizationAction
+	const missingAction = parseOrganizationAction({
+		action: "reorder-siblings",
+		parentId: "f1",
+		entries: [{ kind: "chat", id: "nonexistent_chat" }],
+	});
+	assert.throws(
+		() => applyOrganizationAction(state, missingAction, itemKeys, testFolderFactory()),
+		/Chat no longer exists/i,
+	);
+
+	// Mismatched parent rejected by applyOrganizationAction (w1 is in root, but parentId is f1)
+	const mismatchedAction = parseOrganizationAction({
+		action: "reorder-siblings",
+		parentId: "f1",
+		entries: [
+			{ kind: "chat", id: c1 },
+			{ kind: "workspace", id: w1 },
+		],
+	});
+	assert.throws(
+		() => applyOrganizationAction(state, mismatchedAction, itemKeys, testFolderFactory()),
+		/does not belong to parent f1/i,
+	);
+});
+
+it("mixed sibling ordering: preserves archivedAt on archived entries and leaves unrelated siblings untouched", () => {
+	const c1 = "c1";
+	const c2 = "c2";
+	const w1 = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000305");
+	const wUnrelated = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000306");
+	const itemKeys = new Set<ItemKey>([chatKey(c1), chatKey(c2), workspaceKey(w1), workspaceKey(wUnrelated)]);
+
+	const ARCHIVE_TIME = "2026-11-10T10:00:00.000Z";
+	let state: OrganizationV2 = {
+		version: 2,
+		folders: [{ id: "f1", name: "F1", parentId: null, createdAt: NOW }],
+		placements: {
+			[chatKey(c1)]: { folderId: "f1", order: 0, archivedAt: ARCHIVE_TIME },
+			[workspaceKey(w1)]: { folderId: "f1", order: 1, archivedAt: null },
+			[chatKey(c2)]: { folderId: "f1", order: 2, archivedAt: null },
+			[workspaceKey(wUnrelated)]: { folderId: "f1", order: 99, archivedAt: ARCHIVE_TIME },
+		},
+	};
+
+	// Only reorder c2, c1, w1; do not include wUnrelated
+	const action = parseOrganizationAction({
+		action: "reorder-siblings",
+		parentId: "f1",
+		entries: [
+			{ kind: "chat", id: c2 },
+			{ kind: "chat", id: c1 },
+			{ kind: "workspace", id: w1 },
+		],
+	});
+
+	state = applyOrganizationAction(state, action, itemKeys, testFolderFactory());
+
+	assert.equal(state.placements[chatKey(c2)]?.order, 0);
+	assert.equal(state.placements[chatKey(c1)]?.order, 1);
+	assert.equal(state.placements[chatKey(c1)]?.archivedAt, ARCHIVE_TIME, "archivedAt timestamp preserved");
+	assert.equal(state.placements[workspaceKey(w1)]?.order, 2);
+
+	// Unrelated sibling completely unchanged
+	assert.equal(state.placements[workspaceKey(wUnrelated)]?.order, 99);
+	assert.equal(state.placements[workspaceKey(wUnrelated)]?.archivedAt, ARCHIVE_TIME);
+});
+
+it("mixed sibling ordering: legacy reorder-siblings with kind and ids continues to work", () => {
+	const c1 = "c1";
+	const c2 = "c2";
+	const itemKeys = new Set<ItemKey>([chatKey(c1), chatKey(c2)]);
+
+	let state: OrganizationV2 = {
+		version: 2,
+		folders: [],
+		placements: {
+			[chatKey(c1)]: { folderId: null, order: 0 },
+			[chatKey(c2)]: { folderId: null, order: 1 },
+		},
+	};
+
+	const legacyAction = parseOrganizationAction({
+		action: "reorder-siblings",
+		parentId: null,
+		kind: "chat",
+		ids: [c2, c1],
+	});
+
+	state = applyOrganizationAction(state, legacyAction, itemKeys, testFolderFactory());
+
+	assert.equal(state.placements[chatKey(c2)]?.order, 0);
+	assert.equal(state.placements[chatKey(c1)]?.order, 1);
+});
+
+// ─── 5. Directory Recovery Visibility ───────────────────────────────────────
+
+it("directory recovery visibility: inspect() and read({ includeIssues: true }) expose store issues without breaking contract", () => {
+	const missingId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000401");
+	const invalidId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000402");
+	const validId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000403");
+
+	const mockIssues = [
+		{ kind: "missing-record" as const, id: missingId },
+		{ kind: "invalid-record" as const, id: invalidId },
+	];
+
+	const mockWorkspaceStore = {
+		list: () => ({
+			workspaces: [makeRecord(validId, { title: "Healthy WS" })],
+			issues: mockIssues,
+		}),
+		read: () => null,
+		create: () => {},
+		update: () => {},
+		delete: () => {},
+	};
+
+	let orgState: OrganizationV2 = {
+		version: 2,
+		folders: [],
+		placements: {
+			[workspaceKey(validId)]: { folderId: null, order: 0 },
+		},
+	};
+
+	const mockOrgStore = {
+		read: () => structuredClone(orgState),
+		write: (next: OrganizationV2) => {
+			orgState = structuredClone(next);
+		},
+	};
+
+	const service = createDirectoryService({
+		chatStore: { listChats: () => [] } as any,
+		workspaceStore: mockWorkspaceStore as any,
+		organizationStore: mockOrgStore as any,
+		resolveAvailability: () => "available",
+	});
+
+	// 1. inspect() exposes recovery issues
+	const inspection = service.inspect();
+	assert.deepEqual(inspection.issues, mockIssues);
+
+	// 2. read() without includeIssues returns standard contract without issues field
+	const standardDir = service.read();
+	assert.equal(standardDir.items.length, 1);
+	assert.equal(standardDir.items[0]?.id, validId);
+	assert.equal(standardDir.issues, undefined, "Default read() contract must not have issues");
+
+	// 3. read({ includeIssues: true }) surfaces recovery visibility additively
+	const recoveryDir = service.read({ includeIssues: true });
+	assert.equal(recoveryDir.items.length, 1);
+	assert.deepEqual(recoveryDir.issues, mockIssues);
+});
+
+// ─── 6. Backward Compatibility Verification ─────────────────────────────────
+
+it("backward compatibility: legacy v1 plugin activates and registerView retains original behavior", async () => {
+	const dir = path.join(root, "legacy-v1-compat");
+	const pluginDist = path.join(dir, "plugins", "legacy-plugin", "dist");
+	fs.mkdirSync(pluginDist, { recursive: true });
+	fs.writeFileSync(
+		path.join(pluginDist, "manifest.json"),
+		JSON.stringify({
+			apiVersion: 1,
+			id: "legacy-plugin",
+			name: "Legacy Plugin",
+			version: "1.0.0",
+			minAppVersion: "0.7.0",
+			backend: "backend.cjs",
+		}),
+	);
+	fs.writeFileSync(path.join(pluginDist, "backend.cjs"), "exports.activate = ctx => { ctx.handle('ping', () => 'pong'); };");
+
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		createServices: () => ({} as any),
+	});
+
+	await host.initialize();
+	await host.setEnabled("legacy-plugin", true);
+	const list = host.list();
+	assert.equal(list.length, 1);
+	assert.equal(list[0]?.id, "legacy-plugin");
+	assert.equal(list[0]?.status, "active");
+	assert.deepEqual(host.modes(), [], "Legacy plugin has no modes");
+});
+
+it("backward compatibility: folder archive and restore cascades to both chats and workspaces", () => {
+	const c1 = "chat_archive_test";
+	const w1 = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000501");
+	const itemKeys = new Set<ItemKey>([chatKey(c1), workspaceKey(w1)]);
+
+	let state: OrganizationV2 = {
+		version: 2,
+		folders: [{ id: "f_target", name: "Target Folder", parentId: null, createdAt: NOW }],
+		placements: {
+			[chatKey(c1)]: { folderId: "f_target" },
+			[workspaceKey(w1)]: { folderId: "f_target" },
+		},
+	};
+
+	// Archive the folder
+	const archiveAction = parseOrganizationAction({ action: "archive", kind: "folder", id: "f_target" });
+	state = applyOrganizationAction(state, archiveAction, itemKeys, testFolderFactory());
+
+	assert.ok(state.folders[0]?.archivedAt, "Folder must be archived");
+	assert.ok(state.placements[chatKey(c1)]?.archivedAt, "Chat placement must be archived");
+	assert.ok(state.placements[workspaceKey(w1)]?.archivedAt, "Workspace placement must be archived");
+
+	// Restore the folder
+	const restoreAction = parseOrganizationAction({ action: "restore", kind: "folder", id: "f_target" });
+	state = applyOrganizationAction(state, restoreAction, itemKeys, testFolderFactory());
+
+	assert.equal(state.folders[0]?.archivedAt, null, "Folder must be unarchived");
+	assert.equal(state.placements[chatKey(c1)]?.archivedAt, null, "Chat placement must be unarchived");
+	assert.equal(state.placements[workspaceKey(w1)]?.archivedAt, null, "Workspace placement must be unarchived");
 });
 
 function status(code: number) {
