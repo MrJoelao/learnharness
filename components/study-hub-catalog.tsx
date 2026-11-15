@@ -197,10 +197,14 @@ export function StudyHubCatalog({
 	const handleRetry = () => {
 		setLaunchError(null);
 		startRetryTransition(async () => {
-			if (propOnRetry) {
-				await propOnRetry();
-			} else if (activeManager?.reload) {
-				await activeManager.reload();
+			try {
+				if (propOnRetry) {
+					await propOnRetry();
+				} else if (activeManager?.reload) {
+					await activeManager.reload();
+				}
+			} catch {
+				// Prevent unhandled rejection and keep interface responsive
 			}
 		});
 	};
@@ -335,19 +339,17 @@ export function StudyHubCatalog({
 								Discover and launch interactive visual environments, simulators, and domain workspaces powered by LearnHarness plugins.
 							</p>
 						</div>
-						{(activeManager || propOnRetry) && (
-							<Button
-								variant="outline"
-								size="sm"
-								onClick={handleRetry}
-								disabled={isRetrying || isLoading}
-								data-testid="study-hub-refresh-button"
-								className="gap-2 cursor-pointer"
-							>
-								<RefreshCwIcon className={`size-3.5 ${isRetrying ? "animate-spin" : ""}`} />
-								<span>Refresh</span>
-							</Button>
-						)}
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={handleRetry}
+							disabled={isRetrying || isLoading}
+							data-testid="study-hub-refresh-button"
+							className="gap-2 cursor-pointer"
+						>
+							<RefreshCwIcon className={`size-3.5 ${isRetrying ? "animate-spin" : ""}`} />
+							<span>Refresh</span>
+						</Button>
 					</div>
 
 					{/* Search & Filter Controls */}
@@ -543,6 +545,9 @@ export function StudyHubCatalog({
 							</div>
 						))}
 					</div>
+				) : errorMessage && activeModes.length === 0 ? (
+					/* Loading error when catalog is not available: do not show empty catalog */
+					null
 				) : activeModes.length === 0 ? (
 					/* Empty Catalog State */
 					<div

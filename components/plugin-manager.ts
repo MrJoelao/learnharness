@@ -241,14 +241,20 @@ export class PluginFrontendManager {
 		try {
 			const body = await this.json("/api/plugins") as { plugins: PluginInfo[]; directory: string; conflicts?: { id: string; error: string }[] };
 			if (this.disposed || generation !== this.requestGeneration) return;
+			let modesError: string | undefined;
 			try {
 				const modeBody = await this.json("/api/plugins/modes") as { modes?: PluginModeMetadata[] };
-				this.backendModes = Array.isArray(modeBody.modes) ? modeBody.modes.filter(mode => mode && typeof mode.pluginId === "string" && typeof mode.id === "string") : [];
-			} catch { this.backendModes = []; }
+				if (modeBody && Array.isArray(modeBody.modes)) {
+					this.backendModes = modeBody.modes.filter(mode => mode && typeof mode.pluginId === "string" && typeof mode.id === "string");
+					this.pruneUnavailableModeRenderers();
+				}
+			} catch (err) {
+				modesError = message(err);
+			}
 			if (this.disposed || generation !== this.requestGeneration) return;
-			this.pruneUnavailableModeRenderers();
 			this.reconcile(body.plugins);
-			this.publish({ directory: body.directory, conflicts: body.conflicts ?? [], modes: Object.freeze([...this.backendModes]), loading: false, ...(clearError ? { error: undefined } : {}) });
+			const nextError = modesError ?? (clearError ? undefined : this.snapshot.error);
+			this.publish({ directory: body.directory, conflicts: body.conflicts ?? [], modes: Object.freeze([...this.backendModes]), loading: false, error: nextError });
 		} catch (error) {
 			if (generation === this.requestGeneration) this.publish({ loading: false, error: message(error) });
 		}

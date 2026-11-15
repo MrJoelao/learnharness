@@ -176,6 +176,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(html.includes("There are currently no learning modes registered"), "Empty state explanation rendered");
 		assert.ok(html.includes("href=\"/settings\""), "Links to settings to manage plugins");
 		assert.ok(!html.includes('data-testid="study-hub-grid"'), "Grid not rendered when empty");
+		assert.ok(!html.includes('data-testid="study-hub-error"'), "Error notice not rendered when catalog is cleanly empty");
 	});
 
 	it("4. Loading state renders skeleton placeholders", () => {
@@ -206,12 +207,22 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(html.includes("Failed to load study modes"), "Error heading rendered");
 		assert.ok(html.includes("Failed to connect to plugin host"), "Error message rendered");
 		assert.ok(html.includes('data-testid="study-hub-retry-button"'), "Retry button rendered");
+		assert.ok(!html.includes('data-testid="study-hub-empty"'), "Empty catalog state must not be rendered when in error state");
 	});
 
 	function typeIntoInput(input: HTMLInputElement, value: string) {
 		const reactKey = Object.keys(input).find((k) => k.startsWith("__reactProps"));
 		if (reactKey && (input as any)[reactKey]?.onChange) {
 			(input as any)[reactKey].onChange({ target: { value } });
+		}
+	}
+
+	function clickElement(el: HTMLElement) {
+		const reactKey = Object.keys(el).find((k) => k.startsWith("__reactProps"));
+		if (reactKey && (el as any)[reactKey]?.onClick) {
+			(el as any)[reactKey].onClick({ preventDefault() {} });
+		} else {
+			el.click();
 		}
 	}
 
@@ -351,24 +362,34 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(html.includes('data-testid="mode-renderer-unavailable"'), "Renderer unavailable badge rendered");
 	});
 
-	it("10. Disabled plugin disables launch button and displays 'Plugin Disabled' badge", () => {
+	it("10. Disabled plugin disables launch button and displays 'Plugin Disabled' badge", withDom(async (dom) => {
 		const pluginsWithDisabled = [
 			{ info: { id: "os-simulators", enabled: false }, phase: "disabled" },
 			{ info: { id: "network-tools", enabled: true }, phase: "active" },
 			{ info: { id: "algo-tools", enabled: true }, phase: "active" },
 		];
 
-		const html = renderToStaticMarkup(
-			<StudyHubCatalog
-				modes={sampleModes}
-				modeRenderers={sampleRenderers}
-				plugins={pluginsWithDisabled}
-				isLoading={false}
-			/>,
-		);
+		const root = createRoot(dom.document.getElementById("root")!);
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={sampleModes}
+					modeRenderers={sampleRenderers}
+					plugins={pluginsWithDisabled}
+					isLoading={false}
+				/>,
+			);
+		});
 
-		assert.ok(html.includes('data-testid="mode-plugin-disabled"'), "Plugin disabled badge rendered");
-	});
+		assert.ok(dom.document.querySelector('[data-testid="mode-plugin-disabled"]'), "Plugin disabled badge rendered");
+		const disabledLaunchBtn = dom.document.querySelector('[data-testid="launch-mode-os-simulators:paging-lab"]') as HTMLButtonElement;
+		assert.ok(disabledLaunchBtn, "Launch button exists");
+		assert.equal(disabledLaunchBtn.disabled, true, "Launch button must be disabled when plugin is disabled");
+
+		const enabledLaunchBtn = dom.document.querySelector('[data-testid="launch-mode-network-tools:tcp-simulator"]') as HTMLButtonElement;
+		assert.ok(enabledLaunchBtn);
+		assert.equal(enabledLaunchBtn.disabled, false, "Enabled plugin mode launch button remains enabled");
+	}));
 
 	it("11. Launch flow creates a fresh independent workspace and navigates", withDom(async (dom) => {
 		const root = createRoot(dom.document.getElementById("root")!);
@@ -472,6 +493,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 	it("14. Attempting to launch an unavailable or removed mode definition shows a clear recoverable error", withDom(async (dom) => {
 		const root = createRoot(dom.document.getElementById("root")!);
+		let workspaceCreated = false;
 
 		// Initial catalog has paging-lab
 		await act(async () => {
@@ -481,11 +503,19 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 					modeRenderers={sampleRenderers}
 					plugins={samplePlugins}
 					isLoading={false}
+					onLaunch={() => {
+						workspaceCreated = true;
+					}}
 				/>,
 			);
 		});
 
-		// Now simulate catalog changing where paging-lab was removed/unregistered
+		const launchPagingBtn = dom.document.querySelector('[data-testid="launch-mode-os-simulators:paging-lab"]') as HTMLButtonElement;
+		assert.ok(launchPagingBtn, "Paging lab launch button initially present");
+		const reactKey = Object.keys(launchPagingBtn).find((k) => k.startsWith("__reactProps"))!;
+		const launchHandler = (launchPagingBtn as any)[reactKey]?.onClick;
+
+		// Now simulate catalog changing where paging-lab was removed/unregistered via immutable props update
 		const modesWithoutPaging = sampleModes.filter((m) => m.id !== "paging-lab");
 
 		await act(async () => {
@@ -495,12 +525,25 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 					modeRenderers={sampleRenderers}
 					plugins={samplePlugins}
 					isLoading={false}
+					onLaunch={() => {
+						workspaceCreated = true;
+					}}
 				/>,
 			);
 		});
 
-		// Paging lab is no longer present in DOM
+		// Paging lab card is no longer present in DOM
 		assert.equal(dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'), null);
+
+		// If a launch was attempted using previously held reference, it must refuse and not create a workspace
+		await act(async () => {
+			launchHandler({ preventDefault() {} });
+		});
+
+		assert.equal(workspaceCreated, false, "Must not create a workspace when mode is no longer available");
+		const errorNotice = dom.document.querySelector('[data-testid="study-hub-launch-error"]');
+		assert.ok(errorNotice, "Clear launch error notice rendered");
+		assert.ok(errorNotice.textContent?.includes("no longer available"), "Error message explains mode is no longer available");
 	}));
 
 	it("15. Attempting to launch when renderer is missing is prevented with error notification", withDom(async (dom) => {
@@ -745,14 +788,26 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		const launchPagingBtn = dom.document.querySelector('[data-testid="launch-mode-os-simulators:paging-lab"]') as HTMLButtonElement;
 		assert.ok(launchPagingBtn, "Button rendered in initial catalog");
+		const reactKey = Object.keys(launchPagingBtn).find((k) => k.startsWith("__reactProps"))!;
+		const launchHandler = (launchPagingBtn as any)[reactKey]?.onClick;
 
-		// Catalog is updated before user clicks: paging-lab is removed from available modes
-		const removedIndex = liveModes.findIndex((m) => m.id === "paging-lab");
-		liveModes.splice(removedIndex, 1);
+		// Catalog receives an immutable props update where paging-lab is removed
+		const updatedModes = sampleModes.filter((m) => m.id !== "paging-lab");
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={updatedModes}
+					modeRenderers={sampleRenderers}
+					plugins={samplePlugins}
+					manager={mockManager}
+					isLoading={false}
+				/>,
+			);
+		});
 
 		// Now attempt to launch the removed mode
 		await act(async () => {
-			launchPagingBtn.click();
+			launchHandler({ preventDefault() {} });
 		});
 
 		// Verify manager.createWorkspace was NEVER invoked
@@ -866,5 +921,104 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		assert.ok(!launchBetaBtn.textContent?.includes("Launching..."), "Beta button restored after completion");
 		assert.equal(launchBetaBtn.disabled, false, "Beta button re-enabled");
+	}));
+
+	it("20. Refresh failure: handles error gracefully, leaves interface unblocked, and allows subsequent retry", withDom(async (dom) => {
+		const root = createRoot(dom.document.getElementById("root")!);
+		let refreshAttempts = 0;
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={sampleModes}
+					modeRenderers={sampleRenderers}
+					plugins={samplePlugins}
+					isLoading={false}
+					onRetry={async () => {
+						refreshAttempts++;
+						if (refreshAttempts === 1) {
+							throw new Error("Network timeout during catalog refresh");
+						}
+					}}
+				/>,
+			);
+		});
+
+		const refreshBtn = dom.document.querySelector('[data-testid="study-hub-refresh-button"]') as HTMLButtonElement;
+		assert.ok(refreshBtn, "Refresh button rendered");
+		assert.equal(refreshBtn.disabled, false, "Initially enabled");
+
+		// 1. First attempt fails
+		await act(async () => {
+			refreshBtn.click();
+		});
+
+		assert.equal(refreshAttempts, 1);
+		// Interface is NOT stuck and button is usable again
+		assert.equal(refreshBtn.disabled, false, "Refresh button re-enabled after failure");
+
+		// 2. Second attempt succeeds
+		await act(async () => {
+			refreshBtn.click();
+		});
+
+		assert.equal(refreshAttempts, 2);
+		assert.equal(refreshBtn.disabled, false, "Refresh button re-enabled after success");
+	}));
+
+	it("21. Filters: difficulty filtering, category + difficulty combination, reset, and no-results message", withDom(async (dom) => {
+		const root = createRoot(dom.document.getElementById("root")!);
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={sampleModes}
+					modeRenderers={sampleRenderers}
+					plugins={samplePlugins}
+					isLoading={false}
+				/>,
+			);
+		});
+
+		// 1. Test difficulty filter: click "beginner"
+		const beginnerBtn = dom.document.querySelector('[data-testid="filter-difficulty-beginner"]') as HTMLButtonElement;
+		assert.ok(beginnerBtn, "Beginner difficulty button exists");
+
+		await act(async () => {
+			beginnerBtn.click();
+		});
+
+		// Only tree-viz is beginner
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:tree-viz"]'));
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'));
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-mode-card-network-tools:tcp-simulator"]'));
+
+		// 2. Combination between category and difficulty: category "Networking" + difficulty "beginner"
+		// (tcp-simulator is advanced, so Networking + beginner has 0 matching modes)
+		const networkingBtn = dom.document.querySelector('[data-testid="filter-category-networking"]') as HTMLButtonElement;
+		assert.ok(networkingBtn, "Networking category button exists");
+
+		await act(async () => {
+			networkingBtn.click();
+		});
+
+		// 0 modes match: must show no-results message and hide grid and empty catalog
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-no-results"]'), "No-results state rendered for combination");
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-grid"]'), "Grid not rendered");
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-empty"]'), "Empty catalog state not rendered");
+
+		// 3. Reset filters via "Reset Filters" button in no-results view
+		const resetBtn = dom.document.querySelector('[data-testid="study-hub-reset-search"]') as HTMLButtonElement;
+		assert.ok(resetBtn, "Reset Filters button exists");
+
+		await act(async () => {
+			resetBtn.click();
+		});
+
+		// All 3 modes are restored
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-grid"]'), "Grid restored after reset");
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-os-simulators:paging-lab"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-network-tools:tcp-simulator"]'));
+		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:tree-viz"]'));
 	}));
 });

@@ -176,3 +176,192 @@ it("PluginFrontendManager reflects workspace metadata updates to renderer withou
 	if (previousDocument === undefined) delete (globalThis as Record<string, unknown>).document;
 	else (globalThis as Record<string, unknown>).document = previousDocument;
 });
+
+it("PluginFrontendManager.reload() preserves mode renderers and mounted workspaces during temporary mode fetch failure", async () => {
+	const dom = parseHTML("<html><body><div id='mount-reload'></div></body></html>");
+	const previousDocument = (globalThis as Record<string, unknown>).document;
+	(globalThis as Record<string, unknown>).document = dom.document;
+
+	let modesApiFails = false;
+	let unmounted = false;
+	let signalAborted = false;
+
+	const frontend: PluginFrontendModule = {
+		activate(context) {
+			context.registerModeRenderer("modes", "lab", {
+				mount(_container, wsContext) {
+					wsContext.signal.addEventListener("abort", () => {
+						signalAborted = true;
+					});
+					return () => {
+						unmounted = true;
+					};
+				},
+			});
+		},
+	};
+
+	const manager = new PluginFrontendManager({
+		fetch: async (input) => {
+			const url = String(input);
+			if (url.endsWith("/api/plugins/modes")) {
+				if (modesApiFails) {
+					return new Response(JSON.stringify({ error: "Network error fetching modes" }), { status: 500, headers: { "content-type": "application/json" } });
+				}
+				return Response.json({ modes: [mode] });
+			}
+			if (url.endsWith("/api/plugins")) {
+				return Response.json({ plugins: [info], directory: "/plugins" });
+			}
+			return Response.json({});
+		},
+		importModule: async () => frontend,
+		pathname: () => "/",
+		navigate() {},
+	});
+
+	// 1-3. Load plugin, register mode & renderer, valid response
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	// 4. Verify renderer is registered
+	assert.equal(manager.getSnapshot().modeRenderers?.length, 1);
+	assert.ok(manager.getModeRenderer("modes", "lab"));
+
+	// Mount a workspace instance to verify mount survival
+	const workspace = {
+		version: 1 as const,
+		id: parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000030"),
+		pluginId: "modes",
+		modeId: "lab",
+		title: "Lab Test",
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+	};
+	const container = dom.document.getElementById("mount-reload") as unknown as HTMLElement;
+	const closeMount = manager.mountWorkspace(workspace, container, (err) => { throw new Error(err); });
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	assert.equal(unmounted, false);
+	assert.equal(signalAborted, false);
+
+	// 5. Simulate HTTP or network error during subsequent reload
+	modesApiFails = true;
+
+	// 6. Execute reload()
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	// 7. Verify renderer is still registered
+	assert.ok(manager.getModeRenderer("modes", "lab"), "Mode renderer must remain registered despite temporary modes API failure");
+	assert.equal(manager.getSnapshot().modeRenderers?.length, 1);
+	assert.equal(manager.getSnapshot().modes?.length, 1, "Snapshot modes retains last valid state");
+	assert.ok(manager.getSnapshot().error?.includes("Network error fetching modes"), "Error is published to snapshot");
+
+	// 8. Verify workspace was NOT unmounted
+	assert.equal(unmounted, false, "Mounted workspace must not be unmounted on temporary modes API error");
+	assert.equal(signalAborted, false, "Signal must not be aborted");
+
+	// 9. Restore correct API response
+	modesApiFails = false;
+
+	// 10. Execute reload() again
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	// 11. Verify renderer continues to be available
+	assert.ok(manager.getModeRenderer("modes", "lab"), "Mode renderer continues to be available after recovery");
+	assert.equal(manager.getSnapshot().modeRenderers?.length, 1);
+	assert.equal(unmounted, false, "Workspace still mounted");
+	assert.equal(signalAborted, false);
+	assert.equal(manager.getSnapshot().error, undefined, "Error cleared after successful reload");
+
+	closeMount();
+	await manager.dispose();
+
+	if (previousDocument === undefined) delete (globalThis as Record<string, unknown>).document;
+	else (globalThis as Record<string, unknown>).document = previousDocument;
+});
+
+it("PluginFrontendManager.reload() prunes mode renderers and unmounts workspace when backend returns empty modes list", async () => {
+	const dom = parseHTML("<html><body><div id='mount-empty'></div></body></html>");
+	const previousDocument = (globalThis as Record<string, unknown>).document;
+	(globalThis as Record<string, unknown>).document = dom.document;
+
+	let emptyModes = false;
+	let unmounted = false;
+	let signalAborted = false;
+
+	const frontend: PluginFrontendModule = {
+		activate(context) {
+			context.registerModeRenderer("modes", "lab", {
+				mount(_container, wsContext) {
+					wsContext.signal.addEventListener("abort", () => {
+						signalAborted = true;
+					});
+					return () => {
+						unmounted = true;
+					};
+				},
+			});
+		},
+	};
+
+	const manager = new PluginFrontendManager({
+		fetch: async (input) => {
+			const url = String(input);
+			if (url.endsWith("/api/plugins/modes")) {
+				if (emptyModes) {
+					return Response.json({ modes: [] });
+				}
+				return Response.json({ modes: [mode] });
+			}
+			if (url.endsWith("/api/plugins")) {
+				return Response.json({ plugins: [info], directory: "/plugins" });
+			}
+			return Response.json({});
+		},
+		importModule: async () => frontend,
+		pathname: () => "/",
+		navigate() {},
+	});
+
+	// 1. Initial valid load
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	assert.ok(manager.getModeRenderer("modes", "lab"));
+
+	const workspace = {
+		version: 1 as const,
+		id: parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000040"),
+		pluginId: "modes",
+		modeId: "lab",
+		title: "Lab Test",
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+	};
+	const container = dom.document.getElementById("mount-empty") as unknown as HTMLElement;
+	manager.mountWorkspace(workspace, container, () => {});
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	assert.equal(unmounted, false);
+
+	// 2. Subsequent valid response with modes: []
+	emptyModes = true;
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	// 3. Verify renderer was pruned and workspace was unmounted
+	assert.equal(manager.getModeRenderer("modes", "lab"), undefined, "Renderer must be removed when mode is unregistered");
+	assert.equal(manager.getSnapshot().modeRenderers?.length, 0);
+	assert.equal(manager.getSnapshot().modes?.length, 0);
+	assert.equal(unmounted, true, "Mounted workspace must be unmounted when mode is removed");
+	assert.equal(signalAborted, true, "Signal must be aborted");
+
+	await manager.dispose();
+
+	if (previousDocument === undefined) delete (globalThis as Record<string, unknown>).document;
+	else (globalThis as Record<string, unknown>).document = previousDocument;
+});
+
