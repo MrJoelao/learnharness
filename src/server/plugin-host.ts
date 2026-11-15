@@ -68,6 +68,7 @@ export interface PluginHostDependencies {
 	};
 	workspaceStateStore?: PluginWorkspaceStateStore;
 	onWorkspaceDeleted?: (id: WorkspaceId) => void;
+	onWorkspaceChanged?: () => void;
 }
 interface Instructions { agents: Set<PluginAgentKind>; text: string }
 interface Tools { agents: Set<PluginAgentKind>; create: PluginTools["create"] }
@@ -506,6 +507,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 				metadataRemoved = true;
 				stage = "metadata-deleted";
 				recordJournal({ workspaceId: id, pluginId, stage: "metadata-deleted", startedAt: pendingEntry?.startedAt || new Date().toISOString() });
+				deps.onWorkspaceChanged?.();
 			} catch (error) {
 				const stateNote = stateRemoved ? " (plugin state was already deleted; metadata remains)" : "";
 				throw new PluginHostError(500, `Failed to delete workspace metadata: ${errorText(error)}${stateNote}`);
@@ -727,6 +729,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					storage: deps.workspaceStateStore?.open(activation.dataDirectory, workspace.id) ?? (() => { throw new PluginHostError(503, "Plugin workspace state storage is unavailable"); })(),
 				}));
 				if (!live(pkg, activation) || activation.modes.get(input.modeId) !== mode) throw new PluginHostError(409, "Mode became unavailable during workspace creation");
+				deps.onWorkspaceChanged?.();
 				return workspace;
 			} catch (error) {
 				const rollbackErrors: string[] = [];
@@ -764,7 +767,11 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			let id: WorkspaceId;
 			try { id = parseWorkspaceId(idValue); } catch { throw new PluginHostError(400, "Invalid workspace ID"); }
 			if (!deps.workspaces.read(id)) throw new PluginHostError(404, "Workspace not found");
-			try { return deps.workspaces.rename(id, parseWorkspaceTitle(title)); }
+			try {
+				const workspace = deps.workspaces.rename(id, parseWorkspaceTitle(title));
+				deps.onWorkspaceChanged?.();
+				return workspace;
+			}
 			catch (error) { if (error instanceof PluginHostError) throw error; throw new PluginHostError(400, error instanceof Error ? error.message : "Invalid workspace title"); }
 		},
 		async deleteWorkspace(idValue: string): Promise<void> {
@@ -796,6 +803,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					if (!deps.workspaces.recoverOrphan) throw new PluginHostError(501, "Orphan recovery is not supported");
 					try {
 						deps.workspaces.recoverOrphan(id);
+						deps.onWorkspaceChanged?.();
 						const reconciliation = deps.workspaces.inspect ? deps.workspaces.inspect() : { orphanIds: [], missingIds: [], invalidOrphanIds: [], invalidRecordIds: [], unreadableRecordIds: [] };
 						return { ok: true, message: `Orphan workspace ${id} successfully recovered`, reconciliation };
 					} catch (error) {
@@ -809,6 +817,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 						if (deps.onWorkspaceDeleted) {
 							try { deps.onWorkspaceDeleted(id); } catch { /* ignore */ }
 						}
+						deps.onWorkspaceChanged?.();
 						const reconciliation = deps.workspaces.inspect ? deps.workspaces.inspect() : { orphanIds: [], missingIds: [], invalidOrphanIds: [], invalidRecordIds: [], unreadableRecordIds: [] };
 						return { ok: true, message: `Missing reference for workspace ${id} successfully removed`, reconciliation };
 					} catch (error) {

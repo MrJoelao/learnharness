@@ -547,7 +547,7 @@ their schema. If initialization fails, the host removes the new metadata record 
 reports the failure. Existing workspaces/data remain when a mode is unregistered or
 its plugin is disabled/uninstalled.
 
-The frontend separately calls `ctx.registerModeRenderer(modeId, { mount })`. It can
+The frontend separately calls `ctx.registerModeRenderer(pluginId, modeId, { mount })`. It can
 only bind to a mode declared by that same plugin's active backend, and it cannot
 create catalog entries or workspaces. Mount receives the workspace record, an
 abort signal, plugin-owned storage methods and `setTitle`. Renderer lookup uses the

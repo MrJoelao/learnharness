@@ -40,10 +40,10 @@ the plugin and registering the same mode ID makes the original workspaces resolv
 
 ## Frontend: explicit renderer pairing
 
-`PluginFrontendContext.registerModeRenderer(modeId, renderer)` registers a browser
-`mount(container, context)` callback. The plugin ID comes from the current frontend
-activation; the backend catalog must contain the exact pair. A frontend registration
-cannot declare metadata, launch a mode, or make a backend mode available. Duplicate,
+`PluginFrontendContext.registerModeRenderer(pluginId, modeId, renderer)` registers a browser
+`mount(container, context)` callback. `pluginId` must identify the owning plugin; the
+renderer must match the exact `(pluginId, modeId)` pair declared in the backend. Registering
+a renderer does not create a mode, nor does it make a workspace available. Duplicate,
 invalid or undeclared renderer registrations fail visibly for that plugin.
 
 The mount context includes read-only current workspace metadata, a mount-scoped abort signal,

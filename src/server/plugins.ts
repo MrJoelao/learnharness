@@ -58,6 +58,7 @@ function runtime(): Runtime {
 		workspaces: workspaceService,
 		workspaceStateStore: stores.pluginWorkspaceStateStore,
 		onWorkspaceDeleted: (id) => directoryService.removePlacement(workspaceKey(id)),
+		onWorkspaceChanged: () => emit("workspaces-changed", {}),
 		// The process-global runtime owns one admission slot across all plugins
 		// and every separately compiled Next route module.
 		convertDocument: createPluginDocumentConverter().convert,

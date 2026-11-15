@@ -28,6 +28,7 @@ import { createPluginHost, isPluginHostError } from "../src/server/plugin-host.t
 import { createPluginTransport } from "../src/server/plugin-transport.ts";
 import { createWorkspaceService } from "../src/server/workspaces.ts";
 import { createDirectoryService } from "../src/server/directory.ts";
+import { emit, subscribe, SERVER_EVENT_TYPES, type ServerEvent } from "../src/core/events.ts";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-study-hub-hardening-"));
 after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -809,6 +810,303 @@ it("backward compatibility: folder archive and restore cascades to both chats an
 	assert.equal(state.folders[0]?.archivedAt, null, "Folder must be unarchived");
 	assert.equal(state.placements[chatKey(c1)]?.archivedAt, null, "Chat placement must be unarchived");
 	assert.equal(state.placements[workspaceKey(w1)]?.archivedAt, null, "Workspace placement must be unarchived");
+});
+
+// ─── 7. Workspace Event Invalidation (Pre-Phase 4 Hardening) ───────────────
+
+function setupEventHost(subDir: string, options: { onWorkspaceDeleted?: (id: WorkspaceId) => void } = {}) {
+	const dir = path.join(root, subDir);
+	const pluginDist = path.join(dir, "plugins", "event-plugin", "dist");
+	fs.mkdirSync(pluginDist, { recursive: true });
+	fs.writeFileSync(
+		path.join(pluginDist, "manifest.json"),
+		JSON.stringify({
+			apiVersion: 1,
+			id: "event-plugin",
+			name: "Event Plugin",
+			version: "1.0.0",
+			minAppVersion: "0.7.0",
+			backend: "backend.cjs",
+		}),
+	);
+	fs.writeFileSync(
+		path.join(pluginDist, "backend.cjs"),
+		`exports.activate = ctx => {
+			ctx.registerMode({
+				id: "event-mode",
+				name: "Event Mode",
+				description: "A valid mode for event tests",
+				category: "Practice",
+				initializeWorkspace: () => {},
+			});
+			ctx.registerMode({
+				id: "failing-mode",
+				name: "Failing Mode",
+				description: "A mode that fails init",
+				category: "Practice",
+				initializeWorkspace: () => { throw new Error("Initialization crash"); },
+			});
+		};`,
+	);
+
+	const store = createWorkspaceStore(dir);
+	const service = createWorkspaceService({ store });
+	const stateStore = createPluginWorkspaceStateStore();
+
+	const host = createPluginHost({
+		directory: path.join(dir, "plugins"),
+		appVersion: "0.7.0",
+		workspaces: service,
+		workspaceStateStore: stateStore,
+		onWorkspaceDeleted: options.onWorkspaceDeleted,
+		onWorkspaceChanged: () => emit("workspaces-changed", {}),
+		createServices: () => ({} as any),
+	});
+
+	return { dir, store, service, host };
+}
+
+it("event invalidation: completed workspace creation emits workspaces-changed exactly once", async () => {
+	const { host } = setupEventHost("ev-create");
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		const ws = await host.createWorkspace({ pluginId: "event-plugin", modeId: "event-mode", title: "Event WS" });
+		assert.ok(ws.id);
+		assert.equal(eventCount, 1, "Completed creation must emit workspaces-changed exactly once");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: completed rename emits workspaces-changed exactly once", async () => {
+	const { host } = setupEventHost("ev-rename");
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	const ws = await host.createWorkspace({ pluginId: "event-plugin", modeId: "event-mode", title: "Original Title" });
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		const renamed = host.renameWorkspace(ws.id, "Renamed Title");
+		assert.equal(renamed.title, "Renamed Title");
+		assert.equal(eventCount, 1, "Completed rename must emit workspaces-changed exactly once");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: deletion emits workspaces-changed even without a placement", async () => {
+	const { host, store } = setupEventHost("ev-delete-no-placement");
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	const ws = await host.createWorkspace({ pluginId: "event-plugin", modeId: "event-mode", title: "To Delete" });
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		await host.deleteWorkspace(ws.id);
+		assert.equal(store.read(ws.id), null, "Workspace metadata must be deleted");
+		assert.equal(eventCount, 1, "Deletion must emit workspaces-changed even without a placement");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: deletion phase 3 placement cleanup failure still emits workspaces-changed", async () => {
+	let placementAttempted = false;
+	const { host, store } = setupEventHost("ev-delete-p3-fail", {
+		onWorkspaceDeleted: () => {
+			placementAttempted = true;
+			throw new Error("Directory placement deletion ENOSPC");
+		},
+	});
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	const ws = await host.createWorkspace({ pluginId: "event-plugin", modeId: "event-mode", title: "P3 Fail WS" });
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		await assert.rejects(
+			async () => host.deleteWorkspace(ws.id),
+			/Failed to remove workspace placement from directory.*workspace metadata and state were deleted/i,
+		);
+		assert.equal(placementAttempted, true, "Placement cleanup was attempted");
+		assert.equal(store.read(ws.id), null, "Workspace metadata must have been deleted in phase 2");
+		assert.equal(eventCount, 1, "workspaces-changed must be emitted even if placement removal fails in phase 3");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: recovery operations modifying records emit workspaces-changed", async () => {
+	const { host, dir, store } = setupEventHost("ev-recovery");
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	// 1. Orphan recovery: create record file not in index
+	const orphanId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000701");
+	fs.writeFileSync(path.join(dir, `${orphanId}.json`), JSON.stringify(makeRecord(orphanId)));
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		const orphanResult = await host.recoverWorkspace({ id: orphanId, action: "recover-orphan" });
+		assert.equal(orphanResult.ok, true);
+		assert.equal(eventCount, 1, "recover-orphan must emit workspaces-changed");
+		assert.ok(store.read(orphanId), "Orphan workspace must now be indexed and readable");
+
+		// 2. Missing reference removal: put nonexistent workspace in index
+		eventCount = 0;
+		const missingId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000702");
+		const currentIndex = JSON.parse(fs.readFileSync(path.join(dir, "index.json"), "utf8"));
+		currentIndex.workspaceIds.push(missingId);
+		fs.writeFileSync(path.join(dir, "index.json"), JSON.stringify(currentIndex));
+
+		const missingResult = await host.recoverWorkspace({ id: missingId, action: "remove-missing-reference" });
+		assert.equal(missingResult.ok, true);
+		assert.equal(eventCount, 1, "remove-missing-reference must emit workspaces-changed");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: failed creation with successful rollback does not emit workspaces-changed", async () => {
+	const { host, store } = setupEventHost("ev-failed-create");
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		await assert.rejects(
+			async () => host.createWorkspace({ pluginId: "event-plugin", modeId: "failing-mode", title: "Failing WS" }),
+			/Workspace initialization failed.*Initialization crash/,
+		);
+		assert.equal(eventCount, 0, "Failed creation with successful rollback must NOT emit workspaces-changed");
+		assert.deepEqual(store.list().workspaces, [], "No workspace record should exist");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: validation errors do not emit workspaces-changed", async () => {
+	const { host } = setupEventHost("ev-validation-errors");
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	const ws = await host.createWorkspace({ pluginId: "event-plugin", modeId: "event-mode", title: "Valid WS" });
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		// Invalid rename id
+		assert.throws(() => host.renameWorkspace("bad_id", "New Title"), status(400));
+		// Nonexistent rename id
+		const nonExistent = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000999");
+		assert.throws(() => host.renameWorkspace(nonExistent, "New Title"), status(404));
+		// Invalid create mode
+		await assert.rejects(async () => host.createWorkspace({ pluginId: "event-plugin", modeId: "bad/mode" }), status(400));
+		// Nonexistent delete id
+		await assert.rejects(async () => host.deleteWorkspace(nonExistent), status(404));
+		// Invalid recovery action
+		await assert.rejects(async () => host.recoverWorkspace({ id: ws.id, action: "bad-action" as any }), status(400));
+
+		assert.equal(eventCount, 0, "Validation errors must NOT emit workspaces-changed");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: single operations do not produce duplicate notifications", async () => {
+	const { host } = setupEventHost("ev-no-duplicates");
+	await host.initialize();
+	await host.setEnabled("event-plugin", true);
+
+	let eventCount = 0;
+	const unsub = subscribe((event) => {
+		if (event.type === "workspaces-changed") eventCount++;
+	});
+
+	try {
+		// Create: exactly 1
+		const ws = await host.createWorkspace({ pluginId: "event-plugin", modeId: "event-mode", title: "Single Op" });
+		assert.equal(eventCount, 1, "Create must emit exactly 1 event");
+
+		// Rename: exactly 1 (cumulative 2)
+		host.renameWorkspace(ws.id, "Renamed Single Op");
+		assert.equal(eventCount, 2, "Rename must emit exactly 1 event");
+
+		// Delete: exactly 1 (cumulative 3)
+		await host.deleteWorkspace(ws.id);
+		assert.equal(eventCount, 3, "Delete must emit exactly 1 event");
+	} finally {
+		unsub();
+		await host.dispose();
+	}
+});
+
+it("event invalidation: existing chat, organization, and plugin events continue to function alongside workspaces-changed", () => {
+	assert.ok(SERVER_EVENT_TYPES.includes("workspaces-changed"));
+	assert.ok(SERVER_EVENT_TYPES.includes("chats-changed"));
+	assert.ok(SERVER_EVENT_TYPES.includes("chat-organization-changed"));
+	assert.ok(SERVER_EVENT_TYPES.includes("plugins-changed"));
+
+	const received: string[] = [];
+	const unsub = subscribe((event) => {
+		received.push(event.type);
+	});
+
+	try {
+		emit("chats-changed", {});
+		emit("chat-organization-changed", {});
+		emit("plugins-changed", {});
+		emit("workspaces-changed", {});
+
+		assert.deepEqual(received, [
+			"chats-changed",
+			"chat-organization-changed",
+			"plugins-changed",
+			"workspaces-changed",
+		]);
+	} finally {
+		unsub();
+	}
 });
 
 function status(code: number) {
