@@ -41,26 +41,27 @@ function useSafeRouter() {
 /** Pure helper to determine if safe in-app back navigation is available. */
 export function canNavigateBack(): boolean {
 	if (typeof window === "undefined") return false;
-	// Direct opening via external link/referrer must not navigate back externally
-	if (document.referrer) {
-		try {
-			const refOrigin = new URL(document.referrer).origin;
-			if (refOrigin !== window.location.origin) {
-				return false;
-			}
-		} catch {
-			return false;
-		}
-	}
-	// In Next.js App Router, window.history.state?.idx tracks in-app history index
+
+	// 1. In Next.js App Router, window.history.state?.idx tracks in-app history index.
+	// If idx > 0, the user has navigated internally within this SPA session.
 	const historyIdx = (window.history.state as { idx?: number } | null)?.idx;
 	if (typeof historyIdx === "number" && historyIdx > 0) {
 		return true;
 	}
-	// Fallback when same-origin referrer exists and history.length > 1
-	if (document.referrer && document.referrer.startsWith(window.location.origin) && window.history.length > 1) {
-		return true;
+
+	// 2. If no valid positive in-app index, use same-origin referrer as fallback with history verification.
+	if (document.referrer) {
+		try {
+			const refOrigin = new URL(document.referrer).origin;
+			if (refOrigin === window.location.origin && window.history.length > 1) {
+				return true;
+			}
+		} catch {
+			// Ignore URL parse failures
+		}
 	}
+
+	// 3. Neither condition met: external referrer without internal nav or direct URL opening.
 	return false;
 }
 

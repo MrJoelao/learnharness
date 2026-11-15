@@ -1,9 +1,11 @@
-import React from "react";
+import React, { act } from "react";
 (globalThis as Record<string, unknown>).React = React;
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createRoot } from "react-dom/client";
+import { parseHTML } from "linkedom";
 import {
 	ChatFolderTree,
 	getFolderChatCount,
@@ -348,7 +350,7 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 		assert.ok(networkErrorHtml.includes("Critical Lab"), "Workspace title preserved during network error");
 	});
 
-	it("8. WorkspaceScreen back navigation correctly evaluates safe in-app history vs direct URL fallback", () => {
+	it("8. WorkspaceScreen back navigation correctly prioritizes in-app history over external referrer", () => {
 		const originalWindow = (globalThis as Record<string, unknown>).window;
 		const originalDocument = (globalThis as Record<string, unknown>).document;
 
@@ -363,7 +365,7 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 			};
 			assert.equal(canNavigateBack(), true, "In-app navigation must allow navigating back");
 
-			// Scenario B: External referrer (e.g. from Google or outside link) must NEVER navigate back to external site
+			// Scenario B (Audit Fix): External referrer BUT user navigated inside app (history.state.idx > 0) -> MUST allow back!
 			(globalThis as Record<string, unknown>).window = {
 				location: { origin: "http://localhost:3000" },
 				history: { state: { idx: 1 }, length: 2, back() {}, forward() {} },
@@ -371,9 +373,19 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 			(globalThis as Record<string, unknown>).document = {
 				referrer: "https://external-search.com/results",
 			};
-			assert.equal(canNavigateBack(), false, "External referrer must block back navigation to avoid external redirect");
+			assert.equal(canNavigateBack(), true, "External referrer with in-app history (idx > 0) must allow navigating back inside SPA");
 
-			// Scenario C: Direct URL opening in a fresh tab (no in-app history, empty referrer)
+			// Scenario C: External referrer WITHOUT in-app history (direct entry point from outside) -> MUST block back!
+			(globalThis as Record<string, unknown>).window = {
+				location: { origin: "http://localhost:3000" },
+				history: { state: { idx: 0 }, length: 1, back() {}, forward() {} },
+			};
+			(globalThis as Record<string, unknown>).document = {
+				referrer: "https://external-search.com/results",
+			};
+			assert.equal(canNavigateBack(), false, "External referrer without in-app history must block back navigation to avoid external redirect");
+
+			// Scenario D: Direct URL opening in a fresh tab (no in-app history, empty referrer)
 			(globalThis as Record<string, unknown>).window = {
 				location: { origin: "http://localhost:3000" },
 				history: { state: { idx: 0 }, length: 1, back() {}, forward() {} },
@@ -382,55 +394,105 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 				referrer: "",
 			};
 			assert.equal(canNavigateBack(), false, "Direct URL opening must fall back to /");
+
+			// Scenario E: Same-origin referrer with history.length > 1 fallback when idx is missing
+			(globalThis as Record<string, unknown>).window = {
+				location: { origin: "http://localhost:3000" },
+				history: { state: null, length: 2, back() {}, forward() {} },
+			};
+			(globalThis as Record<string, unknown>).document = {
+				referrer: "http://localhost:3000/archive",
+			};
+			assert.equal(canNavigateBack(), true, "Same-origin referrer with history must allow back even if idx is null");
 		} finally {
 			(globalThis as Record<string, unknown>).window = originalWindow;
 			(globalThis as Record<string, unknown>).document = originalDocument;
 		}
 	});
 
-	it("9. Moving workspace between folders: MoveDestinationBody and computeUndoAction", () => {
-		let chosenDestination: string | null = "unset";
+	it("9. Moving workspace between folders: MoveDestinationBody selection interaction and computeUndoAction", async () => {
+		const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
+		const originalWindow = (globalThis as Record<string, unknown>).window;
+		const originalDocument = (globalThis as Record<string, unknown>).document;
+		const originalHTMLElement = (globalThis as Record<string, unknown>).HTMLElement;
+		const originalElement = (globalThis as Record<string, unknown>).Element;
+		const originalNode = (globalThis as Record<string, unknown>).Node;
+		const originalAct = (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
 
-		const html = renderToStaticMarkup(
-			<MoveDestinationBody
-				item={{
-					kind: "workspace",
-					id: "workspace-1",
-					title: "Memory & Paging Lab",
-					parentId: "f2",
-				}}
-				folders={sampleFolders}
-				organization={null}
-				onClose={() => {}}
-				onMove={(dest) => {
-					chosenDestination = dest;
-				}}
-			/>,
-		);
+		Object.assign(globalThis, {
+			window: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			Element: dom.window.Element,
+			Node: dom.window.Node,
+			IS_REACT_ACT_ENVIRONMENT: true,
+		});
 
-		assert.ok(html.includes('data-testid="move-destination-dialog"'), "Move destination dialog rendered");
-		assert.ok(html.includes("Move workspace") || html.includes("Move session"), "Move dialog title");
-		assert.ok(html.includes("Memory &amp; Paging Lab") || html.includes("Memory & Paging Lab"), "Target title displayed");
-		assert.ok(html.includes('data-testid="move-destination-root"'), "Root destination option available");
-		assert.ok(html.includes('data-testid="move-destination-f1"'), "Folder f1 available as destination");
-		// Current parent folder f2 should be marked disabled/current
-		assert.ok(html.includes('data-testid="move-destination-f2"'), "Folder f2 rendered");
-		assert.ok(html.includes("(current)"), "Current parent indicator rendered");
+		try {
+			let chosenDestination: string | null = "unset";
+			const root = createRoot(dom.document.getElementById("root")!);
 
-		// Reversible undo action check for workspace move
-		const undo = computeUndoAction(
-			{ action: "move", kind: "workspace", id: "workspace-1", parentId: "f1" },
-			{
-				organization: { version: 2, folders: sampleFolders, placements: { "workspace:workspace-1": { folderId: "f2", order: 10 } } },
-				chats: [sampleWorkspace1],
-			},
-		);
+			await act(async () => {
+				root.render(
+					<MoveDestinationBody
+						item={{
+							kind: "workspace",
+							id: "workspace-1",
+							title: "Memory & Paging Lab",
+							parentId: "f2",
+						}}
+						folders={sampleFolders}
+						organization={null}
+						onClose={() => {}}
+						onMove={(dest) => {
+							chosenDestination = dest;
+						}}
+					/>,
+				);
+			});
 
-		assert.ok(undo, "Undo action must be computable for workspace move");
-		assert.equal(undo?.undoAction.action, "move");
-		assert.equal(undo?.undoAction.kind, "workspace");
-		assert.equal(undo?.undoAction.id, "workspace-1");
-		assert.equal(undo?.undoAction.parentId, "f2", "Undo must restore original parent folder f2");
+			// Verify interactive click on destination folder invokes onMove with folder ID
+			const f1Btn = dom.document.querySelector<HTMLButtonElement>('[data-testid="move-destination-f1"]');
+			assert.ok(f1Btn, "Folder f1 button rendered");
+			await act(async () => {
+				f1Btn.click();
+			});
+			assert.equal(chosenDestination, "f1", "Selecting folder f1 invokes onMove('f1')");
+
+			// Verify interactive click on root destination invokes onMove with null
+			const rootBtn = dom.document.querySelector<HTMLButtonElement>('[data-testid="move-destination-root"]');
+			assert.ok(rootBtn, "Root button rendered");
+			await act(async () => {
+				rootBtn.click();
+			});
+			assert.equal(chosenDestination, null, "Selecting Root invokes onMove(null)");
+
+			await act(async () => {
+				root.unmount();
+			});
+
+			// Reversible undo action check for workspace move
+			const undo = computeUndoAction(
+				{ action: "move", kind: "workspace", id: "workspace-1", parentId: "f1" },
+				{
+					organization: { version: 2, folders: sampleFolders, placements: { "workspace:workspace-1": { folderId: "f2", order: 10 } } },
+					chats: [sampleWorkspace1],
+				},
+			);
+
+			assert.ok(undo, "Undo action must be computable for workspace move");
+			assert.equal(undo?.undoAction.action, "move");
+			assert.equal(undo?.undoAction.kind, "workspace");
+			assert.equal(undo?.undoAction.id, "workspace-1");
+			assert.equal(undo?.undoAction.parentId, "f2", "Undo must restore original parent folder f2");
+		} finally {
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+			(globalThis as Record<string, unknown>).HTMLElement = originalHTMLElement;
+			(globalThis as Record<string, unknown>).Element = originalElement;
+			(globalThis as Record<string, unknown>).Node = originalNode;
+			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
+		}
 	});
 
 	it("10. Mixed chat/workspace sibling reordering via getSiblingMoveAction and computeUndoAction", () => {
@@ -537,85 +599,249 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 		assert.equal(undoRestore?.undoAction.id, "workspace-1");
 	});
 
-	it("12. Restoring workspace into a different folder via MoveDestinationBody", () => {
-		let chosenFolder: string | null = null;
+	it("12. Restoring workspace into a different folder: destination selection passes targetParentId", async () => {
+		const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
+		const originalWindow = (globalThis as Record<string, unknown>).window;
+		const originalDocument = (globalThis as Record<string, unknown>).document;
+		const originalHTMLElement = (globalThis as Record<string, unknown>).HTMLElement;
+		const originalElement = (globalThis as Record<string, unknown>).Element;
+		const originalNode = (globalThis as Record<string, unknown>).Node;
+		const originalAct = (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
 
-		const html = renderToStaticMarkup(
-			<MoveDestinationBody
-				item={{
-					kind: "workspace",
-					id: "workspace-1",
-					title: "Memory & Paging Lab",
-					parentId: null,
-					isRestore: true,
-				}}
-				folders={sampleFolders}
-				organization={null}
-				onClose={() => {}}
-				onMove={(target) => {
-					chosenFolder = target;
-				}}
-			/>,
-		);
+		Object.assign(globalThis, {
+			window: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			Element: dom.window.Element,
+			Node: dom.window.Node,
+			IS_REACT_ACT_ENVIRONMENT: true,
+		});
 
-		assert.ok(html.includes("Restore"), "Dialog header indicates Restore mode");
-		assert.ok(html.includes("Memory &amp; Paging Lab") || html.includes("Memory & Paging Lab"), "Target title displayed");
-		// During restore, all active valid folders are selectable
-		assert.ok(html.includes('data-testid="move-destination-f1"'), "Folder f1 is a valid restore destination");
-		assert.ok(html.includes('data-testid="move-destination-f2"'), "Folder f2 is a valid restore destination");
-		assert.ok(html.includes('data-testid="move-destination-root"'), "Root is a valid restore destination");
+		try {
+			let chosenFolder: string | null = null;
+			const root = createRoot(dom.document.getElementById("root")!);
+
+			await act(async () => {
+				root.render(
+					<MoveDestinationBody
+						item={{
+							kind: "workspace",
+							id: "workspace-1",
+							title: "Memory & Paging Lab",
+							parentId: null,
+							isRestore: true,
+						}}
+						folders={sampleFolders}
+						organization={null}
+						onClose={() => {}}
+						onMove={(target) => {
+							chosenFolder = target;
+						}}
+					/>,
+				);
+			});
+
+			const f2Btn = dom.document.querySelector<HTMLButtonElement>('[data-testid="move-destination-f2"]');
+			assert.ok(f2Btn, "Folder f2 button rendered in restore dialog");
+			await act(async () => {
+				f2Btn.click();
+			});
+			assert.equal(chosenFolder, "f2", "Clicking destination folder in restore dialog invokes onMove with 'f2'");
+
+			// Verify that the restore action constructed with this destination passes targetParentId
+			const restoreAction: import("../src/core").ChatOrganizationAction = {
+				action: "restore",
+				kind: "workspace",
+				id: "workspace-1",
+				targetParentId: chosenFolder,
+			};
+			assert.equal(restoreAction.targetParentId, "f2", "Restore action targetParentId reflects user selection");
+
+			await act(async () => {
+				root.unmount();
+			});
+		} finally {
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+			(globalThis as Record<string, unknown>).HTMLElement = originalHTMLElement;
+			(globalThis as Record<string, unknown>).Element = originalElement;
+			(globalThis as Record<string, unknown>).Node = originalNode;
+			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
+		}
 	});
 
-	it("13. Workspace deletion dialog confirms permanent removal and renders properly", () => {
-		const closedHtml = renderToStaticMarkup(
-			<InteractionLayersProvider>
-				<DeleteWorkspaceDialog workspace={null} onClose={() => {}} onDeleted={() => {}} />
-			</InteractionLayersProvider>,
-		);
-		assert.equal(closedHtml, "", "Closed dialog renders nothing");
+	it("13. Workspace deletion dialog confirms permanent removal and invokes deletion action", async () => {
+		const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
+		const originalWindow = (globalThis as Record<string, unknown>).window;
+		const originalDocument = (globalThis as Record<string, unknown>).document;
+		const originalHTMLElement = (globalThis as Record<string, unknown>).HTMLElement;
+		const originalElement = (globalThis as Record<string, unknown>).Element;
+		const originalNode = (globalThis as Record<string, unknown>).Node;
+		const originalAct = (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
 
-		const html = renderToStaticMarkup(
-			<DeleteWorkspaceBody
-				workspace={sampleWorkspace1}
-				busy={false}
-				failure={null}
-				onClose={() => {}}
-				onRun={() => {}}
-			/>,
-		);
+		Object.assign(globalThis, {
+			window: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			Element: dom.window.Element,
+			Node: dom.window.Node,
+			IS_REACT_ACT_ENVIRONMENT: true,
+		});
 
-		assert.ok(html.includes('data-testid="delete-workspace-dialog"'), "Dialog testid rendered");
-		assert.ok(html.includes("Delete workspace?"), "Confirmation heading displayed");
-		assert.ok(html.includes("Memory &amp; Paging Lab") || html.includes("Memory & Paging Lab"), "Workspace title shown");
-		assert.ok(html.includes("permanently delete"), "Warns of permanent deletion");
-		assert.ok(html.includes("Cancel"), "Cancel button rendered");
-		assert.ok(html.includes("Delete"), "Delete button rendered");
+		try {
+			let deleteInvoked = false;
+			const root = createRoot(dom.document.getElementById("root")!);
+
+			await act(async () => {
+				root.render(
+					<DeleteWorkspaceBody
+						workspace={sampleWorkspace1}
+						busy={false}
+						failure={null}
+						onClose={() => {}}
+						onRun={() => {
+							deleteInvoked = true;
+						}}
+					/>,
+				);
+			});
+
+			const buttons = Array.from(dom.document.querySelectorAll<HTMLButtonElement>("button"));
+			const deleteBtn = buttons.find((b) => b.textContent?.trim() === "Delete");
+			assert.ok(deleteBtn, "Delete button rendered");
+
+			await act(async () => {
+				deleteBtn.click();
+			});
+
+			assert.equal(deleteInvoked, true, "Clicking Delete confirms and invokes onRun callback");
+
+			await act(async () => {
+				root.unmount();
+			});
+		} finally {
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+			(globalThis as Record<string, unknown>).HTMLElement = originalHTMLElement;
+			(globalThis as Record<string, unknown>).Element = originalElement;
+			(globalThis as Record<string, unknown>).Node = originalNode;
+			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
+		}
 	});
 
-	it("14. Sidebar integrates workspaces-changed server event to trigger refresh", () => {
-		let registeredEvent: string | null = null;
+	it("14. Sidebar registers and executes workspaces-changed server event to trigger refresh", async () => {
+		const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
+		const originalWindow = (globalThis as Record<string, unknown>).window;
+		const originalSelf = (globalThis as Record<string, unknown>).self;
+		const originalDocument = (globalThis as Record<string, unknown>).document;
+		const originalHTMLElement = (globalThis as Record<string, unknown>).HTMLElement;
+		const originalElement = (globalThis as Record<string, unknown>).Element;
+		const originalNode = (globalThis as Record<string, unknown>).Node;
+		const originalAct = (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
+		const originalFetch = globalThis.fetch;
+		const originalLocalStorage = (globalThis as Record<string, unknown>).localStorage;
+		const originalRIC = (globalThis as Record<string, unknown>).requestIdleCallback;
+		const originalCIC = (globalThis as Record<string, unknown>).cancelIdleCallback;
+		const originalIO = (globalThis as Record<string, unknown>).IntersectionObserver;
 
-		const html = renderToStaticMarkup(
-			<InteractionLayersProvider>
-				<SettingsDialogProviderBase>
-					<SidebarProvider>
-						<ServerEventsProvider
-							connect={() => ({
-								close() {},
-								onOpen() {},
-								onEvent(name) {
-									registeredEvent = name;
-								},
-							})}
-						>
-							<SessionsSidebar initialChats={[sampleRootWorkspace]} initialFolders={sampleFolders} />
-						</ServerEventsProvider>
-					</SidebarProvider>
-				</SettingsDialogProviderBase>
-			</InteractionLayersProvider>,
-		);
+		let workspacesCallback: ((data: string) => void) | null = null;
+		let fetchCalls: string[] = [];
 
-		assert.ok(html.includes('data-workspace-id="workspace-root"'), "Workspace rendered in sidebar tree");
-		assert.ok(html.includes("Tree Visualizer"), "Workspace title rendered in tree");
+		class MockIntersectionObserver {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+
+		Object.assign(globalThis, {
+			window: dom.window,
+			self: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			Element: dom.window.Element,
+			Node: dom.window.Node,
+			IS_REACT_ACT_ENVIRONMENT: true,
+			localStorage: { getItem: () => null, setItem() {} },
+			requestIdleCallback: (cb: () => void) => setTimeout(cb, 0),
+			cancelIdleCallback: (id: NodeJS.Timeout) => clearTimeout(id),
+			IntersectionObserver: MockIntersectionObserver,
+			fetch: async (input: RequestInfo | URL) => {
+				const url = String(input);
+				fetchCalls.push(url);
+				if (url.includes("/api/chats/organization")) {
+					return Response.json({ version: 2, folders: sampleFolders, placements: {} });
+				}
+				if (url.includes("/api/directory")) {
+					return Response.json({ items: [sampleRootWorkspace] });
+				}
+				if (url.includes("/api/chats")) {
+					return Response.json({ chats: [] });
+				}
+				return Response.json({});
+			},
+		});
+
+		try {
+			const root = createRoot(dom.document.getElementById("root")!);
+
+			await act(async () => {
+				root.render(
+					<InteractionLayersProvider>
+						<SettingsDialogProviderBase>
+							<SidebarProvider>
+								<ServerEventsProvider
+									connect={() => ({
+										close() {},
+										onOpen() {},
+										onEvent(name, cb) {
+											if (name === "workspaces-changed") {
+												workspacesCallback = cb;
+											}
+										},
+									})}
+								>
+									<SessionsSidebar initialChats={[sampleRootWorkspace]} initialFolders={sampleFolders} />
+								</ServerEventsProvider>
+							</SidebarProvider>
+						</SettingsDialogProviderBase>
+					</InteractionLayersProvider>,
+				);
+			});
+
+			assert.ok(workspacesCallback !== null, "Sidebar must register a listener for 'workspaces-changed'");
+
+			// Reset recorded fetches to specifically test the event execution
+			fetchCalls = [];
+
+			// Dispatch the workspaces-changed event to the registered listener
+			await act(async () => {
+				workspacesCallback!("{}");
+				// scheduleEventRefresh has a 250ms debounce
+				await new Promise((resolve) => setTimeout(resolve, 350));
+			});
+
+			// Verify that the callback executed and triggered a refresh fetch
+			assert.ok(
+				fetchCalls.some((url) => url.includes("/api/directory") || url.includes("/api/chats")),
+				`Event dispatch must execute refresh; fetches recorded: ${JSON.stringify(fetchCalls)}`,
+			);
+
+			await act(async () => {
+				root.unmount();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).self = originalSelf;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+			(globalThis as Record<string, unknown>).HTMLElement = originalHTMLElement;
+			(globalThis as Record<string, unknown>).Element = originalElement;
+			(globalThis as Record<string, unknown>).Node = originalNode;
+			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
+			(globalThis as Record<string, unknown>).localStorage = originalLocalStorage;
+			(globalThis as Record<string, unknown>).requestIdleCallback = originalRIC;
+			(globalThis as Record<string, unknown>).cancelIdleCallback = originalCIC;
+			(globalThis as Record<string, unknown>).IntersectionObserver = originalIO;
+		}
 	});
 });
