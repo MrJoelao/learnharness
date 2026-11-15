@@ -11,6 +11,8 @@ import type { Phase3 } from "../phases.ts";
 import type { PlanNodeStatus, PlanTree } from "./plan.ts";
 import type { EmissionStats } from "./graph.ts";
 
+import type { VisualArtifact } from "./visual-explanation.ts";
+
 // ─── Chat records (the session store's on-disk format) ───────────────────────
 
 /** Session kind: teach is the default when a saved record omits kind.
@@ -29,6 +31,8 @@ export interface ChatRecord {
 	messages: LhMessage[];
 	/** Session-local processed pictures; artifact records carry references only. */
 	imageSnapshots?: Record<string, ImageSnapshot>;
+	/** Visual explanation artifacts produced by the teaching agent (Phase 6). */
+	visualArtifacts?: Record<string, VisualArtifact>;
 	/** The session's kind; an absent field reads as teach. */
 	kind?: ChatKind;
 	/** Learner-authored Markdown notes, kept outside model history. */

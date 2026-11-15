@@ -24,10 +24,11 @@ import { lsTool } from "./tools/ls.ts";
 import { findTool } from "./tools/find.ts";
 import { grepTool } from "./tools/grep.ts";
 import { createShowImageTool } from "./tools/show-image.ts";
+import { createVisualExplanationTool } from "./tools/visual-explanation.ts";
 import { healToolRecord } from "./tools/heal.ts";
 import type { GraphStore } from "../core/ports.ts";
 
-export { jobTools };
+export { jobTools, createVisualExplanationTool };
 export type { ProbeDoneContext } from "./tools/probe.ts";
 
 /**
@@ -461,6 +462,8 @@ export function createTeacherTools(
 			// The learner-image display twin of read (issue #363): teacher
 			// only, always on — it shows the learner their own file.
 			show_image: createShowImageTool(ctx),
+			// Visual Explanation Engine (Phase 6): structured interactive explanations
+			visual_explanation: createVisualExplanationTool(ctx),
 			...planTools(ctx),
 			...jobTools({ chatId: ctx.chatId, jobStore: ctx.jobStore, spawn: ctx.spawn, searchAvailable: ctx.searchAvailable }),
 		},

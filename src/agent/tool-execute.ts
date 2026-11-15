@@ -152,6 +152,10 @@ function isImageResult(v: unknown): v is ImageFileResult {
 	);
 }
 
+function isAgentToolResult(v: unknown): v is AgentToolResult<unknown> {
+	return typeof v === "object" && v !== null && "content" in v && Array.isArray((v as { content?: unknown }).content);
+}
+
 /**
  * Map a tool body's return to the native AgentToolResult — the parity the
  * old toPiTool tail owned: string results pass verbatim to the model,
@@ -160,6 +164,7 @@ function isImageResult(v: unknown): v is ImageFileResult {
  * parts with details ?? null.
  */
 export function toToolResult(result: unknown): AgentToolResult<unknown> {
+	if (isAgentToolResult(result)) return result;
 	if (isImageResult(result)) {
 		return {
 			content: [

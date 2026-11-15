@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { PATHS } from "../../config.ts";
 import { emit } from "../core/events.ts";
 import type { ChatStore } from "../core/ports.ts";
-import type { ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, ImageSnapshot, PlanTree, SessionReference, SideChatThread, TurnUsage } from "../core/contracts.ts";
+import type { ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, ImageSnapshot, PlanTree, SessionReference, SideChatThread, TurnUsage, VisualArtifact } from "../core/contracts.ts";
 import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
@@ -245,6 +245,24 @@ function saveTree(id: string, tree: PlanTree): void {
 	writeChat(record);
 }
 
+/** Persist or update a visual explanation artifact on the session (Phase 6). */
+function saveVisualArtifact(id: string, artifact: VisualArtifact): void {
+	const record = getChat(id);
+	if (!record) throw new Error(`Chat not found: ${id}`);
+	record.visualArtifacts = {
+		...(record.visualArtifacts ?? {}),
+		[artifact.id]: artifact,
+	};
+	writeChat(record);
+}
+
+/** Retrieve a visual explanation artifact by id from the session. */
+function getVisualArtifact(id: string, artifactId: string): VisualArtifact | null {
+	const record = getChat(id);
+	if (!record) return null;
+	return record.visualArtifacts?.[artifactId] ?? null;
+}
+
 /** Side-question threads (2026-11-02): one synchronous read-modify-write,
  *  so a concurrent turn's saveMessages (which re-reads the record) never
  *  loses a thread and a thread write never loses messages. Null when the
@@ -267,6 +285,8 @@ export const chatStore: ChatStore = {
 	saveMessages,
 	saveImageSnapshot,
 	saveTree,
+	saveVisualArtifact,
+	getVisualArtifact,
 	saveSettings,
 	saveReferences,
 	saveNotes,

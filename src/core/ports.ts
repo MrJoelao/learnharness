@@ -31,6 +31,7 @@ import type {
 	SideChatThread,
 	TurnUsage,
 	NotesSource,
+	VisualArtifact,
 } from "./contracts.ts";
 import type { UserSettings } from "./settings.ts";
 import type { Theme, ThemeFile } from "./themes.ts";
@@ -70,6 +71,10 @@ export interface ChatStore {
 	saveImageSnapshot(id: string, snapshotId: string, image: ImageSnapshot): void;
 	/** Persist the session plan tree (plan tools call this in execute). */
 	saveTree(id: string, tree: PlanTree): void;
+	/** Persist or update a visual explanation artifact on the session. */
+	saveVisualArtifact(id: string, artifact: VisualArtifact): void;
+	/** Retrieve a visual explanation artifact by id from the session. */
+	getVisualArtifact(id: string, artifactId: string): VisualArtifact | null;
 	/** Append one usage entry to the record's turn log (the money channel,
 	 * 2026-09): idempotent per turn id — each request carries its own, so
 	 * a turn persisted twice appends once while continuation turns (which

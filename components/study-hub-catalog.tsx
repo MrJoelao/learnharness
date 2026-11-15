@@ -7,8 +7,7 @@ import { TopBar } from "@/components/top-bar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { usePlugins } from "@/components/plugins";
-import type { PluginModeMetadata } from "@/src/core";
-import { fuzzyScore } from "@/src/core/fuzzy";
+import { fuzzyScore, type PluginModeMetadata } from "@/src/core";
 import {
 	AlertCircleIcon,
 	ArrowRightIcon,
