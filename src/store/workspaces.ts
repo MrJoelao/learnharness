@@ -7,6 +7,9 @@ import {
 	parseWorkspaceIndex,
 	parseWorkspaceRecord,
 	WORKSPACE_ID_PATTERN,
+	DeletionJournalError,
+	DeletionJournalCorruptError,
+	DeletionJournalUnreadableError,
 	type WorkspaceDeletionJournalEntry,
 	type WorkspaceDirectory,
 	type WorkspaceDirectoryIssue,
@@ -183,30 +186,48 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 
 	function readDeletionJournal(): WorkspaceDeletionJournalEntry[] {
 		if (!ensureRoot(false)) return [];
+		let stat: fs.Stats;
 		try {
-			const stat = fs.lstatSync(/* turbopackIgnore: true */ journalFile);
-			if (!stat.isFile() || stat.isSymbolicLink()) return [];
+			stat = fs.lstatSync(/* turbopackIgnore: true */ journalFile);
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-			return [];
+			throw new DeletionJournalUnreadableError("Could not stat deletion journal.", { cause: error });
 		}
+		if (!stat.isFile() || stat.isSymbolicLink()) {
+			throw new DeletionJournalCorruptError("Deletion journal is not a regular file.");
+		}
+		let text: string;
 		try {
-			const text = fs.readFileSync(/* turbopackIgnore: true */ journalFile, "utf8");
-			const parsed = JSON.parse(text);
-			if (!Array.isArray(parsed)) return [];
-			return parsed.filter((e): e is WorkspaceDeletionJournalEntry =>
-				e !== null &&
-				typeof e === "object" &&
-				!Array.isArray(e) &&
-				typeof e.workspaceId === "string" &&
-				WORKSPACE_ID_PATTERN.test(e.workspaceId) &&
-				typeof e.pluginId === "string" &&
-				(e.stage === "started" || e.stage === "state-deleted" || e.stage === "metadata-deleted") &&
-				typeof e.startedAt === "string"
-			);
-		} catch {
-			return [];
+			text = fs.readFileSync(/* turbopackIgnore: true */ journalFile, "utf8");
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+			throw new DeletionJournalUnreadableError("Could not read deletion journal file.", { cause: error });
 		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(text);
+		} catch (error) {
+			throw new DeletionJournalCorruptError("Deletion journal contains malformed JSON.", { cause: error });
+		}
+		if (!Array.isArray(parsed)) {
+			throw new DeletionJournalCorruptError("Deletion journal must be an array.");
+		}
+		for (const e of parsed) {
+			if (
+				!e ||
+				typeof e !== "object" ||
+				Array.isArray(e) ||
+				typeof e.workspaceId !== "string" ||
+				!WORKSPACE_ID_PATTERN.test(e.workspaceId) ||
+				typeof e.pluginId !== "string" ||
+				!e.pluginId.trim() ||
+				(e.stage !== "started" && e.stage !== "state-deleted" && e.stage !== "metadata-deleted") ||
+				typeof e.startedAt !== "string"
+			) {
+				throw new DeletionJournalCorruptError("Deletion journal contains invalid entries.");
+			}
+		}
+		return parsed as WorkspaceDeletionJournalEntry[];
 	}
 
 	function writeDeletionJournal(entries: WorkspaceDeletionJournalEntry[]): void {
@@ -256,7 +277,17 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 				else invalidOrphanIds.push(id);
 			}
 		}
-		const journal = readDeletionJournal();
+		let journal: WorkspaceDeletionJournalEntry[] = [];
+		let deletionJournalIssue: "corrupt" | "unreadable" | undefined;
+		try {
+			journal = readDeletionJournal();
+		} catch (error) {
+			if (error instanceof DeletionJournalUnreadableError) {
+				deletionJournalIssue = "unreadable";
+			} else {
+				deletionJournalIssue = "corrupt";
+			}
+		}
 		return {
 			orphanIds,
 			missingIds: directory.issues.filter((issue) => issue.kind === "missing-record").map((issue) => issue.id),
@@ -264,6 +295,7 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 			invalidRecordIds: directory.issues.filter((issue) => issue.kind === "invalid-record").map((issue) => issue.id),
 			unreadableRecordIds: directory.issues.filter((issue) => issue.kind === "unreadable-record").map((issue) => issue.id),
 			...(journal.length > 0 ? { interruptedDeletionIds: journal.map((entry) => entry.workspaceId) } : {}),
+			...(deletionJournalIssue ? { deletionJournalIssue } : {}),
 		};
 	}
 

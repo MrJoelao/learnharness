@@ -1206,15 +1206,21 @@ export function SessionsSidebar({
 
 	const executeAction = useCallback(
 		async (
-			action: ChatOrganizationAction,
-			priorState?: { organization: ChatOrganization; chats: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] },
+			action: any,
+			priorState?: { organization: any; chats: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] },
 		): Promise<boolean> => {
-			let undoPayload: { undoAction: ChatOrganizationAction; description: string } | null = null;
+			let undoPayload: { undoAction: any; description: string } | null = null;
 			if (priorState) {
 				undoPayload = computeUndoAction(action, priorState);
 			}
 			try {
-				const res = await fetch("/api/chats/organization", {
+				const isWorkspaceOp =
+					action?.kind === "workspace" ||
+					(Array.isArray(action?.entries) && action.entries.some((e: any) => e?.kind === "workspace")) ||
+					action?.action === "reorder-mixed-siblings";
+				const endpoint = isWorkspaceOp ? "/api/directory" : "/api/chats/organization";
+
+				const res = await fetch(endpoint, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(action),
@@ -1224,6 +1230,13 @@ export function SessionsSidebar({
 					const errMsg = data.error || `Action failed (${res.status})`;
 					setFeedback({ type: "error", message: errMsg });
 					return false;
+				}
+				const data = await res.json().catch(() => null);
+				if (data) {
+					if (data.organization) setOrganization(data.organization);
+					if (data.folders) setFolders(data.folders);
+					if (data.items) setChats(data.items);
+					else if (data.chats) setChats(data.chats);
 				}
 				void refresh();
 				if (undoPayload) {

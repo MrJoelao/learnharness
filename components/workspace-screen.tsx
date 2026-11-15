@@ -137,7 +137,13 @@ export function WorkspaceScreen({
 	}, [workspaceId]);
 
 	useEffect(() => {
-		if (!initialWorkspace || initialAvailability === undefined) {
+		if (initialWorkspace && initialWorkspace.id === workspaceId) {
+			setWorkspace(initialWorkspace);
+			if (initialAvailability !== undefined) {
+				setScreenState(initialAvailability);
+			}
+			setTitleDraft(initialWorkspace.title);
+		} else if (!initialWorkspace || initialAvailability === undefined) {
 			void loadWorkspace();
 		}
 	}, [workspaceId, initialWorkspace, initialAvailability, loadWorkspace]);
@@ -192,21 +198,41 @@ export function WorkspaceScreen({
 		[router],
 	);
 
+	const currentWorkspaceId = workspace?.id;
+	const currentPluginId = workspace?.pluginId;
+	const currentModeId = workspace?.modeId;
+
+	// Targeted selector: only re-evaluate when this specific plugin's mode renderer registration changes
+	const modeRendererRegistration = (currentPluginId && currentModeId)
+		? snapshot.modeRenderers?.find((r) => r.pluginId === currentPluginId && r.modeId === currentModeId)
+		: undefined;
+
+	const workspaceRef = useRef(workspace);
+	workspaceRef.current = workspace;
+
 	// Mount workspace into container when available and container ready
 	useEffect(() => {
 		setMountError(null);
-		if (screenState !== "available" || !workspace || !containerRef.current || !manager) {
+		const currentWs = workspaceRef.current;
+		if (
+			screenState !== "available" ||
+			!currentWs ||
+			currentWs.id !== currentWorkspaceId ||
+			!containerRef.current ||
+			!manager ||
+			!modeRendererRegistration
+		) {
 			return;
 		}
 
-		const release = manager.mountWorkspace(workspace, containerRef.current, (err) => {
+		const release = manager.mountWorkspace(currentWs, containerRef.current, (err) => {
 			setMountError(err);
 		});
 
 		return () => {
 			release();
 		};
-	}, [screenState, workspace, manager, snapshot]);
+	}, [screenState, currentWorkspaceId, currentPluginId, currentModeId, manager, modeRendererRegistration]);
 
 	return (
 		<main data-testid="workspace-screen" className="flex h-dvh flex-col bg-background">

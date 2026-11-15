@@ -9,7 +9,7 @@ after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 const { createWorkspaceStore } = await import("../src/store/workspaces.ts");
 const { createWorkspaceService } = await import("../src/server/workspaces.ts");
-const { parseWorkspaceId, parseWorkspaceRecord, resolveWorkspaceAvailability } = await import("../src/core/workspaces.ts");
+const { parseWorkspaceId, parseWorkspaceRecord, resolveWorkspaceAvailability, DeletionJournalCorruptError, DeletionJournalUnreadableError } = await import("../src/core/workspaces.ts");
 
 const rawRecord = (id: string, overrides: Record<string, unknown> = {}) => ({
 	version: 1,
@@ -282,4 +282,138 @@ it("refuses to delete invalid or unreadable records, leaving files and index unt
 	assert.equal(fs.existsSync(recordPath), true, "Corrupted file must not be deleted");
 	const indexAfter = JSON.parse(fs.readFileSync(indexPath, "utf8"));
 	assert.deepEqual(indexAfter.workspaceIds, [targetId], "Index must remain untouched");
+});
+
+it("deletion journal: absent journal is treated as empty list", () => {
+	const directory = path.join(root, "journal-absent");
+	const store = createWorkspaceStore(directory);
+	assert.deepEqual(store.readDeletionJournal?.(), []);
+	const inspection = store.inspect();
+	assert.equal(inspection.interruptedDeletionIds, undefined);
+	assert.equal(inspection.deletionJournalIssue, undefined);
+});
+
+it("deletion journal: valid journal returns parsed entries and tracks interrupted deletions", () => {
+	const directory = path.join(root, "journal-valid");
+	const store = createWorkspaceStore(directory);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000060");
+	const entry = {
+		workspaceId: targetId,
+		pluginId: "test-plugin",
+		stage: "started" as const,
+		startedAt: new Date().toISOString(),
+	};
+	store.recordPendingDeletion?.(entry);
+	const read = store.readDeletionJournal?.();
+	assert.equal(read?.length, 1);
+	assert.deepEqual(read?.[0], entry);
+
+	const inspection = store.inspect();
+	assert.deepEqual(inspection.interruptedDeletionIds, [targetId]);
+	assert.equal(inspection.deletionJournalIssue, undefined);
+});
+
+it("deletion journal: malformed JSON throws DeletionJournalCorruptError and reports corrupt issue in inspect", () => {
+	const directory = path.join(root, "journal-malformed");
+	fs.mkdirSync(directory, { recursive: true });
+	fs.writeFileSync(path.join(directory, "deletions.json"), "{ broken json");
+	const store = createWorkspaceStore(directory);
+
+	assert.throws(
+		() => store.readDeletionJournal?.(),
+		(err: unknown) => err instanceof DeletionJournalCorruptError,
+	);
+	const inspection = store.inspect();
+	assert.equal(inspection.deletionJournalIssue, "corrupt");
+	assert.equal(inspection.interruptedDeletionIds, undefined);
+});
+
+it("deletion journal: invalid content throws DeletionJournalCorruptError", () => {
+	const directory = path.join(root, "journal-invalid-content");
+	fs.mkdirSync(directory, { recursive: true });
+	// Not an array
+	fs.writeFileSync(path.join(directory, "deletions.json"), JSON.stringify({ not: "an array" }));
+	const store = createWorkspaceStore(directory);
+
+	assert.throws(
+		() => store.readDeletionJournal?.(),
+		(err: unknown) => err instanceof DeletionJournalCorruptError,
+	);
+	assert.equal(store.inspect().deletionJournalIssue, "corrupt");
+
+	// Array with invalid entry
+	fs.writeFileSync(path.join(directory, "deletions.json"), JSON.stringify([{ workspaceId: "bad-id", stage: "invalid-stage" }]));
+	assert.throws(
+		() => store.readDeletionJournal?.(),
+		(err: unknown) => err instanceof DeletionJournalCorruptError,
+	);
+	assert.equal(store.inspect().deletionJournalIssue, "corrupt");
+});
+
+it("deletion journal: unreadable file throws DeletionJournalUnreadableError", (t) => {
+	const directory = path.join(root, "journal-unreadable");
+	fs.mkdirSync(directory, { recursive: true });
+	const journalPath = path.join(directory, "deletions.json");
+	fs.writeFileSync(journalPath, JSON.stringify([]));
+	const store = createWorkspaceStore(directory);
+
+	const originalRead = fs.readFileSync.bind(fs);
+	t.mock.method(fs, "readFileSync", (target: fs.PathLike, options?: unknown) => {
+		if (typeof target === "string" && target === journalPath) {
+			const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+			err.code = "EACCES";
+			throw err;
+		}
+		return originalRead(target, options as any);
+	});
+
+	assert.throws(
+		() => store.readDeletionJournal?.(),
+		(err: unknown) => err instanceof DeletionJournalUnreadableError,
+	);
+	assert.equal(store.inspect().deletionJournalIssue, "unreadable");
+});
+
+it("deletion journal: stat read error throws DeletionJournalUnreadableError", (t) => {
+	const directory = path.join(root, "journal-stat-error");
+	fs.mkdirSync(directory, { recursive: true });
+	const journalPath = path.join(directory, "deletions.json");
+	fs.writeFileSync(journalPath, JSON.stringify([]));
+	const store = createWorkspaceStore(directory);
+
+	const originalStat = fs.lstatSync.bind(fs);
+	t.mock.method(fs, "lstatSync", (target: fs.PathLike, options?: unknown) => {
+		if (typeof target === "string" && target === journalPath) {
+			const err = new Error("EIO: i/o error") as NodeJS.ErrnoException;
+			err.code = "EIO";
+			throw err;
+		}
+		return originalStat(target, options as any);
+	});
+
+	assert.throws(
+		() => store.readDeletionJournal?.(),
+		(err: unknown) => err instanceof DeletionJournalUnreadableError,
+	);
+	assert.equal(store.inspect().deletionJournalIssue, "unreadable");
+});
+
+it("deletion journal: recovery after interrupted deletion clears journal", () => {
+	const directory = path.join(root, "journal-recovery");
+	const store = createWorkspaceStore(directory);
+	const targetId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000061");
+	const entry = {
+		workspaceId: targetId,
+		pluginId: "test-plugin",
+		stage: "state-deleted" as const,
+		startedAt: new Date().toISOString(),
+	};
+	store.recordPendingDeletion?.(entry);
+	assert.equal(store.readDeletionJournal?.().length, 1);
+	assert.deepEqual(store.inspect().interruptedDeletionIds, [targetId]);
+
+	// Simulate recovery completing: clearPendingDeletion removes journal entry
+	store.clearPendingDeletion?.(targetId);
+	assert.equal(store.readDeletionJournal?.().length, 0);
+	assert.equal(store.inspect().interruptedDeletionIds, undefined);
 });

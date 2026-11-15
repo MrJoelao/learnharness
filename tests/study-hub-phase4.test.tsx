@@ -26,6 +26,7 @@ import { ServerEventsProvider } from "../components/server-events.tsx";
 import { SessionsSidebar, SidebarProvider } from "../components/sidebar.tsx";
 import { SettingsDialogProvider as SettingsDialogProviderBase } from "../components/settings/settings-dialog.tsx";
 import { InteractionLayersProvider } from "../components/interaction-layers.tsx";
+import { PluginsContext } from "../components/plugins.tsx";
 import type {
 	ChatFolder,
 	ChatDirectoryItem,
@@ -842,6 +843,423 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 			(globalThis as Record<string, unknown>).requestIdleCallback = originalRIC;
 			(globalThis as Record<string, unknown>).cancelIdleCallback = originalCIC;
 			(globalThis as Record<string, unknown>).IntersectionObserver = originalIO;
+		}
+	});
+
+	it("15. Sidebar routes workspace organization actions to /api/directory and legacy chat actions to /api/chats/organization", async () => {
+		const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
+		const originalWindow = (globalThis as Record<string, unknown>).window;
+		const originalSelf = (globalThis as Record<string, unknown>).self;
+		const originalDocument = (globalThis as Record<string, unknown>).document;
+		const originalHTMLElement = (globalThis as Record<string, unknown>).HTMLElement;
+		const originalElement = (globalThis as Record<string, unknown>).Element;
+		const originalNode = (globalThis as Record<string, unknown>).Node;
+		const originalAct = (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
+		const originalFetch = globalThis.fetch;
+		const originalLocalStorage = (globalThis as Record<string, unknown>).localStorage;
+		const originalRIC = (globalThis as Record<string, unknown>).requestIdleCallback;
+		const originalRAF = (globalThis as Record<string, unknown>).requestAnimationFrame;
+		const originalCAF = (globalThis as Record<string, unknown>).cancelAnimationFrame;
+		const originalCustomEvent = (globalThis as Record<string, unknown>).CustomEvent;
+		const originalEvent = (globalThis as Record<string, unknown>).Event;
+
+		const postCalls: { url: string; body: any }[] = [];
+		let mockDirectoryStatus = 200;
+
+		class MockIntersectionObserver {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		}
+
+		try {
+			Object.defineProperty(Event.prototype, "eventPhase", { writable: true, configurable: true, value: 0 });
+		} catch {}
+
+		Object.assign(globalThis, {
+			window: dom.window,
+			self: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			Element: dom.window.Element,
+			Node: dom.window.Node,
+			CustomEvent: dom.window.CustomEvent,
+			Event: dom.window.Event,
+			IS_REACT_ACT_ENVIRONMENT: true,
+			localStorage: { getItem: () => null, setItem() {} },
+			requestIdleCallback: (cb: () => void) => setTimeout(cb, 0),
+			cancelIdleCallback: (id: NodeJS.Timeout) => clearTimeout(id),
+			requestAnimationFrame: (cb: () => void) => setTimeout(cb, 0),
+			cancelAnimationFrame: (id: NodeJS.Timeout) => clearTimeout(id),
+			IntersectionObserver: MockIntersectionObserver,
+			fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				const method = init?.method ?? "GET";
+				if (method === "POST") {
+					const body = init?.body ? JSON.parse(String(init.body)) : null;
+					postCalls.push({ url, body });
+					if (url.includes("/api/directory")) {
+						if (mockDirectoryStatus !== 200) {
+							return new Response(JSON.stringify({ error: "Directory operation failed" }), { status: mockDirectoryStatus });
+						}
+						return Response.json({
+							organization: { version: 2, folders: sampleFolders, placements: {} },
+							folders: sampleFolders,
+							items: [sampleRootWorkspace],
+						});
+					}
+					return Response.json({
+						organization: { version: 1, folders: sampleFolders, chats: {} },
+						chats: [sampleRootChat],
+					});
+				}
+				if (url.includes("/api/directory?archived=true")) {
+					return Response.json({ archivedFolders: [], items: [] });
+				}
+				if (url.includes("/api/directory")) {
+					return Response.json({
+						organization: { version: 2, folders: sampleFolders, placements: {} },
+						folders: sampleFolders,
+						items: [sampleRootWorkspace, sampleRootChat],
+					});
+				}
+				if (url.includes("/api/chats/organization")) {
+					return Response.json({ version: 1, folders: sampleFolders, chats: {} });
+				}
+				if (url.includes("/api/chats")) {
+					return Response.json({ chats: [sampleRootChat] });
+				}
+				return Response.json({});
+			},
+		});
+
+		try {
+			const container = dom.document.getElementById("root")!;
+			const root = createRoot(container as unknown as HTMLElement);
+
+			await act(async () => {
+				root.render(
+					<InteractionLayersProvider>
+						<SettingsDialogProviderBase>
+							<SidebarProvider>
+								<ServerEventsProvider
+									connect={() => ({
+										close() {},
+										onOpen() {},
+										onEvent() {},
+									})}
+								>
+									<SessionsSidebar
+										initialChats={[sampleRootWorkspace, sampleRootChat]}
+										initialFolders={sampleFolders}
+									/>
+								</ServerEventsProvider>
+							</SidebarProvider>
+						</SettingsDialogProviderBase>
+					</InteractionLayersProvider>,
+				);
+			});
+
+			// 1. Right-click workspace row to open context menu and archive
+			const wsBtn = container.querySelector('[data-testid="workspace-row"]');
+			assert.ok(wsBtn, "Workspace row button should be present");
+
+			await act(async () => {
+				const event = new dom.window.Event("contextmenu", { bubbles: true, cancelable: true });
+				wsBtn.dispatchEvent(event);
+			});
+
+			// Find ctx-archive button in context menu portal on dom.document.body
+			const archiveBtn = dom.document.querySelector('[data-testid="ctx-archive"]') as HTMLElement | null;
+			assert.ok(archiveBtn, "Context menu archive button should be present");
+
+			postCalls.length = 0;
+			await act(async () => {
+				archiveBtn.click();
+			});
+
+			// Verify workspace archive called /api/directory, NOT /api/chats/organization
+			assert.equal(postCalls.length, 1, "Exactly one POST call should be made");
+			assert.ok(postCalls[0]!.url.includes("/api/directory"), `Workspace archive must target /api/directory, got ${postCalls[0]!.url}`);
+			assert.equal(postCalls[0]!.body.action, "archive");
+			assert.equal(postCalls[0]!.body.kind, "workspace");
+			assert.equal(postCalls[0]!.body.id, sampleRootWorkspace.id);
+
+			// 2. Right-click chat row to open context menu and archive
+			const chatBtn = container.querySelector('[data-testid="session-row"]');
+			assert.ok(chatBtn, "Chat row button should be present");
+
+			await act(async () => {
+				const event = new dom.window.Event("contextmenu", { bubbles: true, cancelable: true });
+				chatBtn.dispatchEvent(event);
+			});
+
+			const chatArchiveBtn = dom.document.querySelector('[data-testid="ctx-archive"]') as HTMLElement | null;
+			assert.ok(chatArchiveBtn, "Chat context menu archive button should be present");
+
+			postCalls.length = 0;
+			await act(async () => {
+				chatArchiveBtn.click();
+			});
+
+			// Verify legacy chat archive called /api/chats/organization
+			assert.equal(postCalls.length, 1, "Exactly one POST call should be made for chat");
+			assert.ok(postCalls[0]!.url.includes("/api/chats/organization"), `Chat archive must target /api/chats/organization, got ${postCalls[0]!.url}`);
+			assert.equal(postCalls[0]!.body.action, "archive");
+			assert.equal(postCalls[0]!.body.kind, "chat");
+			assert.equal(postCalls[0]!.body.id, sampleRootChat.id);
+
+			// 3. Error handling: simulate API error from /api/directory
+			mockDirectoryStatus = 400;
+			await act(async () => {
+				const event = new dom.window.Event("contextmenu", { bubbles: true, cancelable: true });
+				wsBtn.dispatchEvent(event);
+			});
+
+			const wsArchiveFailBtn = dom.document.querySelector('[data-testid="ctx-archive"]') as HTMLElement | null;
+			assert.ok(wsArchiveFailBtn);
+
+			postCalls.length = 0;
+			await act(async () => {
+				wsArchiveFailBtn.click();
+			});
+
+			// Error does not crash the UI
+			assert.equal(postCalls.length, 1);
+			assert.ok(container.querySelector("aside"), "Sidebar must remain intact after error");
+
+			await act(async () => {
+				root.unmount();
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).self = originalSelf;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+			(globalThis as Record<string, unknown>).HTMLElement = originalHTMLElement;
+			(globalThis as Record<string, unknown>).Element = originalElement;
+			(globalThis as Record<string, unknown>).Node = originalNode;
+			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
+			(globalThis as Record<string, unknown>).localStorage = originalLocalStorage;
+			(globalThis as Record<string, unknown>).requestIdleCallback = originalRIC;
+			(globalThis as Record<string, unknown>).requestAnimationFrame = originalRAF;
+			(globalThis as Record<string, unknown>).cancelAnimationFrame = originalCAF;
+			(globalThis as Record<string, unknown>).CustomEvent = originalCustomEvent;
+			(globalThis as Record<string, unknown>).Event = originalEvent;
+		}
+	});
+
+	it("16. WorkspaceScreen renderer lifecycle: mounts workspace, does not remount on unrelated snapshot updates, mounts on workspace change, cleans up on unmount without active AbortControllers", async () => {
+		const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
+		const originalWindow = (globalThis as Record<string, unknown>).window;
+		const originalSelf = (globalThis as Record<string, unknown>).self;
+		const originalDocument = (globalThis as Record<string, unknown>).document;
+		const originalHTMLElement = (globalThis as Record<string, unknown>).HTMLElement;
+		const originalElement = (globalThis as Record<string, unknown>).Element;
+		const originalNode = (globalThis as Record<string, unknown>).Node;
+		const originalAct = (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
+		const originalFetch = globalThis.fetch;
+		const originalRAF = (globalThis as Record<string, unknown>).requestAnimationFrame;
+		const originalCAF = (globalThis as Record<string, unknown>).cancelAnimationFrame;
+
+		Object.assign(globalThis, {
+			window: dom.window,
+			self: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			Element: dom.window.Element,
+			Node: dom.window.Node,
+			IS_REACT_ACT_ENVIRONMENT: true,
+			requestAnimationFrame: (cb: () => void) => setTimeout(cb, 0),
+			cancelAnimationFrame: (id: NodeJS.Timeout) => clearTimeout(id),
+			fetch: async () => Response.json({}),
+		});
+
+		try {
+			const workspaceA: WorkspaceRecord = {
+				version: 1,
+				id: "workspace_00000000-0000-4000-8000-0000000000a1" as WorkspaceId,
+				pluginId: "test-plugin",
+				modeId: "mode-1",
+				title: "Workspace Alpha",
+				createdAt: "2026-11-01T10:00:00Z",
+				updatedAt: "2026-11-01T10:05:00Z",
+			};
+
+			const workspaceB: WorkspaceRecord = {
+				version: 1,
+				id: "workspace_00000000-0000-4000-8000-0000000000b2" as WorkspaceId,
+				pluginId: "test-plugin",
+				modeId: "mode-1",
+				title: "Workspace Beta",
+				createdAt: "2026-11-01T10:00:00Z",
+				updatedAt: "2026-11-01T10:05:00Z",
+			};
+
+			let mountCount = 0;
+			let unmountCount = 0;
+			const controllers: AbortController[] = [];
+
+			const renderer1 = {
+				mount: () => {},
+			};
+
+			const reg1 = Object.freeze({
+				pluginId: "test-plugin",
+				modeId: "mode-1",
+				renderer: renderer1,
+			});
+
+			const mockManager: any = {
+				mountWorkspace: (ws: WorkspaceRecord, container: HTMLElement) => {
+					mountCount++;
+					const ctrl = new AbortController();
+					controllers.push(ctrl);
+					let active = true;
+					return () => {
+						if (active) {
+							active = false;
+							unmountCount++;
+							ctrl.abort();
+						}
+					};
+				},
+			};
+
+			function Harness({
+				workspace,
+				modeRenderers,
+				plugins,
+			}: {
+				workspace: WorkspaceRecord;
+				modeRenderers: any[];
+				plugins: any[];
+			}) {
+				const snapshot: any = {
+					plugins,
+					modeRenderers,
+					codeBlocks: [],
+					toolRenderers: [],
+					directory: "",
+					conflicts: [],
+					loading: false,
+					refreshing: false,
+				};
+				const mockConnect = () => ({
+					close: () => {},
+					onOpen: () => {},
+					onEvent: () => {},
+				});
+				return (
+					<ServerEventsProvider connect={mockConnect}>
+						<PluginsContext.Provider value={{ manager: mockManager, snapshot, uiStore: null }}>
+							<WorkspaceScreen
+								workspaceId={workspace.id}
+								initialWorkspace={workspace}
+								initialAvailability="available"
+							/>
+						</PluginsContext.Provider>
+					</ServerEventsProvider>
+				);
+			}
+
+			const container = dom.document.getElementById("root")!;
+			const root = createRoot(container as unknown as HTMLElement);
+
+			// 1. Initial mount of workspaceA
+			await act(async () => {
+				root.render(
+					<Harness
+						workspace={workspaceA}
+						modeRenderers={[reg1]}
+						plugins={[{ id: "test-plugin", enabled: true }]}
+					/>,
+				);
+			});
+
+			assert.equal(mountCount, 1, "Workspace A should be mounted once");
+			assert.equal(unmountCount, 0, "No unmount should have occurred yet");
+			assert.equal(controllers.length, 1);
+			assert.equal(controllers[0]!.signal.aborted, false, "Controller signal should be active");
+
+			// 2. Unrelated snapshot update (e.g. other plugin changes or manager refreshes)
+			await act(async () => {
+				root.render(
+					<Harness
+						workspace={workspaceA}
+						modeRenderers={[reg1]} // SAME renderer registration reference
+						plugins={[
+							{ id: "test-plugin", enabled: true },
+							{ id: "unrelated-plugin", enabled: true, phase: "active" }, // unrelated change
+						]}
+					/>,
+				);
+			});
+
+			// CRITICAL: Unrelated snapshot update MUST NOT trigger remount
+			assert.equal(mountCount, 1, "Mount count must remain 1 after unrelated snapshot update");
+			assert.equal(unmountCount, 0, "Unmount count must remain 0 after unrelated snapshot update");
+			assert.equal(controllers[0]!.signal.aborted, false, "Initial controller must remain active");
+
+			// 3. Workspace change: navigating to workspaceB
+			await act(async () => {
+				root.render(
+					<Harness
+						workspace={workspaceB}
+						modeRenderers={[reg1]}
+						plugins={[{ id: "test-plugin", enabled: true }]}
+					/>,
+				);
+			});
+
+			assert.equal(mountCount, 2, "Workspace B must be mounted");
+			assert.equal(unmountCount, 1, "Workspace A must be unmounted");
+			assert.equal(controllers[0]!.signal.aborted, true, "Workspace A controller must be aborted");
+			assert.equal(controllers[1]!.signal.aborted, false, "Workspace B controller must be active");
+
+			// 4. Actual renderer change: new renderer registered
+			const renderer2 = { mount: () => {} };
+			const reg2 = Object.freeze({
+				pluginId: "test-plugin",
+				modeId: "mode-1",
+				renderer: renderer2,
+			});
+
+			await act(async () => {
+				root.render(
+					<Harness
+						workspace={workspaceB}
+						modeRenderers={[reg2]} // Changed renderer registration
+						plugins={[{ id: "test-plugin", enabled: true }]}
+					/>,
+				);
+			});
+
+			assert.equal(mountCount, 3, "New renderer must be mounted");
+			assert.equal(unmountCount, 2, "Previous renderer must be unmounted");
+			assert.equal(controllers[1]!.signal.aborted, true, "Previous renderer controller must be aborted");
+			assert.equal(controllers[2]!.signal.aborted, false, "New renderer controller must be active");
+
+			// 5. Complete unmount
+			await act(async () => {
+				root.unmount();
+			});
+
+			assert.equal(unmountCount, 3, "All mounts must be unmounted on component tear-down");
+			for (const ctrl of controllers) {
+				assert.equal(ctrl.signal.aborted, true, "Every controller signal must be aborted after unmount");
+			}
+		} finally {
+			globalThis.fetch = originalFetch;
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).self = originalSelf;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+			(globalThis as Record<string, unknown>).HTMLElement = originalHTMLElement;
+			(globalThis as Record<string, unknown>).Element = originalElement;
+			(globalThis as Record<string, unknown>).Node = originalNode;
+			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
+			(globalThis as Record<string, unknown>).requestAnimationFrame = originalRAF;
+			(globalThis as Record<string, unknown>).cancelAnimationFrame = originalCAF;
 		}
 	});
 });

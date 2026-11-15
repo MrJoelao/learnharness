@@ -11,7 +11,7 @@ import { BUILTIN_MERMAID_LANGUAGE, reservedToolRendererNames } from "@/component
 const EMPTY: PluginSnapshot = { plugins: [], codeBlocks: [], toolRenderers: [], directory: "", conflicts: [], loading: true, refreshing: false };
 const emptySubscribe = () => () => {};
 const emptySnapshot = () => EMPTY;
-const PluginsContext = createContext<{ manager: PluginFrontendManager | null; snapshot: PluginSnapshot; uiStore: ReturnType<typeof createPluginUiStore> | null }>({ manager: null, snapshot: EMPTY, uiStore: null });
+export const PluginsContext = createContext<{ manager: PluginFrontendManager | null; snapshot: PluginSnapshot; uiStore: ReturnType<typeof createPluginUiStore> | null }>({ manager: null, snapshot: EMPTY, uiStore: null });
 
 /** A deferred last-release makes React StrictMode's setup/cleanup/setup one
  * activation lifetime, while a genuine provider teardown still disposes. */

@@ -39,6 +39,27 @@ export interface WorkspaceDeletionJournalEntry {
 	startedAt: string;
 }
 
+export class DeletionJournalError extends Error {
+	constructor(message: string, options?: { cause?: unknown }) {
+		super(message, options);
+		this.name = "DeletionJournalError";
+	}
+}
+
+export class DeletionJournalCorruptError extends DeletionJournalError {
+	constructor(message = "Deletion journal is corrupt or invalid.", options?: { cause?: unknown }) {
+		super(message, options);
+		this.name = "DeletionJournalCorruptError";
+	}
+}
+
+export class DeletionJournalUnreadableError extends DeletionJournalError {
+	constructor(message = "Deletion journal could not be read.", options?: { cause?: unknown }) {
+		super(message, options);
+		this.name = "DeletionJournalUnreadableError";
+	}
+}
+
 export interface WorkspaceReconciliation {
 	orphanIds: WorkspaceId[];
 	missingIds: WorkspaceId[];
@@ -46,6 +67,7 @@ export interface WorkspaceReconciliation {
 	invalidRecordIds: WorkspaceId[];
 	unreadableRecordIds: WorkspaceId[];
 	interruptedDeletionIds?: WorkspaceId[];
+	deletionJournalIssue?: "corrupt" | "unreadable";
 }
 
 export type WorkspaceAvailability = "available" | "plugin-disabled" | "plugin-missing" | "mode-missing";
