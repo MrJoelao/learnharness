@@ -191,4 +191,93 @@ describe("Visual Explanation Security Validation — Adversarial Test Suite (Fix
 			assert.ok(res.problems.length > 0);
 		}
 	});
+
+	it("strictly rejects malformed XML structures (multiple roots, unclosed tags, unquoted attributes, undeclared prefix) (Fix A)", () => {
+		const malformedXmlCases = [
+			{ name: "multiple roots", source: '<svg><rect/></svg><svg><circle/></svg>' },
+			{ name: "unclosed tag", source: '<svg><rect width="10" height="10"></svg>' },
+			{ name: "mismatched closing tag", source: '<svg><g></rect></svg>' },
+			{ name: "unquoted attribute value", source: '<svg><rect width=10 height="10"/></svg>' },
+			{ name: "undeclared namespace prefix", source: '<svg><undeclared:circle r="5"/></svg>' },
+			{ name: "root element is not svg", source: '<xml><svg><rect/></svg></xml>' },
+		];
+
+		for (const { name, source } of malformedXmlCases) {
+			const res = validateVisualArtifact({
+				version: 1,
+				id: "xml-malformed",
+				title: "XML Malformed Test",
+				renderer: "svg",
+				source,
+			});
+			assert.equal(res.valid, false, `Expected ${name} to be rejected fail-closed`);
+			assert.ok(res.problems.length > 0, `Problems array must not be empty for ${name}`);
+		}
+	});
+
+	it("rejects dangerous CSS in style attributes on elements (Fix B)", () => {
+		const dangerousStyleAttributes = [
+			'<svg><rect style="fill: url(https://evil.com/leak.png);"/></svg>',
+			'<svg><circle style="fill: url(data:image/svg+xml,...);"/></svg>',
+			'<svg><path style="width: expression(alert(1));"/></svg>',
+			'<svg><g style="-moz-binding: url(http://evil.com/xbl);"><rect/></g></svg>',
+			'<svg><rect style="behavior: url(default.htc);"/></svg>',
+			'<svg><text style="fill: \\75rl(https://evil.com);">Text</text></svg>',
+			'<svg><rect style="/* comment */ width: \\65xpression(1);"/></svg>',
+		];
+
+		for (const source of dangerousStyleAttributes) {
+			const res = validateVisualArtifact({
+				version: 1,
+				id: "adv-style-attr",
+				title: "Style Attribute Test",
+				renderer: "svg",
+				source,
+			});
+			assert.equal(res.valid, false, `Expected dangerous style attribute in ${source} to be rejected`);
+			assert.ok(
+				res.problems.some((p) => p.includes("style attribute") || p.includes("style blocks") || p.includes("external URLs")),
+				`Must report CSS style violation for ${source}`,
+			);
+		}
+	});
+
+	it("accepts valid educational SVGs with defs, linearGradient, clipPath, mask, use with local #id, text and tspan (Fix A)", () => {
+		const validComplexSvg = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:rgb(255,255,0);stop-opacity:1" />
+      <stop offset="100%" style="stop-color:rgb(255,0,0);stop-opacity:1" />
+    </linearGradient>
+    <clipPath id="clip1">
+      <rect x="0" y="0" width="200" height="100"/>
+    </clipPath>
+    <mask id="mask1">
+      <rect x="0" y="0" width="100" height="100" fill="white"/>
+    </mask>
+    <g id="component-symbol">
+      <circle cx="25" cy="25" r="20" fill="url(#grad1)"/>
+    </g>
+  </defs>
+  <g clip-path="url(#clip1)" mask="url(#mask1)">
+    <use href="#component-symbol" x="50" y="50"/>
+  </g>
+  <text x="20" y="250" font-size="14">
+    Header <tspan fill="blue" font-weight="bold">Highlighted</tspan>
+  </text>
+</svg>
+`.trim();
+
+		const res = validateVisualArtifact({
+			version: 1,
+			id: "valid-complex-svg",
+			title: "Valid Complex SVG",
+			renderer: "svg",
+			source: validComplexSvg,
+		});
+
+		assert.equal(res.valid, true, `Expected valid complex SVG to pass validation: ${res.problems.join(", ")}`);
+		assert.equal(res.problems.length, 0);
+	});
 });

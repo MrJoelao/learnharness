@@ -396,4 +396,86 @@ describe("Visual Explanation Envelope Validation", () => {
 		});
 		assert.equal(procVal.valid, true);
 	});
+
+	it("cross-validates initialState against control descriptors and rejects unsafe strings (Fix B)", () => {
+		const baseControls = [
+			{ type: "slider" as const, id: "speed", label: "Speed", min: 10, max: 100, value: 50 },
+			{ type: "toggle" as const, id: "grid", label: "Grid", value: true },
+			{
+				type: "select" as const,
+				id: "theme",
+				label: "Theme",
+				value: "dark",
+				options: [
+					{ label: "Dark", value: "dark" },
+					{ label: "Light", value: "light" },
+				],
+			},
+		];
+
+		// 1. Slider out of range in initialState
+		let res = validateVisualArtifact({
+			version: 1,
+			id: "init-state-range",
+			title: "Init State Range",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: baseControls,
+			initialState: { speed: 150 },
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("outside slider range")));
+
+		// 2. Slider NaN in initialState
+		res = validateVisualArtifact({
+			version: 1,
+			id: "init-state-nan",
+			title: "Init State NaN",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: baseControls,
+			initialState: { speed: Number.NaN },
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("must be a finite number")));
+
+		// 3. Toggle non-boolean in initialState
+		res = validateVisualArtifact({
+			version: 1,
+			id: "init-state-toggle",
+			title: "Init State Toggle",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: baseControls,
+			initialState: { grid: "yes" as unknown as boolean },
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("must be a boolean")));
+
+		// 4. Select invalid option in initialState
+		res = validateVisualArtifact({
+			version: 1,
+			id: "init-state-select",
+			title: "Init State Select",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: baseControls,
+			initialState: { theme: "neon-pink" },
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("must match one of the available option values")));
+
+		// 5. Unsafe CSS strings in initialState
+		res = validateVisualArtifact({
+			version: 1,
+			id: "init-state-css",
+			title: "Init State CSS Injection",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: baseControls,
+			initialState: { customPayload: "red; } body { background: black; } /*" },
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("disallowed characters or keywords for CSS safety")));
+	});
 });

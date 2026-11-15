@@ -187,7 +187,13 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			presentation: "inline",
 		};
 
-		const dom = parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
+		const dom = parseHTML("<!doctype html><html><body><div id='root'></div><button id='outside-btn'>Outside</button></body></html>");
+		const origFocus = dom.window.HTMLElement.prototype.focus;
+		dom.window.HTMLElement.prototype.focus = function () {
+			Object.defineProperty(dom.document, "activeElement", { value: this, writable: true, configurable: true });
+			origFocus?.call(this);
+		};
+
 		const globals = {
 			window: dom.window,
 			document: dom.document,
@@ -211,6 +217,8 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 
 		// Focus expand button before clicking
 		expandBtn.focus();
+		assert.equal(dom.document.activeElement, expandBtn);
+
 		await act(async () => {
 			expandBtn.click();
 		});
@@ -221,10 +229,58 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 		assert.equal(dialog.getAttribute("aria-modal"), "true");
 		assert.equal(dialog.getAttribute("aria-label"), "Accessibility Focus Test");
 
+		// Find focusable elements in dialog
+		const focusables = Array.from(
+			dialog.querySelectorAll<HTMLElement>(
+				'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+			),
+		);
+		assert.ok(focusables.length >= 2, "Must have at least 2 focusable elements in panel (close button & download)");
+		const firstFocusable = focusables[0];
+		const lastFocusable = focusables[focusables.length - 1];
+		assert.ok(firstFocusable && lastFocusable, "Both first and last focusable elements must exist");
+
+		// Verify initial focus entered dialog
+		assert.equal(dom.document.activeElement, firstFocusable, "Initial focus must be placed on first interactive element");
+
+		// Test Tab wrap-around: when on last focusable and user presses Tab, wraps to first focusable
+		lastFocusable.focus();
+		assert.equal(dom.document.activeElement, lastFocusable);
+
+		await act(async () => {
+			const tabEvent = new dom.window.Event("keydown", { bubbles: true, cancelable: true });
+			Object.defineProperty(tabEvent, "key", { value: "Tab" });
+			Object.defineProperty(tabEvent, "shiftKey", { value: false });
+			dom.window.dispatchEvent(tabEvent);
+		});
+		assert.equal(dom.document.activeElement, firstFocusable, "Tab on last element must wrap around to first element");
+
+		// Test Shift+Tab wrap-around: when on first focusable and user presses Shift+Tab, wraps to last focusable
+		firstFocusable.focus();
+		assert.equal(dom.document.activeElement, firstFocusable);
+
+		await act(async () => {
+			const shiftTabEvent = new dom.window.Event("keydown", { bubbles: true, cancelable: true });
+			Object.defineProperty(shiftTabEvent, "key", { value: "Tab" });
+			Object.defineProperty(shiftTabEvent, "shiftKey", { value: true });
+			dom.window.dispatchEvent(shiftTabEvent);
+		});
+		assert.equal(dom.document.activeElement, lastFocusable, "Shift+Tab on first element must wrap around to last element");
+
+		// Test outside focus trap: focusing outside dialog triggers onFocusIn returning focus to dialog
+		const outsideBtn = dom.document.querySelector<HTMLButtonElement>("#outside-btn");
+		assert.ok(outsideBtn);
+		await act(async () => {
+			const focusInEvent = new dom.window.Event("focusin", { bubbles: true });
+			Object.defineProperty(focusInEvent, "target", { value: outsideBtn });
+			dom.document.dispatchEvent(focusInEvent);
+		});
+		assert.equal(dom.document.activeElement, firstFocusable, "Outside focus attempt must be trapped back to dialog");
+
 		// Press Escape on window
 		await act(async () => {
 			const escEvent = new dom.window.Event("keydown", { bubbles: true });
-			(escEvent as unknown as { key: string }).key = "Escape";
+			Object.defineProperty(escEvent, "key", { value: "Escape" });
 			dom.window.dispatchEvent(escEvent);
 		});
 
@@ -234,5 +290,9 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			0,
 			"Escape key must close dialog",
 		);
+
+		// Wait for focus restoration timeout
+		await new Promise((r) => setTimeout(r, 60));
+		assert.equal(dom.document.activeElement, expandBtn, "Focus must be restored to expand button after closing dialog");
 	});
 });

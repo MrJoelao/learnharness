@@ -13,7 +13,7 @@ import {
 	type VisualPresentation,
 	VISUAL_ARTIFACT_LIMITS,
 } from "./contracts/visual-explanation.ts";
-import { parseHTML } from "linkedom";
+import sax from "sax";
 
 export interface ValidationResult {
 	valid: boolean;
@@ -187,6 +187,45 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 		}
 	}
 
+	// Cross-validate initialState against defined controls and sanitize strings (Fix B)
+	if (initialState !== undefined) {
+		const controlsMap = new Map<string, VisualControlDescriptor>(
+			(controls ?? []).map((c) => [c.id, c]),
+		);
+
+		for (const [key, val] of Object.entries(initialState)) {
+			const ctrl = controlsMap.get(key);
+			if (ctrl) {
+				switch (ctrl.type) {
+					case "slider":
+						if (typeof val !== "number" || !Number.isFinite(val)) {
+							problems.push(`initialState['${key}'] must be a finite number for slider control.`);
+						} else if (val < ctrl.min || val > ctrl.max) {
+							problems.push(`initialState['${key}'] (${val}) is outside slider range [${ctrl.min}, ${ctrl.max}].`);
+						}
+						break;
+					case "toggle":
+						if (typeof val !== "boolean") {
+							problems.push(`initialState['${key}'] must be a boolean for toggle control.`);
+						}
+						break;
+					case "select":
+						if (typeof val !== "string" || !ctrl.options.some((o) => o.value === val)) {
+							problems.push(`initialState['${key}'] must match one of the available option values for select control.`);
+						}
+						break;
+				}
+			}
+
+			// Validate string values in initialState for CSS injection safety
+			if (typeof val === "string") {
+				if (/[;{}()"'\\/<>]/.test(val) || /\b(url|expression|behavior)\b/i.test(val)) {
+					problems.push(`initialState['${key}'] contains disallowed characters or keywords for CSS safety.`);
+				}
+			}
+		}
+	}
+
 	// 10. Accessibility (optional)
 	let accessibility: VisualArtifact["accessibility"];
 	if (record.accessibility !== undefined) {
@@ -234,7 +273,7 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 	return { valid: true, problems: [], sanitized };
 }
 
-const ALLOWED_SVG_TAGS = new Set([
+export const ALLOWED_SVG_TAGS = new Set([
 	"svg",
 	"g",
 	"path",
@@ -260,127 +299,218 @@ const ALLOWED_SVG_TAGS = new Set([
 	"desc",
 ]);
 
-const ALLOWED_NAMESPACES = new Set([
+export const ALLOWED_NAMESPACES = new Set([
 	"http://www.w3.org/2000/svg",
 	"http://www.w3.org/1999/xlink",
 	"http://www.w3.org/XML/1998/namespace",
+	"http://www.w3.org/2000/xmlns/",
 ]);
+
+/**
+ * Validates CSS text inside <style> tags and in 'style' attributes (Fix B).
+ * Rejects @import, external/data URLs, dynamic behaviors, expressions, and CSS obfuscation.
+ */
+export function auditCssContent(css: string): string[] {
+	const problems: string[] = [];
+	if (!css || !css.trim()) return problems;
+
+	// 1. Decode CSS unicode escapes e.g. \65xpression -> expression, \75rl -> url
+	const decoded = css.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => {
+		try {
+			const code = parseInt(hex, 16);
+			return String.fromCharCode(code);
+		} catch {
+			return "";
+		}
+	});
+
+	// 2. Remove CSS comments /* ... */ to prevent keyword splitting
+	const decommented = decoded.replace(/\/\*[\s\S]*?\*\//g, " ");
+
+	// 3. Normalize whitespace
+	const normalized = decommented.replace(/\s+/g, " ");
+
+	if (/@import\b/i.test(normalized)) {
+		problems.push("SVG style blocks must not contain @import rules.");
+	}
+	if (/\burl\s*\(\s*["']?\s*(https?:|\/\/|data:)/i.test(normalized)) {
+		problems.push("SVG style blocks must not load external or data URLs.");
+	}
+	if (/\b(behavior|-moz-binding)\b/i.test(normalized)) {
+		problems.push("SVG style blocks must not use dynamic CSS behaviors or expressions.");
+	}
+	if (/\bexpression\s*\(/i.test(normalized)) {
+		problems.push("SVG style blocks must not use dynamic CSS behaviors or expressions.");
+	}
+
+	return problems;
+}
 
 function validateSvgSource(source: string): { problems: string[]; sanitized?: string } {
 	const problems: string[] = [];
 
-	// 1. DTD / Entity checking (pre-parse to prevent entity expansion / billion laughs attacks)
+	// 1. Pre-parse checks: DTD / Entity / Processing Instructions
 	if (/<!(ENTITY|DOCTYPE)[\s\S]*?(SYSTEM|PUBLIC)/i.test(source) || /<!DOCTYPE\b/i.test(source) || /<!ENTITY\b/i.test(source)) {
 		problems.push("SVG must not contain external DTD or entity declarations.");
 	}
-
-	// 2. Processing instructions (<?xml-stylesheet, <?php, etc.)
 	if (/<\?[\s\S]*?\?>/.test(source)) {
 		problems.push("SVG must not contain XML processing instructions.");
 	}
 
-	// 3. Fast rejection for known forbidden tags before structural parsing
+	// 2. Fast rejection for known forbidden tags before structural parsing
 	if (FORBIDDEN_SVG_TAG_REGEX.test(source)) {
 		problems.push("SVG contains forbidden tags (<script>, <foreignObject>, <iframe>, <link>, etc.).");
 	}
 
-	// 4. Must contain <svg> root element
-	if (!/<svg\b[^>]*>/i.test(source) || !/<\/svg>/i.test(source)) {
-		problems.push("SVG source must be enclosed in valid <svg>...</svg> root tags.");
-	}
+	// 3. Strict XML 1.0 parsing with sax (Fix A)
+	const parser = sax.parser(true, { xmlns: true, position: true });
+	let rootCount = 0;
+	let elementDepth = 0;
+	let currentStyleText = "";
+	let inStyleTag = false;
 
-	// 5. Structural DOM parsing using linkedom
-	let hasParsedStructure = false;
-	try {
-		const { document } = parseHTML(source);
-		const rootSvg = document.querySelector("svg");
-		if (!rootSvg) {
-			problems.push("SVG source must contain a valid root <svg> element.");
-		} else {
-			hasParsedStructure = true;
-			const allElements = Array.from(document.querySelectorAll("*"));
+	parser.onerror = (e) => {
+		problems.push(`XML parse error: ${e.message || String(e)}`);
+	};
 
-			for (const el of allElements) {
-				const tag = el.tagName.toLowerCase();
-				// Tag allowlist enforcement
-				if (!ALLOWED_SVG_TAGS.has(tag)) {
-					problems.push(`SVG contains forbidden tags (<script>, <foreignObject>, <iframe>, <link>, etc.): disallowed <${tag}>.`);
-				}
+	parser.onprocessinginstruction = (pi) => {
+		problems.push(`SVG must not contain XML processing instructions: '<?${pi.name}?>'.`);
+	};
 
-				// Style tag content auditing
-				if (tag === "style") {
-					const css = el.textContent || "";
-					if (/@import\b/i.test(css)) {
-						problems.push("SVG style blocks must not contain @import rules.");
-					}
-					if (/\burl\s*\(\s*["']?\s*(https?:|\/\/|data:)/i.test(css)) {
-						problems.push("SVG style blocks must not load external or data URLs.");
-					}
-					if (/\b(behavior|-moz-binding|expression)\b/i.test(css)) {
-						problems.push("SVG style blocks must not use dynamic CSS behaviors or expressions.");
-					}
-				}
+	parser.ondoctype = () => {
+		problems.push("SVG must not contain external DTD or entity declarations.");
+	};
 
-				// Inspect all attributes on element
-				for (const attr of Array.from(el.attributes || [])) {
-					const name = attr.name.toLowerCase();
-					const val = attr.value.trim();
+	parser.oncdata = (cdata) => {
+		if (/<(script|foreignobject|iframe|embed|object)/i.test(cdata)) {
+			problems.push("SVG contains forbidden tags inside CDATA.");
+		}
+	};
 
-					// Reject inline event handlers (onclick, onload, onerror, etc.)
-					if (name.startsWith("on")) {
-						problems.push(`SVG contains inline event handlers (on* attributes): '${name}'.`);
-					}
+	parser.onopentag = (tag) => {
+		elementDepth++;
+		const node = tag as sax.QualifiedTag;
+		const localTag = (node.local || node.name).toLowerCase();
 
-					// Reject unsafe protocols (javascript:, vbscript:, data:)
-					if (/^(javascript|vbscript):/i.test(val)) {
-						problems.push(`SVG contains unsafe protocol handlers (javascript:, vbscript:, data:): '${val.slice(0, 15)}'.`);
-					}
+		if (elementDepth === 1) {
+			rootCount++;
+			if (localTag !== "svg") {
+				problems.push(`Root element must be <svg>, got <${node.local || node.name}>.`);
+			}
+		}
 
-					// For href, xlink:href, src: must be local #fragment ID only
-					if (name === "href" || name === "xlink:href" || name === "src") {
-						if (/^data:/i.test(val)) {
-							problems.push(`SVG contains unsafe protocol handlers (javascript:, vbscript:, data:): data URI in '${name}'.`);
-						}
-						if (/^(https?:|\/\/|ftp:)/i.test(val)) {
-							problems.push("SVG must not reference external URLs (http://, https://, //). Only local #fragment IDs are allowed.");
-						}
-					}
+		if (!ALLOWED_SVG_TAGS.has(localTag)) {
+			problems.push(`SVG contains forbidden tags (<script>, <foreignObject>, <iframe>, <link>, etc.): disallowed <${node.local || node.name}>.`);
+		}
 
-					// Namespace declarations auditing
-					if (name.startsWith("xmlns:")) {
-						if (!ALLOWED_NAMESPACES.has(val)) {
-							problems.push(`Unexpected or unauthorized namespace '${val}' declared in '${name}'.`);
-						}
-					}
+		if (localTag === "style") {
+			inStyleTag = true;
+			currentStyleText = "";
+		}
+
+		// Namespace checking on element
+		if (node.uri && !ALLOWED_NAMESPACES.has(node.uri)) {
+			problems.push(`Unauthorized namespace URI '${node.uri}' on <${node.name}>.`);
+		}
+
+		const namespaces = (node as { ns?: Record<string, string> }).ns;
+		if (namespaces) {
+			for (const [prefix, uri] of Object.entries(namespaces)) {
+				if (typeof uri === "string" && uri && !ALLOWED_NAMESPACES.has(uri)) {
+					problems.push(`Unexpected or unauthorized namespace '${uri}' declared in prefix '${prefix}'.`);
 				}
 			}
 		}
-	} catch {
-		problems.push("SVG source is malformed XML/HTML and could not be parsed.");
+
+		// Attribute inspection
+		for (const rawAttr of Object.values(node.attributes)) {
+			const attr = rawAttr as sax.QualifiedAttribute;
+			const attrName = (attr.name || "").toLowerCase();
+			const attrLocal = (attr.local || attr.name || "").toLowerCase();
+			const attrVal = (typeof attr.value === "string" ? attr.value : String(attr)).trim();
+
+			// Namespace declaration checking
+			if (attr.prefix === "xmlns" || attrName.startsWith("xmlns:") || attrName === "xmlns") {
+				if (attrVal && !ALLOWED_NAMESPACES.has(attrVal)) {
+					problems.push(`Unexpected or unauthorized namespace '${attrVal}' declared in '${attr.name}'.`);
+				}
+			}
+
+			// Event handler attributes (onclick, onload, etc.)
+			if (attrName.startsWith("on") || attrLocal.startsWith("on")) {
+				problems.push(`SVG contains inline event handlers (on* attributes): '${attr.name}'.`);
+			}
+
+			// Unsafe protocols
+			if (/^(javascript|vbscript):/i.test(attrVal)) {
+				problems.push(`SVG contains unsafe protocol handlers (javascript:, vbscript:, data:): '${attrVal.slice(0, 15)}'.`);
+			}
+
+			// href, xlink:href, src checks
+			if (attrLocal === "href" || attrLocal === "src") {
+				if (/^data:/i.test(attrVal)) {
+					problems.push(`SVG contains unsafe protocol handlers (javascript:, vbscript:, data:): data URI in '${attr.name}'.`);
+				}
+				if (/^(https?:|\/\/|ftp:)/i.test(attrVal)) {
+					problems.push("SVG must not reference external URLs (http://, https://, //). Only local #fragment IDs are allowed.");
+				}
+			}
+
+			// Attribute namespace checking
+			if (attr.uri && !ALLOWED_NAMESPACES.has(attr.uri)) {
+				problems.push(`Unauthorized namespace URI '${attr.uri}' on attribute '${attr.name}'.`);
+			}
+
+			// Fix B: style attribute CSS validation
+			if (attrLocal === "style") {
+				const cssIssues = auditCssContent(attrVal);
+				for (const issue of cssIssues) {
+					problems.push(issue.replace("SVG style blocks", "SVG style attributes"));
+				}
+			}
+		}
+	};
+
+	parser.ontext = (text) => {
+		if (inStyleTag) {
+			currentStyleText += text;
+		}
+	};
+
+	parser.onclosetag = (tagName) => {
+		elementDepth--;
+		const local = tagName.includes(":") ? tagName.split(":")[1] : tagName;
+		if (local && local.toLowerCase() === "style") {
+			inStyleTag = false;
+			const cssIssues = auditCssContent(currentStyleText);
+			for (const issue of cssIssues) {
+				problems.push(issue);
+			}
+			currentStyleText = "";
+		}
+	};
+
+	try {
+		parser.write(source).close();
+	} catch (err) {
+		problems.push(`XML syntax error: ${(err as Error).message || String(err)}`);
 	}
 
-	// 6. Regex fallbacks for safety if parsing was interrupted
-	if (!hasParsedStructure) {
-		if (EVENT_HANDLER_REGEX.test(source)) {
-			problems.push("SVG contains inline event handlers (on* attributes).");
-		}
-		if (UNSAFE_PROTOCOL_REGEX.test(source)) {
-			problems.push("SVG contains unsafe protocol handlers (javascript:, vbscript:, data:).");
-		}
-		if (EXTERNAL_URL_REGEX.test(source)) {
-			problems.push("SVG must not reference external URLs (http://, https://, //). Only local #fragment IDs are allowed.");
-		}
+	if (rootCount !== 1) {
+		problems.push(`SVG source must contain exactly one root <svg> element, found ${rootCount}.`);
+	}
+
+	if (problems.length > 0) {
+		return { problems };
 	}
 
 	let sanitized = source;
 	// Ensure xmlns is present if missing on root <svg>
-	if (problems.length === 0) {
-		if (!/<svg\b[^>]*xmlns\s*=/i.test(sanitized)) {
-			sanitized = sanitized.replace(/<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"');
-		}
+	if (!/<svg\b[^>]*xmlns\s*=/i.test(sanitized)) {
+		sanitized = sanitized.replace(/<svg\b/i, '<svg xmlns="http://www.w3.org/2000/svg"');
 	}
 
-	return { problems, sanitized };
+	return { problems: [], sanitized };
 }
 
 function validateHtmlSource(source: string): { problems: string[] } {

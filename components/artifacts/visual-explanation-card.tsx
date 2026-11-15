@@ -30,7 +30,7 @@ interface VisualExplanationCardProps extends ArtifactPartProps {
 	className?: string;
 }
 
-// ── Shared Visual Artifact Registry & State Store (Fix B) ───────────────────
+// ── Shared Visual Artifact Registry & State Store (Fix B & C) ───────────────
 
 type RegistryEntry = {
 	artifact: VisualArtifact;
@@ -69,8 +69,22 @@ export function subscribeVisualArtifact(id: string, listener: (art: VisualArtifa
 	}
 	entry.listeners.add(listener);
 	return () => {
-		entry?.listeners.delete(listener);
+		const current = artifactRegistry.get(id);
+		if (current) {
+			current.listeners.delete(listener);
+			if (current.listeners.size === 0) {
+				artifactRegistry.delete(id);
+			}
+		}
 	};
+}
+
+export function clearVisualArtifactRegistry(): void {
+	artifactRegistry.clear();
+}
+
+export function getVisualArtifactRegistrySize(): number {
+	return artifactRegistry.size;
 }
 
 /** Pure helper to extract maxSteps count from SVG source data-step attributes. */
@@ -98,8 +112,20 @@ export function applyStepToSvg(source: string, currentStep: number): string {
 	return source.replace(/<\/svg>/i, `${stepStyle}</svg>`);
 }
 
+function sanitizeCssIdent(ident: string): string {
+	return ident.replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+function sanitizeCssValue(val: string): string {
+	return val.replace(/[:;{}()<>"'/\\*]/g, "").replace(/\b(url|expression|javascript|behavior)\b/gi, "").trim();
+}
+
+function escapeCssAttributeValue(val: string): string {
+	return val.replace(/[;{}\n\r<>\\]/g, "").replace(/["']/g, "");
+}
+
 /**
- * Pure helper to bind declarative controls & state variables to SVG source (Fix A).
+ * Pure helper to bind declarative controls & state variables to SVG source (Fix A & B).
  * Injects CSS variables (--ctrl-<id>, --param-<id>) and display rules for toggles/selects.
  */
 export function applyStateToSvg(
@@ -110,8 +136,11 @@ export function applyStateToSvg(
 	const cssVars: string[] = [];
 	const rules: string[] = [];
 
-	for (const [key, val] of Object.entries(stateValues)) {
-		if (typeof val === "number" || typeof val === "string") {
+	for (const [rawKey, val] of Object.entries(stateValues)) {
+		const key = sanitizeCssIdent(rawKey);
+		if (!key) continue;
+
+		if (typeof val === "number" && Number.isFinite(val)) {
 			cssVars.push(`--ctrl-${key}: ${val};`);
 			cssVars.push(`--param-${key}: ${val};`);
 		} else if (typeof val === "boolean") {
@@ -119,11 +148,12 @@ export function applyStateToSvg(
 			cssVars.push(`--param-${key}: ${val ? 1 : 0};`);
 			rules.push(`[data-toggle="${key}"] { display: ${val ? "inline" : "none"}; }`);
 			rules.push(`[data-toggle-not="${key}"] { display: ${val ? "none" : "inline"}; }`);
-		}
-
-		if (typeof val === "string") {
-			rules.push(`[data-select-${key}="${val}"] { display: inline; }`);
-			rules.push(`[data-select-${key}]:not([data-select-${key}="${val}"]) { display: none; }`);
+		} else if (typeof val === "string") {
+			const safeVal = sanitizeCssValue(val);
+			cssVars.push(`--ctrl-${key}: ${safeVal};`);
+			cssVars.push(`--param-${key}: ${safeVal};`);
+			rules.push(`[data-select-${key}="${safeVal}"] { display: inline; }`);
+			rules.push(`[data-select-${key}]:not([data-select-${key}="${safeVal}"]) { display: none; }`);
 		}
 	}
 
@@ -199,6 +229,33 @@ export function preserveCompatibleState(
 	return next;
 }
 
+function VisualExplanationUpdateNotice({ artifact }: { artifact: VisualArtifact }) {
+	const notifiedSignatureRef = useRef<string | null>(null);
+
+	useEffect(() => {
+		const sig = `${artifact.id}:${artifact.version}:${artifact.title}:${artifact.source.length}`;
+		if (notifiedSignatureRef.current !== sig) {
+			notifiedSignatureRef.current = sig;
+			registerVisualArtifact(artifact);
+		}
+	}, [artifact]);
+
+	return (
+		<div
+			className="my-2.5 flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-xs text-foreground"
+			data-testid="visual-explanation-update-notice"
+			data-artifact-id={artifact.id}
+		>
+			<div className="flex items-center gap-2">
+				<CheckCircle2Icon className="size-4 text-primary shrink-0" />
+				<span className="font-semibold text-primary">Updated Visual:</span>
+				<span className="font-medium text-foreground">{artifact.title}</span>
+			</div>
+			<span className="text-[11px] text-muted-foreground">Updated in-place above</span>
+		</div>
+	);
+}
+
 export function VisualExplanationCard({ part, className = "" }: VisualExplanationCardProps) {
 	const rawOutput = (part.output as { artifact?: unknown })?.artifact ?? part.output ?? part.input;
 	const rawAction =
@@ -227,23 +284,9 @@ export function VisualExplanationCard({ part, className = "" }: VisualExplanatio
 		);
 	}
 
-	// Update action (Fix B): Publishes update to existing visual instance instead of spawning a duplicate
+	// Update action (Fix B & C): Publishes update to existing visual instance via useEffect
 	if (rawAction === "update") {
-		registerVisualArtifact(validatedArtifact);
-		return (
-			<div
-				className="my-2.5 flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-xs text-foreground"
-				data-testid="visual-explanation-update-notice"
-				data-artifact-id={validatedArtifact.id}
-			>
-				<div className="flex items-center gap-2">
-					<CheckCircle2Icon className="size-4 text-primary shrink-0" />
-					<span className="font-semibold text-primary">Updated Visual:</span>
-					<span className="font-medium text-foreground">{validatedArtifact.title}</span>
-				</div>
-				<span className="text-[11px] text-muted-foreground">Updated in-place above</span>
-			</div>
-		);
+		return <VisualExplanationUpdateNotice artifact={validatedArtifact} />;
 	}
 
 	return (
@@ -270,9 +313,14 @@ export function VisualExplanationInstance({
 		return registered ?? initialArtifact;
 	});
 
-	// Register initial artifact
+	// Register initial artifact outside render phase with idempotency check
+	const lastRegisteredSignatureRef = useRef<string | null>(null);
 	useEffect(() => {
-		registerVisualArtifact(initialArtifact);
+		const sig = `${initialArtifact.id}:${initialArtifact.version}:${initialArtifact.title}:${initialArtifact.source.length}`;
+		if (lastRegisteredSignatureRef.current !== sig) {
+			lastRegisteredSignatureRef.current = sig;
+			registerVisualArtifact(initialArtifact);
+		}
 	}, [initialArtifact]);
 
 	const containerRef = useRef<HTMLDivElement>(null);
@@ -538,6 +586,29 @@ export function VisualExplanationInstance({
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [isExpanded, handleClosePanel]);
 
+	// Outside focus trap: keeps focus within the dialog if user tries to focus outside (Fix D)
+	useEffect(() => {
+		if (!isExpanded) return;
+
+		const onFocusIn = (e: FocusEvent) => {
+			if (dialogRef.current && !dialogRef.current.contains(e.target as Node)) {
+				const focusableElements = Array.from(
+					dialogRef.current.querySelectorAll<HTMLElement>(
+						'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+					),
+				);
+				if (focusableElements.length > 0) {
+					focusableElements[0]?.focus();
+				} else {
+					dialogRef.current.focus();
+				}
+			}
+		};
+
+		document.addEventListener("focusin", onFocusIn);
+		return () => document.removeEventListener("focusin", onFocusIn);
+	}, [isExpanded]);
+
 	// Send state update to HTML iframe when stateValues change
 	useEffect(() => {
 		if (artifact.renderer === "html" && iframeRef.current?.contentWindow) {
@@ -558,8 +629,21 @@ export function VisualExplanationInstance({
 	const renderVisualContent = (expanded: boolean) => {
 		if (artifact.renderer === "html") {
 			const cssVars = Object.entries(stateValues)
-				.map(([k, v]) => `--ctrl-${k}: ${v}; --param-${k}: ${v};`)
+				.map(([rawK, v]) => {
+					const k = sanitizeCssIdent(rawK);
+					if (!k) return "";
+					if (typeof v === "number" && Number.isFinite(v)) return `--ctrl-${k}: ${v}; --param-${k}: ${v};`;
+					if (typeof v === "boolean") return `--ctrl-${k}: ${v ? 1 : 0}; --param-${k}: ${v ? 1 : 0};`;
+					if (typeof v === "string") {
+						const safeVal = sanitizeCssValue(v);
+						return `--ctrl-${k}: ${safeVal}; --param-${k}: ${safeVal};`;
+					}
+					return "";
+				})
+				.filter(Boolean)
 				.join(" ");
+
+			const safeStateJson = JSON.stringify(stateValues).replace(/</g, "\\u003c");
 
 			const srcDoc = `
         <!DOCTYPE html>
@@ -572,7 +656,7 @@ export function VisualExplanationInstance({
               body { margin: 0; padding: 12px; font-family: system-ui, sans-serif; box-sizing: border-box; }
             </style>
             <script>
-              window.__LH_STATE__ = ${JSON.stringify(stateValues)};
+              window.__LH_STATE__ = ${safeStateJson};
               window.addEventListener('message', function(e) {
                 if (e.data && e.data.type === 'LH_VISUAL_STATE_UPDATE') {
                   window.__LH_STATE__ = e.data.state;
