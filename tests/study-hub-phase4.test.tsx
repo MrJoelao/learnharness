@@ -914,7 +914,7 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 					});
 				}
 				if (url.includes("/api/directory?archived=true")) {
-					return Response.json({ archivedFolders: [], items: [] });
+					return Response.json({ archivedFolders: [], items: [sampleRootWorkspace, sampleRootChat] });
 				}
 				if (url.includes("/api/directory")) {
 					return Response.json({
@@ -1009,7 +1009,89 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 			assert.equal(postCalls[0]!.body.kind, "chat");
 			assert.equal(postCalls[0]!.body.id, sampleRootChat.id);
 
-			// 3. Error handling: simulate API error from /api/directory
+			// 3. Workspace move and undo routing to /api/directory
+			await act(async () => {
+				const event = new dom.window.Event("contextmenu", { bubbles: true, cancelable: true });
+				wsBtn.dispatchEvent(event);
+			});
+			const wsMoveBtn = dom.document.querySelector('[data-testid="ctx-move"]') as HTMLElement | null;
+			assert.ok(wsMoveBtn, "Workspace context menu move button should be present");
+
+			await act(async () => {
+				wsMoveBtn.click();
+			});
+			const destF1 = dom.document.querySelector('[data-testid="move-destination-f1"]') as HTMLElement | null;
+			assert.ok(destF1, "Destination folder f1 should be selectable in move dialog");
+
+			postCalls.length = 0;
+			await act(async () => {
+				destF1.click();
+			});
+
+			assert.equal(postCalls.length, 1, "Workspace move must make exactly one POST call");
+			assert.ok(postCalls[0]!.url.includes("/api/directory"), `Workspace move must target /api/directory, got ${postCalls[0]!.url}`);
+			assert.equal(postCalls[0]!.body.action, "move");
+			assert.equal(postCalls[0]!.body.kind, "workspace");
+			assert.equal(postCalls[0]!.body.id, sampleRootWorkspace.id);
+			assert.equal(postCalls[0]!.body.parentId, "f1");
+
+			// Workspace move undo -> /api/directory
+			const undoBtn = dom.document.querySelector('[data-testid="undo-action-button"]') as HTMLElement | null;
+			assert.ok(undoBtn, "Undo button should appear in feedback toast");
+
+			postCalls.length = 0;
+			await act(async () => {
+				undoBtn.click();
+			});
+			assert.equal(postCalls.length, 1, "Workspace move undo must make one POST call");
+			assert.ok(postCalls[0]!.url.includes("/api/directory"), `Workspace undo must target /api/directory, got ${postCalls[0]!.url}`);
+			assert.equal(postCalls[0]!.body.action, "move");
+			assert.equal(postCalls[0]!.body.kind, "workspace");
+			assert.equal(postCalls[0]!.body.id, sampleRootWorkspace.id);
+			assert.equal(postCalls[0]!.body.parentId, null);
+
+			// 4. Chat move and undo routing to /api/chats/organization
+			await act(async () => {
+				const event = new dom.window.Event("contextmenu", { bubbles: true, cancelable: true });
+				chatBtn.dispatchEvent(event);
+			});
+			const chatMoveBtn = dom.document.querySelector('[data-testid="ctx-move"]') as HTMLElement | null;
+			assert.ok(chatMoveBtn, "Chat context menu move button should be present");
+
+			await act(async () => {
+				chatMoveBtn.click();
+			});
+			const destF1ForChat = dom.document.querySelector('[data-testid="move-destination-f1"]') as HTMLElement | null;
+			assert.ok(destF1ForChat);
+
+			postCalls.length = 0;
+			await act(async () => {
+				destF1ForChat.click();
+			});
+
+			assert.equal(postCalls.length, 1, "Chat move must make one POST call");
+			assert.ok(postCalls[0]!.url.includes("/api/chats/organization"), `Chat move must target /api/chats/organization, got ${postCalls[0]!.url}`);
+			assert.equal(postCalls[0]!.body.action, "move");
+			assert.equal(postCalls[0]!.body.kind, "chat");
+			assert.equal(postCalls[0]!.body.id, sampleRootChat.id);
+			assert.equal(postCalls[0]!.body.parentId, "f1");
+
+			// Chat move undo -> /api/chats/organization
+			const chatUndoBtn = dom.document.querySelector('[data-testid="undo-action-button"]') as HTMLElement | null;
+			assert.ok(chatUndoBtn);
+
+			postCalls.length = 0;
+			await act(async () => {
+				chatUndoBtn.click();
+			});
+			assert.equal(postCalls.length, 1, "Chat move undo must make one POST call");
+			assert.ok(postCalls[0]!.url.includes("/api/chats/organization"), `Chat undo must target /api/chats/organization, got ${postCalls[0]!.url}`);
+			assert.equal(postCalls[0]!.body.action, "move");
+			assert.equal(postCalls[0]!.body.kind, "chat");
+			assert.equal(postCalls[0]!.body.id, sampleRootChat.id);
+			assert.equal(postCalls[0]!.body.parentId, null);
+
+			// 5. Error handling: simulate API error from /api/directory
 			mockDirectoryStatus = 400;
 			await act(async () => {
 				const event = new dom.window.Event("contextmenu", { bubbles: true, cancelable: true });
@@ -1027,9 +1109,85 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 			// Error does not crash the UI
 			assert.equal(postCalls.length, 1);
 			assert.ok(container.querySelector("aside"), "Sidebar must remain intact after error");
+			mockDirectoryStatus = 200;
 
+			// 6. Archive Page actions: restore workspace -> /api/directory, restore chat -> /api/chats/organization
 			await act(async () => {
 				root.unmount();
+			});
+
+			const archiveRoot = createRoot(container as unknown as HTMLElement);
+			await act(async () => {
+				archiveRoot.render(
+					<InteractionLayersProvider>
+						<SettingsDialogProviderBase>
+							<SidebarProvider>
+								<ServerEventsProvider
+									connect={() => ({
+										close() {},
+										onOpen() {},
+										onEvent() {},
+									})}
+								>
+									<ArchivePage
+										initialItems={[sampleRootWorkspace, sampleRootChat]}
+										initialFolders={sampleFolders}
+									/>
+								</ServerEventsProvider>
+							</SidebarProvider>
+						</SettingsDialogProviderBase>
+					</InteractionLayersProvider>,
+				);
+			});
+
+			// Restore workspace from archive
+			const archWsRow = container.querySelector(`[data-testid="archive-chat-${sampleRootWorkspace.id}"]`);
+			assert.ok(archWsRow, "Archived workspace row must be rendered in ArchivePage");
+
+			await act(async () => {
+				const event = new dom.window.Event("contextmenu", { bubbles: true, cancelable: true });
+				archWsRow.dispatchEvent(event);
+			});
+
+			const restoreWsBtn = dom.document.querySelector('[data-testid="ctx-restore-chat"]') as HTMLElement | null;
+			assert.ok(restoreWsBtn, "Context menu restore button must be present in ArchivePage");
+
+			postCalls.length = 0;
+			await act(async () => {
+				restoreWsBtn.click();
+			});
+
+			assert.equal(postCalls.length, 1, "Restoring workspace from archive must make one POST call");
+			assert.ok(postCalls[0]!.url.includes("/api/directory"), `Restoring workspace must target /api/directory, got ${postCalls[0]!.url}`);
+			assert.equal(postCalls[0]!.body.action, "restore");
+			assert.equal(postCalls[0]!.body.kind, "workspace");
+			assert.equal(postCalls[0]!.body.id, sampleRootWorkspace.id);
+
+			// Restore chat from archive
+			const archChatRow = container.querySelector(`[data-testid="archive-chat-${sampleRootChat.id}"]`);
+			assert.ok(archChatRow, "Archived chat row must be rendered in ArchivePage");
+
+			await act(async () => {
+				const event = new dom.window.Event("contextmenu", { bubbles: true, cancelable: true });
+				archChatRow.dispatchEvent(event);
+			});
+
+			const restoreChatBtn = dom.document.querySelector('[data-testid="ctx-restore-chat"]') as HTMLElement | null;
+			assert.ok(restoreChatBtn, "Context menu restore button must be present for chat in ArchivePage");
+
+			postCalls.length = 0;
+			await act(async () => {
+				restoreChatBtn.click();
+			});
+
+			assert.equal(postCalls.length, 1, "Restoring chat from archive must make one POST call");
+			assert.ok(postCalls[0]!.url.includes("/api/chats/organization"), `Restoring chat must target /api/chats/organization, got ${postCalls[0]!.url}`);
+			assert.equal(postCalls[0]!.body.action, "restore");
+			assert.equal(postCalls[0]!.body.kind, "chat");
+			assert.equal(postCalls[0]!.body.id, sampleRootChat.id);
+
+			await act(async () => {
+				archiveRoot.unmount();
 			});
 		} finally {
 			globalThis.fetch = originalFetch;
@@ -1260,6 +1418,178 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
 			(globalThis as Record<string, unknown>).requestAnimationFrame = originalRAF;
 			(globalThis as Record<string, unknown>).cancelAnimationFrame = originalCAF;
+		}
+	});
+
+	it("17. WorkspaceScreen metadata update without remount: updates title via normal application flow, immediately readable by renderer without remounting or aborting AbortController", async () => {
+		const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
+		const originalWindow = (globalThis as Record<string, unknown>).window;
+		const originalSelf = (globalThis as Record<string, unknown>).self;
+		const originalDocument = (globalThis as Record<string, unknown>).document;
+		const originalHTMLElement = (globalThis as Record<string, unknown>).HTMLElement;
+		const originalElement = (globalThis as Record<string, unknown>).Element;
+		const originalNode = (globalThis as Record<string, unknown>).Node;
+		const originalAct = (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
+		const originalRAF = (globalThis as Record<string, unknown>).requestAnimationFrame;
+		const originalCAF = (globalThis as Record<string, unknown>).cancelAnimationFrame;
+		const originalFetch = globalThis.fetch;
+		const originalCustomEvent = (globalThis as Record<string, unknown>).CustomEvent;
+		const originalEvent = (globalThis as Record<string, unknown>).Event;
+
+		try {
+			Object.defineProperty(Event.prototype, "eventPhase", { writable: true, configurable: true, value: 0 });
+		} catch {}
+
+		Object.assign(globalThis, {
+			window: dom.window,
+			self: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			Element: dom.window.Element,
+			Node: dom.window.Node,
+			CustomEvent: dom.window.CustomEvent,
+			Event: dom.window.Event,
+			IS_REACT_ACT_ENVIRONMENT: true,
+			requestAnimationFrame: (cb: () => void) => setTimeout(cb, 0),
+			cancelAnimationFrame: (id: NodeJS.Timeout) => clearTimeout(id),
+		});
+
+		try {
+			const initialWorkspaceRecord: WorkspaceRecord = {
+				version: 1,
+				id: "workspace_11111111-2222-4333-8444-555555555555" as WorkspaceId,
+				pluginId: "test-plugin",
+				modeId: "mode-1",
+				title: "Titolo iniziale",
+				createdAt: "2026-11-01T10:00:00Z",
+				updatedAt: "2026-11-01T10:00:00Z",
+			};
+
+			let mountCount = 0;
+			let unmountCount = 0;
+			let capturedContext: any = null;
+			let managerCurrentWorkspace = { ...initialWorkspaceRecord };
+
+			const mockManager = {
+				mountWorkspace: (wsSupplier: any, _container: HTMLElement, _onError: (err: string) => void) => {
+					mountCount++;
+					const ctrl = new AbortController();
+					const ctx = {
+						get workspace() {
+							return typeof wsSupplier === "function" ? wsSupplier() : managerCurrentWorkspace;
+						},
+						signal: ctrl.signal,
+						storage: {
+							async get() { return undefined; },
+							async set() {},
+							async delete() {},
+						},
+						async setTitle(newTitle: string) {
+							managerCurrentWorkspace = { ...managerCurrentWorkspace, title: newTitle };
+							dom.window.dispatchEvent(new dom.window.CustomEvent("lh:chat-renamed", {
+								detail: { id: initialWorkspaceRecord.id, title: newTitle },
+							}));
+						},
+					};
+					capturedContext = ctx;
+					return () => {
+						unmountCount++;
+						ctrl.abort();
+					};
+				},
+				updateWorkspace: (nextWs: WorkspaceRecord) => {
+					managerCurrentWorkspace = { ...nextWs };
+				},
+			};
+
+			const mockRegistration = Object.freeze({
+				pluginId: "test-plugin",
+				modeId: "mode-1",
+				renderer: { mount: () => {} },
+			});
+
+			const snapshot: any = {
+				plugins: [{ id: "test-plugin", enabled: true }],
+				modeRenderers: [mockRegistration],
+				codeBlocks: [],
+				toolRenderers: [],
+				directory: "",
+				conflicts: [],
+				loading: false,
+				refreshing: false,
+			};
+
+			const mockConnect = () => ({
+				close: () => {},
+				onOpen: () => {},
+				onEvent: () => {},
+			});
+
+			const container = dom.document.getElementById("root")!;
+			const root = createRoot(container as unknown as HTMLElement);
+
+			// 1. Initial mount of workspace with "Titolo iniziale"
+			await act(async () => {
+				root.render(
+					<ServerEventsProvider connect={mockConnect}>
+						<PluginsContext.Provider value={{ manager: mockManager as any, snapshot, uiStore: null }}>
+							<WorkspaceScreen
+								workspaceId={initialWorkspaceRecord.id}
+								initialWorkspace={initialWorkspaceRecord}
+								initialAvailability="available"
+							/>
+						</PluginsContext.Provider>
+					</ServerEventsProvider>,
+				);
+			});
+
+			// 2. Verify initial mount state
+			assert.equal(mountCount, 1, "Renderer must be mounted exactly once initially");
+			assert.equal(unmountCount, 0, "No unmount should have occurred yet");
+			assert.ok(capturedContext, "Renderer context must be captured");
+			assert.equal(capturedContext.workspace.title, "Titolo iniziale", "Renderer must observe initial title");
+			assert.equal(capturedContext.signal.aborted, false, "AbortController signal must be active");
+
+			// 3. Simulate normal application workspace update (renaming to 'Titolo aggiornato')
+			await act(async () => {
+				const updatedRecord: WorkspaceRecord = {
+					...initialWorkspaceRecord,
+					title: "Titolo aggiornato",
+					updatedAt: "2026-11-01T10:10:00Z",
+				};
+				mockManager.updateWorkspace(updatedRecord);
+				dom.window.dispatchEvent(
+					new dom.window.CustomEvent("lh:chat-renamed", {
+						detail: { id: initialWorkspaceRecord.id, title: "Titolo aggiornato" },
+					}),
+				);
+			});
+
+			// 4. Verify renderer can read updated title without remounting
+			assert.equal(capturedContext.workspace.title, "Titolo aggiornato", "Renderer must immediately observe updated title");
+			assert.equal(mountCount, 1, "Mount count must remain 1 after metadata update");
+			assert.equal(unmountCount, 0, "Unmount count must remain 0 after metadata update");
+			assert.equal(capturedContext.signal.aborted, false, "AbortController must remain active and not aborted");
+
+			// 5. Verify cleanup on unmount
+			await act(async () => {
+				root.unmount();
+			});
+			assert.equal(unmountCount, 1, "Renderer must be unmounted on component tear-down");
+			assert.equal(capturedContext.signal.aborted, true, "AbortController signal must be aborted on unmount");
+		} finally {
+			globalThis.fetch = originalFetch;
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).self = originalSelf;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+			(globalThis as Record<string, unknown>).HTMLElement = originalHTMLElement;
+			(globalThis as Record<string, unknown>).Element = originalElement;
+			(globalThis as Record<string, unknown>).Node = originalNode;
+			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
+			(globalThis as Record<string, unknown>).requestAnimationFrame = originalRAF;
+			(globalThis as Record<string, unknown>).cancelAnimationFrame = originalCAF;
+			(globalThis as Record<string, unknown>).CustomEvent = originalCustomEvent;
+			(globalThis as Record<string, unknown>).Event = originalEvent;
 		}
 	});
 });

@@ -19,6 +19,7 @@ import type {
 	ChatOrganization,
 	ChatOrganizationAction,
 } from "@/src/core";
+import type { OrganizationActionV2 as OrganizationAction, OrganizationV2, SiblingEntry } from "@/src/core";
 import {
 	MoveDestinationDialog,
 	DeleteFolderDialog,
@@ -107,13 +108,13 @@ export function ArchivePage({
 		(initialItems ?? initialChats) ?? [],
 	);
 	const [activeFolders, setActiveFolders] = useState<ChatFolder[]>(initialActiveFolders ?? []);
-	const [organization, setOrganization] = useState<ChatOrganization | null>(null);
+	const [organization, setOrganization] = useState<ChatOrganization | OrganizationV2 | null>(null);
 	const [loading, setLoading] = useState(initialLoading);
 
 	const initialQ = useMemo(() => {
 		if (initialSearchQuery !== undefined) return initialSearchQuery;
 		if (searchParams) return searchParams.get("q") ?? "";
-		if (typeof window !== "undefined") {
+		if (typeof window !== "undefined" && window.location?.search) {
 			return new URLSearchParams(window.location.search).get("q") ?? "";
 		}
 		return "";
@@ -123,7 +124,7 @@ export function ArchivePage({
 		if (initialKindFilter) return initialKindFilter;
 		const k =
 			searchParams?.get("kind") ??
-			(typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("kind") : null);
+			(typeof window !== "undefined" && window.location?.search ? new URLSearchParams(window.location.search).get("kind") : null);
 		if (k === "teach" || k === "practice") return k;
 		return "all" as const;
 	}, [initialKindFilter, searchParams]);
@@ -164,7 +165,7 @@ export function ArchivePage({
 					activeFolders?: ChatFolder[];
 				};
 				setArchivedFolders(data.archivedFolders ?? data.folders ?? []);
-				setArchivedChats((data.items ?? data.chats ?? []) as any);
+				setArchivedChats(data.items ?? data.chats ?? []);
 				if (data.activeFolders) {
 					setActiveFolders(data.activeFolders);
 				}
@@ -185,7 +186,7 @@ export function ArchivePage({
 			}
 
 			if (orgDirRes && orgDirRes.ok) {
-				const orgData = (await orgDirRes.json()) as { organization: any; folders: ChatFolder[] };
+				const orgData = (await orgDirRes.json()) as { organization: OrganizationV2; folders: ChatFolder[] };
 				setOrganization(orgData.organization);
 				if (!activeFolders.length && (orgData.folders || orgData.organization?.folders)) {
 					setActiveFolders((orgData.folders || orgData.organization.folders).filter((f: ChatFolder) => !f.archivedAt));
@@ -222,7 +223,7 @@ export function ArchivePage({
 	// Selection represented by /archive default, ?view=unorganized, ?folder=<id>
 	const currentFolderId = useMemo(() => {
 		if (searchParams) return searchParams.get("folder");
-		if (typeof window !== "undefined") {
+		if (typeof window !== "undefined" && window.location?.search) {
 			return new URLSearchParams(window.location.search).get("folder");
 		}
 		return null;
@@ -230,7 +231,7 @@ export function ArchivePage({
 
 	const currentView = useMemo(() => {
 		if (searchParams) return searchParams.get("view");
-		if (typeof window !== "undefined") {
+		if (typeof window !== "undefined" && window.location?.search) {
 			return new URLSearchParams(window.location.search).get("view");
 		}
 		return null;
@@ -344,18 +345,18 @@ export function ArchivePage({
 
 	const executeAction = useCallback(
 		async (
-			action: any,
-			priorState?: { organization: any; chats: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] },
+			action: OrganizationAction | ChatOrganizationAction,
+			priorState?: { organization: ChatOrganization | OrganizationV2; chats: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] },
 		): Promise<boolean> => {
-			let undoPayload: { undoAction: any; description: string } | null = null;
+			let undoPayload: { undoAction: OrganizationAction | ChatOrganizationAction; description: string } | null = null;
 			if (priorState) {
 				undoPayload = computeUndoAction(action, priorState);
 			}
 			try {
 				const isWorkspaceOp =
-					action?.kind === "workspace" ||
-					(Array.isArray(action?.entries) && action.entries.some((e: any) => e?.kind === "workspace")) ||
-					action?.action === "reorder-mixed-siblings";
+					("kind" in action && action.kind === "workspace") ||
+					("entries" in action && Array.isArray(action.entries) && action.entries.some((e: SiblingEntry) => e?.kind === "workspace")) ||
+					action.action === "reorder-mixed-siblings";
 				const endpoint = isWorkspaceOp ? "/api/directory" : "/api/chats/organization";
 
 				const res = await fetch(endpoint, {
@@ -443,7 +444,7 @@ export function ArchivePage({
 
 		// Kind filter
 		if (kindFilter !== "all") {
-			list = list.filter((c: any) => c.kind === "workspace" || (c.kind ?? "teach") === kindFilter);
+			list = list.filter((c) => c.kind === "workspace" || (("kind" in c && c.kind ? c.kind : "teach") === kindFilter));
 		}
 
 		// Search filter
@@ -452,7 +453,7 @@ export function ArchivePage({
 
 		return list
 			.map((c) => ({ c, score: fuzzyScore(q, c.title) }))
-			.filter((r): r is { c: any; score: number } => r.score !== null)
+			.filter((r): r is { c: ChatDirectoryItem | WorkspaceDirectoryEntry; score: number } => r.score !== null)
 			.sort((a, b) => b.score - a.score)
 			.map((r) => r.c);
 	}, [scopedChats, kindFilter, searchQuery]);
@@ -1167,7 +1168,7 @@ export function ArchivePage({
 			{/* Context Menu for Chats and Workspaces */}
 			{ctxChatId !== null && (() => {
 				const target = archivedChats.find((c) => c.id === ctxChatId);
-				const isWorkspace = target && "kind" in target && (target as any).kind === "workspace";
+				const isWorkspace = target && "kind" in target && target.kind === "workspace";
 				return (
 					<MenuShell
 						anchorRef={ctxChatAnchorRef}
@@ -1182,7 +1183,7 @@ export function ArchivePage({
 								const id = ctxChatId;
 								closeContextMenus();
 								if (isWorkspace) {
-									const prior = organization ? { organization, chats: archivedChats as any } : undefined;
+									const prior = organization ? { organization, chats: archivedChats } : undefined;
 									void executeAction({ action: "restore", kind: "workspace", id }, prior);
 								} else {
 									handleRestoreChat(id);

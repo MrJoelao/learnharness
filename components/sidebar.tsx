@@ -44,6 +44,13 @@ import {
 	type ChatFolder,
 	type ChatOrganization,
 	type ChatOrganizationAction,
+	type OrganizationActionV2 as OrganizationAction,
+	type OrganizationV2,
+	type SiblingEntry,
+	type ItemKey,
+	chatKey,
+	workspaceKey,
+	folderIsEmptyV2 as folderIsEmpty,
 } from "@/src/core";
 import { DeleteSessionDialog, DeleteWorkspaceDialog } from "@/components/delete-session-dialog";
 import {
@@ -620,7 +627,7 @@ export function SessionsSidebar({
 	const { open, toggle } = useSidebar();
 	const { feed: activityFeed } = useActivity();
 	const hasActiveJobs = (activityFeed?.jobs?.length ?? 0) > 0 || (activityFeed?.extractions?.length ?? 0) > 0;
-	const [organization, setOrganization] = useState<ChatOrganization | null>(null);
+	const [organization, setOrganization] = useState<ChatOrganization | OrganizationV2 | null>(null);
 	const [folders, setFolders] = useState<ChatFolder[]>(initialFolders ?? []);
 	const [chats, setChats] = useState<(ChatDirectoryItem | WorkspaceDirectoryEntry)[] | null>(initialChats ?? null);
 	const [archivedFolders, setArchivedFolders] = useState<ChatFolder[]>(initialArchivedFolders ?? []);
@@ -920,13 +927,13 @@ export function SessionsSidebar({
 		const q = query.trim();
 		let list = activeChats;
 		if (list && kindFilter !== "all") {
-			list = list.filter((c: any) => c.kind === "workspace" || (c.kind ?? "teach") === kindFilter);
+			list = list.filter((c) => c.kind === "workspace" || (("kind" in c && c.kind ? c.kind : "teach") === kindFilter));
 		}
 		if (!list) return list ?? null;
 		if (!q) return list;
 		return list
 			.map((c) => ({ c, score: fuzzyScore(q, c.title) }))
-			.filter((r): r is { c: any; score: number } => r.score !== null)
+			.filter((r): r is { c: ChatDirectoryItem | WorkspaceDirectoryEntry; score: number } => r.score !== null)
 			.sort((a, b) => b.score - a.score)
 			.map((r) => r.c);
 	}, [activeChats, query, kindFilter]);
@@ -943,7 +950,7 @@ export function SessionsSidebar({
 			]);
 
 			if (dirRes && dirRes.ok) {
-				const d = (await dirRes.json()) as { organization: any; folders: ChatFolder[]; items: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] };
+				const d = (await dirRes.json()) as { organization: OrganizationV2; folders: ChatFolder[]; items: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] };
 				let rawItems = d.items ?? [];
 				if (chatsRes && chatsRes.ok) {
 					try {
@@ -954,8 +961,8 @@ export function SessionsSidebar({
 							if (c.kind === "workspace") return c;
 							return {
 								...c,
-								busy: busyMap.get(c.id) ?? (c as any).busy,
-								compacting: compactingMap.get(c.id) ?? (c as any).compacting,
+								busy: busyMap.get(c.id) ?? ("busy" in c ? Boolean((c as { busy?: boolean }).busy) : false),
+								compacting: compactingMap.get(c.id) ?? ("compacting" in c ? Boolean((c as { compacting?: boolean }).compacting) : false),
 							};
 						});
 					} catch {
@@ -964,7 +971,7 @@ export function SessionsSidebar({
 				}
 				setOrganization(d.organization);
 				setFolders(d.folders ?? d.organization?.folders ?? []);
-				setChats(rawItems as any);
+				setChats(rawItems);
 			} else {
 				const orgRes = await fetch("/api/chats/organization", { cache: "no-store" });
 				if (orgRes.ok) {
@@ -998,7 +1005,7 @@ export function SessionsSidebar({
 					chats?: ChatDirectoryItem[];
 				};
 				setArchivedFolders(archData.archivedFolders ?? archData.folders ?? []);
-				setArchivedChats((archData.items ?? archData.chats ?? []) as any);
+				setArchivedChats(archData.items ?? archData.chats ?? []);
 			} else {
 				const archRes = await fetch("/api/chats/organization?archived=true", { cache: "no-store" }).catch(() => null);
 				if (archRes && archRes.ok) {
@@ -1206,18 +1213,18 @@ export function SessionsSidebar({
 
 	const executeAction = useCallback(
 		async (
-			action: any,
-			priorState?: { organization: any; chats: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] },
+			action: OrganizationAction | ChatOrganizationAction,
+			priorState?: { organization: ChatOrganization | OrganizationV2; chats: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] },
 		): Promise<boolean> => {
-			let undoPayload: { undoAction: any; description: string } | null = null;
+			let undoPayload: { undoAction: OrganizationAction | ChatOrganizationAction; description: string } | null = null;
 			if (priorState) {
 				undoPayload = computeUndoAction(action, priorState);
 			}
 			try {
 				const isWorkspaceOp =
-					action?.kind === "workspace" ||
-					(Array.isArray(action?.entries) && action.entries.some((e: any) => e?.kind === "workspace")) ||
-					action?.action === "reorder-mixed-siblings";
+					("kind" in action && action.kind === "workspace") ||
+					("entries" in action && Array.isArray(action.entries) && action.entries.some((e: SiblingEntry) => e?.kind === "workspace")) ||
+					action.action === "reorder-mixed-siblings";
 				const endpoint = isWorkspaceOp ? "/api/directory" : "/api/chats/organization";
 
 				const res = await fetch(endpoint, {
@@ -1288,7 +1295,7 @@ export function SessionsSidebar({
 		if (t === "") return;
 		try {
 			const target = chats?.find((c) => c.id === id);
-			const isWs = target && "kind" in target && (target as any).kind === "workspace";
+			const isWs = target && "kind" in target && target.kind === "workspace";
 			const res = await fetch(isWs ? `/api/workspaces/${id}` : `/api/chats/${id}`, {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
@@ -1662,7 +1669,7 @@ export function SessionsSidebar({
 					) : (
 						<ChatFolderTree
 							folders={activeFolders}
-							chats={shown ?? []}
+							chats={shown ? (shown.filter((item) => item.kind !== "workspace") as ChatDirectoryItem[]) : []}
 							items={shown ?? []}
 							activeChatId={pathname?.startsWith("/chat/") ? pathname.replace("/chat/", "") : null}
 							activeWorkspaceId={pathname?.startsWith("/workspaces/") ? pathname.replace("/workspaces/", "").split("/")[0] : null}
@@ -2294,7 +2301,21 @@ export function SessionsSidebar({
 								</button>
 								{(() => {
 									const isFolderEmpty = organization
-										? chatFolderIsEmpty(organization, ctxFolderId, new Set(chats?.map((c) => c.id) ?? []))
+										? organization.version === 2
+											? folderIsEmpty(
+													organization as OrganizationV2,
+													ctxFolderId,
+													new Set<ItemKey>(
+														chats?.map((c) =>
+															c.kind === "workspace" ? workspaceKey(c.id) : chatKey(c.id),
+														) ?? [],
+													),
+											  )
+											: chatFolderIsEmpty(
+													organization as ChatOrganization,
+													ctxFolderId,
+													new Set(chats?.map((c) => c.id) ?? []),
+											  )
 										: false;
 									return (
 										<button

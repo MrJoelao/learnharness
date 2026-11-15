@@ -17,6 +17,12 @@ import {
 	type ChatFolder,
 	type ChatOrganization,
 	type ChatOrganizationAction,
+	type WorkspaceDirectoryEntry,
+	type ChatListItem,
+	type OrganizationActionV2 as OrganizationAction,
+	type OrganizationV2,
+	type SiblingEntry,
+	canMoveFolderV2,
 } from "@/src/core";
 import { useBackdropDismiss } from "@/components/backdrop-dismiss";
 import { cn } from "@/lib/utils";
@@ -65,21 +71,24 @@ export function calculateDropPosition(
 	return offsetY < height * 0.5 ? "before" : "after";
 }
 
+export type SupportedOrganizationAction = OrganizationAction | ChatOrganizationAction;
+export interface SupportedOrganizationState {
+	organization: ChatOrganization | OrganizationV2;
+	chats: (ChatDirectoryItem | WorkspaceDirectoryEntry | ChatListItem)[];
+}
+
 /**
  * Pure: compute inverse undo action for reversible operations.
  * Returns null for non-reversible operations like permanent deletions.
  */
 export function computeUndoAction(
-	action: any,
-	previousState: {
-		organization: any;
-		chats: any[];
-	},
-): { undoAction: any; description: string } | null {
+	action: SupportedOrganizationAction,
+	previousState: SupportedOrganizationState,
+): { undoAction: SupportedOrganizationAction; description: string } | null {
 	switch (action.action) {
 		case "move": {
-			if (action.kind === "folder") {
-				const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
+			if ("kind" in action && action.kind === "folder") {
+				const folder = previousState.organization.folders.find((f: ChatFolder) => f.id === action.id);
 				if (!folder) return null;
 				const oldParentId = folder.parentId;
 				const oldOrder = folder.order;
@@ -94,13 +103,13 @@ export function computeUndoAction(
 					description: `Moved folder "${folder.name}"`,
 				};
 			}
-			const item = previousState.chats.find((c: any) => c.id === action.id);
-			const itemKind = action.kind === "workspace" ? "workspace" : "chat";
+			const item = previousState.chats.find((c) => c.id === action.id);
+			const itemKind = "kind" in action && action.kind === "workspace" ? "workspace" : "chat";
 			const placement = "placements" in previousState.organization
 				? (action.kind === "workspace" ? previousState.organization.placements[`workspace:${action.id}`] : previousState.organization.placements[`chat:${action.id}`] ?? previousState.organization.placements[action.id])
 				: chatPlacementOf(previousState.organization, action.id);
-			const oldParentId = item?.folderId ?? placement?.folderId ?? null;
-			const oldOrder = item?.order ?? placement?.order;
+			const oldParentId = (item && "folderId" in item ? item.folderId : undefined) ?? placement?.folderId ?? null;
+			const oldOrder = (item && "order" in item ? item.order : undefined) ?? placement?.order;
 			return {
 				undoAction: {
 					action: "move",
@@ -114,8 +123,8 @@ export function computeUndoAction(
 		}
 		case "reorder-siblings": {
 			if ("entries" in action && Array.isArray(action.entries)) {
-				const siblings = previousState.chats.filter((c: any) => (c.folderId ?? null) === action.parentId);
-				const oldEntries = siblings.map((s: any) => ({ kind: s.kind === "workspace" ? "workspace" : "chat", id: s.id }));
+				const siblings = previousState.chats.filter((c) => ("folderId" in c ? c.folderId : null) === action.parentId);
+				const oldEntries: SiblingEntry[] = siblings.map((s) => ({ kind: ("kind" in s && s.kind === "workspace") ? "workspace" : "chat", id: s.id }));
 				return {
 					undoAction: {
 						action: "reorder-siblings",
@@ -126,23 +135,24 @@ export function computeUndoAction(
 				};
 			}
 			const siblings =
-				action.kind === "folder"
-					? previousState.organization.folders.filter((f: any) => f.parentId === action.parentId)
-					: previousState.chats.filter((c: any) => c.folderId === action.parentId);
-			const oldIds = siblings.map((s: any) => s.id);
+				"kind" in action && action.kind === "folder"
+					? previousState.organization.folders.filter((f: ChatFolder) => f.parentId === action.parentId)
+					: previousState.chats.filter((c) => ("folderId" in c ? c.folderId : null) === action.parentId);
+			const oldIds = siblings.map((s) => s.id);
+			const siblingKind = "kind" in action ? action.kind : "chat";
 			return {
 				undoAction: {
 					action: "reorder-siblings",
 					parentId: action.parentId,
-					kind: action.kind,
+					kind: siblingKind,
 					ids: oldIds,
 				},
-				description: `Reordered ${action.kind}s`,
+				description: `Reordered ${siblingKind}s`,
 			};
 		}
 		case "reorder": {
-			if (action.kind === "folder") {
-				const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
+			if ("kind" in action && action.kind === "folder") {
+				const folder = previousState.organization.folders.find((f: ChatFolder) => f.id === action.id);
 				if (!folder) return null;
 				return {
 					undoAction: {
@@ -154,21 +164,21 @@ export function computeUndoAction(
 					description: `Reordered folder "${folder.name}"`,
 				};
 			}
-			const item = previousState.chats.find((c: any) => c.id === action.id);
-			const itemKind = action.kind === "workspace" ? "workspace" : "chat";
+			const item = previousState.chats.find((c) => c.id === action.id);
+			const itemKind = "kind" in action && action.kind === "workspace" ? "workspace" : "chat";
 			return {
 				undoAction: {
 					action: "reorder",
 					kind: itemKind,
 					id: action.id,
-					targetOrder: item?.order ?? 0,
+					targetOrder: (item && "order" in item ? item.order : undefined) ?? 0,
 				},
 				description: `Reordered ${itemKind === "workspace" ? "workspace" : "session"} "${item?.title ?? action.id}"`,
 			};
 		}
 		case "archive": {
-			if (action.kind === "folder") {
-				const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
+			if ("kind" in action && action.kind === "folder") {
+				const folder = previousState.organization.folders.find((f: ChatFolder) => f.id === action.id);
 				const oldParentId = folder?.parentId ?? null;
 				return {
 					undoAction: {
@@ -180,12 +190,12 @@ export function computeUndoAction(
 					description: `Archived folder "${folder?.name ?? action.id}"`,
 				};
 			}
-			const item = previousState.chats.find((c: any) => c.id === action.id);
-			const itemKind = action.kind === "workspace" ? "workspace" : "chat";
+			const item = previousState.chats.find((c) => c.id === action.id);
+			const itemKind = "kind" in action && action.kind === "workspace" ? "workspace" : "chat";
 			const placement = "placements" in previousState.organization
 				? (action.kind === "workspace" ? previousState.organization.placements[`workspace:${action.id}`] : previousState.organization.placements[`chat:${action.id}`] ?? previousState.organization.placements[action.id])
 				: chatPlacementOf(previousState.organization, action.id);
-			const oldParentId = item?.folderId ?? placement?.folderId ?? null;
+			const oldParentId = (item && "folderId" in item ? item.folderId : undefined) ?? placement?.folderId ?? null;
 			return {
 				undoAction: {
 					action: "restore",
@@ -197,8 +207,8 @@ export function computeUndoAction(
 			};
 		}
 		case "restore": {
-			if (action.kind === "folder") {
-				const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
+			if ("kind" in action && action.kind === "folder") {
+				const folder = previousState.organization.folders.find((f: ChatFolder) => f.id === action.id);
 				if (!folder || (action.targetParentId !== undefined && action.targetParentId !== folder.parentId)) return null;
 				return {
 					undoAction: {
@@ -209,14 +219,14 @@ export function computeUndoAction(
 					description: `Restored folder "${folder?.name ?? action.id}"`,
 				};
 			}
-			const item = previousState.chats.find((c: any) => c.id === action.id);
-			const itemKind = action.kind === "workspace" ? "workspace" : "chat";
+			const item = previousState.chats.find((c) => c.id === action.id);
+			const itemKind = "kind" in action && action.kind === "workspace" ? "workspace" : "chat";
 			const placement = "placements" in previousState.organization
 				? (action.kind === "workspace" ? previousState.organization.placements[`workspace:${action.id}`] : previousState.organization.placements[`chat:${action.id}`] ?? previousState.organization.placements[action.id])
 				: chatPlacementOf(previousState.organization, action.id);
-			const originalParentId = item?.folderId ?? placement?.folderId ?? null;
+			const originalParentId = (item && "folderId" in item ? item.folderId : undefined) ?? placement?.folderId ?? null;
 			if (action.targetParentId !== undefined && action.targetParentId !== originalParentId) return null;
-			if (originalParentId !== null && !previousState.organization.folders.some((f: any) => f.id === originalParentId)) return null;
+			if (originalParentId !== null && !previousState.organization.folders.some((f: ChatFolder) => f.id === originalParentId)) return null;
 			return {
 				undoAction: {
 					action: "archive",
@@ -227,7 +237,7 @@ export function computeUndoAction(
 			};
 		}
 		case "rename-folder": {
-			const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
+			const folder = previousState.organization.folders.find((f: ChatFolder) => f.id === action.id);
 			if (!folder) return null;
 			return {
 				undoAction: {
@@ -348,7 +358,7 @@ export function MoveDestinationBody({
 }: {
 	item: MoveTargetItem;
 	folders: ChatFolder[];
-	organization: ChatOrganization | null;
+	organization: ChatOrganization | OrganizationV2 | null;
 	onClose: () => void;
 	onMove: (targetParentId: string | null) => void;
 }) {
@@ -381,7 +391,10 @@ export function MoveDestinationBody({
 		if (item.kind !== "folder") return true;
 		if (folderId === null) return true;
 		if (!organization) return true;
-		return canMoveChatFolder(organization, item.id, folderId);
+		if ("version" in organization && organization.version === 2) {
+			return canMoveFolderV2(organization as OrganizationV2, item.id, folderId);
+		}
+		return canMoveChatFolder(organization as ChatOrganization, item.id, folderId);
 	};
 
 	return (
@@ -499,7 +512,7 @@ export function MoveDestinationDialog({
 }: {
 	item: MoveTargetItem | null;
 	folders: ChatFolder[];
-	organization: ChatOrganization | null;
+	organization: ChatOrganization | OrganizationV2 | null;
 	onClose: () => void;
 	onMove: (targetParentId: string | null) => void;
 }) {

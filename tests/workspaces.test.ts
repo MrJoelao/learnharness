@@ -417,3 +417,85 @@ it("deletion journal: recovery after interrupted deletion clears journal", () =>
 	assert.equal(store.readDeletionJournal?.().length, 0);
 	assert.equal(store.inspect().interruptedDeletionIds, undefined);
 });
+
+it("deletion journal: corrupt file is preserved and not overwritten or altered by inspect, recordPendingDeletion, or clearPendingDeletion", () => {
+	const directory = path.join(root, "journal-preserve-corrupt");
+	fs.mkdirSync(directory, { recursive: true });
+	const journalPath = path.join(directory, "deletions.json");
+	const invalidContent = '{"corrupted": json, [not valid]}';
+	fs.writeFileSync(journalPath, invalidContent);
+	const store = createWorkspaceStore(directory);
+
+	// 1. inspect reports issue and leaves file content identical
+	const inspection = store.inspect();
+	assert.equal(inspection.deletionJournalIssue, "corrupt");
+	assert.equal(fs.readFileSync(journalPath, "utf8"), invalidContent, "inspect must not modify corrupt journal");
+
+	// 2. recordPendingDeletion must fail explicitly and not overwrite corrupt journal
+	const dummyId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000070");
+	const entry = {
+		workspaceId: dummyId,
+		pluginId: "test-plugin",
+		stage: "started" as const,
+		startedAt: new Date().toISOString(),
+	};
+	assert.throws(
+		() => store.recordPendingDeletion?.(entry),
+		(err: unknown) => err instanceof DeletionJournalCorruptError,
+	);
+	assert.equal(fs.readFileSync(journalPath, "utf8"), invalidContent, "recordPendingDeletion must not overwrite corrupt journal");
+
+	// 3. clearPendingDeletion must fail explicitly and not delete/overwrite corrupt journal
+	assert.throws(
+		() => store.clearPendingDeletion?.(dummyId),
+		(err: unknown) => err instanceof DeletionJournalCorruptError,
+	);
+	assert.equal(fs.readFileSync(journalPath, "utf8"), invalidContent, "clearPendingDeletion must not overwrite or delete corrupt journal");
+});
+
+it("deletion journal: symlink journal is rejected and target file is preserved without modification", () => {
+	const directory = path.join(root, "journal-symlink");
+	fs.mkdirSync(directory, { recursive: true });
+	const targetPath = path.join(directory, "symlink-target.json");
+	const targetContent = JSON.stringify([{ targetFile: true }]);
+	fs.writeFileSync(targetPath, targetContent);
+
+	const journalPath = path.join(directory, "deletions.json");
+	fs.symlinkSync(targetPath, journalPath);
+
+	const store = createWorkspaceStore(directory);
+
+	// 1. inspect reports corrupt issue
+	const inspection = store.inspect();
+	assert.equal(inspection.deletionJournalIssue, "corrupt");
+
+	// 2. readDeletionJournal rejects symlink
+	assert.throws(
+		() => store.readDeletionJournal?.(),
+		(err: unknown) => err instanceof DeletionJournalCorruptError && /not a regular file/i.test(err.message),
+	);
+
+	// 3. recordPendingDeletion rejects symlink without modifying target
+	const dummyId = parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000071");
+	const entry = {
+		workspaceId: dummyId,
+		pluginId: "test-plugin",
+		stage: "started" as const,
+		startedAt: new Date().toISOString(),
+	};
+	assert.throws(
+		() => store.recordPendingDeletion?.(entry),
+		(err: unknown) => err instanceof DeletionJournalCorruptError,
+	);
+
+	// 4. clearPendingDeletion rejects symlink without deleting or modifying target
+	assert.throws(
+		() => store.clearPendingDeletion?.(dummyId),
+		(err: unknown) => err instanceof DeletionJournalCorruptError,
+	);
+
+	// 5. Target content untouched and symlink still intact
+	assert.equal(fs.readFileSync(targetPath, "utf8"), targetContent, "Symlink target file must not be modified");
+	const stat = fs.lstatSync(journalPath);
+	assert.ok(stat.isSymbolicLink(), "Journal path must remain a symbolic link");
+});

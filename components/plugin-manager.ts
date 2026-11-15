@@ -137,6 +137,7 @@ export class PluginFrontendManager {
 	private disposed = false;
 	private started = false;
 	private shortcutPages = new Map<string, { read: () => PluginPageActionContext | undefined }>();
+	private workspaceUpdaters = new Map<string, Set<(ws: import("@/src/core").WorkspaceRecord) => void>>();
 	private snapshot: PluginSnapshot = { plugins: [], codeBlocks: [], toolRenderers: [], modeRenderers: [], modes: [], directory: "", conflicts: [], loading: true, refreshing: false };
 	constructor(private host: PluginHost) {}
 	getSnapshot = () => this.snapshot;
@@ -655,24 +656,72 @@ export class PluginFrontendManager {
 		const body = await this.json("/api/workspaces", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pluginId, modeId, ...(title === undefined ? {} : { title }) }) }) as { workspace: import("@/src/core").WorkspaceRecord };
 		return body.workspace;
 	}
+	updateWorkspace(workspace: import("@/src/core").WorkspaceRecord): void {
+		const updaters = this.workspaceUpdaters.get(workspace.id);
+		if (updaters) {
+			for (const update of [...updaters]) update(workspace);
+		}
+	}
 	/** Resolve a registered browser renderer for persisted workspace identity. */
-	mountWorkspace(workspace: import("@/src/core").WorkspaceRecord, container: HTMLElement, onError: (error: string) => void): () => void {
-		const registration = this.getModeRenderer(workspace.pluginId, workspace.modeId);
+	mountWorkspace(
+		workspace: import("@/src/core").WorkspaceRecord | (() => import("@/src/core").WorkspaceRecord),
+		container: HTMLElement,
+		onError: (error: string) => void,
+	): () => void {
+		const initialWorkspace = typeof workspace === "function" ? workspace() : workspace;
+		const getWorkspaceSupplier = typeof workspace === "function" ? workspace : () => currentWorkspace;
+		const registration = this.getModeRenderer(initialWorkspace.pluginId, initialWorkspace.modeId);
 		if (!registration) { onError("Workspace renderer is unavailable"); return () => {}; }
 		const modes = this.rendererMounts.get(registration) ?? new Set<() => void>();
 		this.rendererMounts.set(registration, modes);
 		const thisManager = this;
-		let currentWorkspace = Object.freeze({ ...workspace });
-		const off = this.mount(workspace.pluginId, (child, signal) => registration.renderer.mount(child, {
-			get workspace() { return currentWorkspace; }, signal,
-			storage: {
-				async get<T>(key: string) { signal.throwIfAborted(); const response = await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { signal }) as { value?: T; found: boolean }; signal.throwIfAborted(); return response.found ? response.value : undefined; },
-				async set(key: string, value: unknown) { signal.throwIfAborted(); await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }), signal }); signal.throwIfAborted(); },
-				async delete(key: string) { signal.throwIfAborted(); await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}/state/${encodeURIComponent(key)}`, { method: "DELETE", signal }); signal.throwIfAborted(); },
+		let currentWorkspace = Object.freeze({ ...initialWorkspace });
+
+		const updater = (next: import("@/src/core").WorkspaceRecord) => {
+			if (next.id === initialWorkspace.id) {
+				currentWorkspace = Object.freeze({ ...next });
+			}
+		};
+		let updaters = this.workspaceUpdaters.get(initialWorkspace.id);
+		if (!updaters) {
+			updaters = new Set();
+			this.workspaceUpdaters.set(initialWorkspace.id, updaters);
+		}
+		updaters.add(updater);
+
+		const off = this.mount(initialWorkspace.pluginId, (child, signal) => registration.renderer.mount(child, {
+			get workspace() {
+				const supplierVal = getWorkspaceSupplier();
+				if (supplierVal && supplierVal.id === initialWorkspace.id) {
+					return supplierVal;
+				}
+				return currentWorkspace;
 			},
-			async setTitle(title: string) { signal.throwIfAborted(); const response = await thisManager.json(`/api/workspaces/${encodeURIComponent(workspace.id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }), signal }) as { workspace: import("@/src/core").WorkspaceRecord }; signal.throwIfAborted(); currentWorkspace = Object.freeze({ ...response.workspace }); },
+			signal,
+			storage: {
+				async get<T>(key: string) { signal.throwIfAborted(); const response = await thisManager.json(`/api/workspaces/${encodeURIComponent(initialWorkspace.id)}/state/${encodeURIComponent(key)}`, { signal }) as { value?: T; found: boolean }; signal.throwIfAborted(); return response.found ? response.value : undefined; },
+				async set(key: string, value: unknown) { signal.throwIfAborted(); await thisManager.json(`/api/workspaces/${encodeURIComponent(initialWorkspace.id)}/state/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }), signal }); signal.throwIfAborted(); },
+				async delete(key: string) { signal.throwIfAborted(); await thisManager.json(`/api/workspaces/${encodeURIComponent(initialWorkspace.id)}/state/${encodeURIComponent(key)}`, { method: "DELETE", signal }); signal.throwIfAborted(); },
+			},
+			async setTitle(title: string) {
+				signal.throwIfAborted();
+				const response = await thisManager.json(`/api/workspaces/${encodeURIComponent(initialWorkspace.id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ title }), signal }) as { workspace: import("@/src/core").WorkspaceRecord };
+				signal.throwIfAborted();
+				currentWorkspace = Object.freeze({ ...response.workspace });
+				thisManager.updateWorkspace(response.workspace);
+				if (typeof window !== "undefined") {
+					window.dispatchEvent(new CustomEvent("lh:chat-renamed", { detail: { id: initialWorkspace.id, title: response.workspace.title } }));
+				}
+			},
 		}), container, onError);
-		const release = () => { modes.delete(release); off(); };
+		const release = () => {
+			modes.delete(release);
+			updaters?.delete(updater);
+			if (updaters && updaters.size === 0) {
+				this.workspaceUpdaters.delete(initialWorkspace.id);
+			}
+			off();
+		};
 		modes.add(release);
 		return release;
 	}

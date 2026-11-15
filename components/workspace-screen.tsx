@@ -103,6 +103,10 @@ export function WorkspaceScreen({
 	const renameInputRef = useRef<HTMLInputElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
 
+	const currentWorkspaceId = workspace?.id;
+	const currentPluginId = workspace?.pluginId;
+	const currentModeId = workspace?.modeId;
+
 	const loadWorkspace = useCallback(async () => {
 		setScreenState((prev) => (prev === "server-error" || prev === "network-error" ? "loading" : prev));
 		setErrorMessage(null);
@@ -125,6 +129,7 @@ export function WorkspaceScreen({
 				mode?: { id: string; name?: string };
 			};
 			setWorkspace(data.workspace);
+			manager?.updateWorkspace?.(data.workspace);
 			setScreenState(data.availability);
 			setTitleDraft(data.workspace.title);
 			if (data.plugin?.name) setPluginName(data.plugin.name);
@@ -134,11 +139,12 @@ export function WorkspaceScreen({
 			setScreenState("network-error");
 			setErrorMessage("Network error: unable to reach the server. Please check your connection and try again.");
 		}
-	}, [workspaceId]);
+	}, [workspaceId, manager]);
 
 	useEffect(() => {
 		if (initialWorkspace && initialWorkspace.id === workspaceId) {
 			setWorkspace(initialWorkspace);
+			manager?.updateWorkspace?.(initialWorkspace);
 			if (initialAvailability !== undefined) {
 				setScreenState(initialAvailability);
 			}
@@ -146,11 +152,24 @@ export function WorkspaceScreen({
 		} else if (!initialWorkspace || initialAvailability === undefined) {
 			void loadWorkspace();
 		}
-	}, [workspaceId, initialWorkspace, initialAvailability, loadWorkspace]);
+	}, [workspaceId, initialWorkspace, initialAvailability, loadWorkspace, manager]);
 
 	useServerEvent("workspaces-changed", () => {
 		void loadWorkspace();
 	});
+
+	// Synchronize rename events from other components or context.setTitle()
+	useEffect(() => {
+		const onRenamed = (e: Event) => {
+			const detail = (e as CustomEvent<{ id: string; title: string }>).detail;
+			if (detail && detail.id === currentWorkspaceId) {
+				setWorkspace((prev) => (prev ? { ...prev, title: detail.title } : prev));
+				setTitleDraft(detail.title);
+			}
+		};
+		window.addEventListener("lh:chat-renamed", onRenamed);
+		return () => window.removeEventListener("lh:chat-renamed", onRenamed);
+	}, [currentWorkspaceId]);
 
 	// Focus rename input on rename start
 	useEffect(() => {
@@ -176,6 +195,7 @@ export function WorkspaceScreen({
 			if (!res.ok) throw new Error("Rename failed");
 			const data = (await res.json()) as { workspace: WorkspaceRecord };
 			setWorkspace(data.workspace);
+			manager?.updateWorkspace?.(data.workspace);
 			setTitleDraft(data.workspace.title);
 			window.dispatchEvent(
 				new CustomEvent("lh:chat-renamed", { detail: { id: workspace.id, title: data.workspace.title } }),
@@ -184,7 +204,7 @@ export function WorkspaceScreen({
 			console.error("Failed to rename workspace:", err);
 			setTitleDraft(workspace.title);
 		}
-	}, [titleDraft, workspace]);
+	}, [titleDraft, workspace, manager]);
 
 	const handleBack = useCallback(
 		(e?: React.MouseEvent) => {
@@ -198,9 +218,6 @@ export function WorkspaceScreen({
 		[router],
 	);
 
-	const currentWorkspaceId = workspace?.id;
-	const currentPluginId = workspace?.pluginId;
-	const currentModeId = workspace?.modeId;
 
 	// Targeted selector: only re-evaluate when this specific plugin's mode renderer registration changes
 	const modeRendererRegistration = (currentPluginId && currentModeId)
@@ -225,7 +242,7 @@ export function WorkspaceScreen({
 			return;
 		}
 
-		const release = manager.mountWorkspace(currentWs, containerRef.current, (err) => {
+		const release = manager.mountWorkspace(() => workspaceRef.current ?? currentWs, containerRef.current, (err) => {
 			setMountError(err);
 		});
 
