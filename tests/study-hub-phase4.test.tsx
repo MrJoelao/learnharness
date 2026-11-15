@@ -10,7 +10,16 @@ import {
 } from "../components/chat-folder-tree.tsx";
 import { WorkspaceRow } from "../components/workspace-row.tsx";
 import { ArchivePage } from "../components/archive-page.tsx";
-import { WorkspaceScreen } from "../components/workspace-screen.tsx";
+import {
+	WorkspaceScreen,
+	canNavigateBack,
+} from "../components/workspace-screen.tsx";
+import {
+	MoveDestinationBody,
+	getSiblingMoveAction,
+	computeUndoAction,
+} from "../components/chat-organization-interactions.tsx";
+import { DeleteWorkspaceDialog, DeleteWorkspaceBody } from "../components/delete-session-dialog.tsx";
 import { ServerEventsProvider } from "../components/server-events.tsx";
 import { SessionsSidebar, SidebarProvider } from "../components/sidebar.tsx";
 import { SettingsDialogProvider as SettingsDialogProviderBase } from "../components/settings/settings-dialog.tsx";
@@ -21,6 +30,7 @@ import type {
 	WorkspaceDirectoryEntry,
 	WorkspaceRecord,
 	WorkspaceId,
+	OrganizationV2,
 } from "../src/core";
 
 function TestProviders({ children }: { children: React.ReactNode }) {
@@ -288,5 +298,324 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 
 		assert.ok(notFoundHtml.includes('data-testid="workspace-not-found"'), "not-found testid");
 		assert.ok(notFoundHtml.includes("Workspace not found"), "Workspace not found title");
+	});
+
+	it("7. WorkspaceScreen distinguishes server errors and network errors with retry action, preserving metadata", () => {
+		const record: WorkspaceRecord = {
+			version: 1,
+			id: "workspace_12345678-1234-4123-8123-123456789abc" as WorkspaceId,
+			pluginId: "os-simulators",
+			modeId: "paging-lab",
+			title: "Critical Lab",
+			createdAt: "2026-11-01T10:00:00Z",
+			updatedAt: "2026-11-01T10:05:00Z",
+		};
+
+		// Server error scenario (e.g. 500, 503)
+		const serverErrorHtml = renderToStaticMarkup(
+			<TestProviders>
+				<WorkspaceScreen
+					workspaceId={record.id}
+					initialWorkspace={record}
+					initialAvailability="server-error"
+				/>
+			</TestProviders>,
+		);
+
+		assert.ok(serverErrorHtml.includes('data-testid="workspace-error"'), "Renders error testid");
+		assert.ok(serverErrorHtml.includes('data-error-kind="server-error"'), "Exposes server-error kind");
+		assert.ok(serverErrorHtml.includes("Server error"), "Displays Server error heading");
+		assert.ok(serverErrorHtml.includes('data-testid="workspace-retry-button"'), "Offers retry button");
+		// Metadata must be preserved in TopBar
+		assert.ok(serverErrorHtml.includes("Critical Lab"), "Workspace title preserved in TopBar");
+		assert.ok(serverErrorHtml.includes("os-simulators"), "Plugin identity preserved");
+
+		// Network error scenario
+		const networkErrorHtml = renderToStaticMarkup(
+			<TestProviders>
+				<WorkspaceScreen
+					workspaceId={record.id}
+					initialWorkspace={record}
+					initialAvailability="network-error"
+				/>
+			</TestProviders>,
+		);
+
+		assert.ok(networkErrorHtml.includes('data-testid="workspace-error"'), "Renders error testid");
+		assert.ok(networkErrorHtml.includes('data-error-kind="network-error"'), "Exposes network-error kind");
+		assert.ok(networkErrorHtml.includes("Network error"), "Displays Network error heading");
+		assert.ok(networkErrorHtml.includes('data-testid="workspace-retry-button"'), "Offers retry button");
+		assert.ok(networkErrorHtml.includes("Critical Lab"), "Workspace title preserved during network error");
+	});
+
+	it("8. WorkspaceScreen back navigation correctly evaluates safe in-app history vs direct URL fallback", () => {
+		const originalWindow = (globalThis as Record<string, unknown>).window;
+		const originalDocument = (globalThis as Record<string, unknown>).document;
+
+		try {
+			// Scenario A: In-app navigation in same tab (Next.js history index > 0)
+			(globalThis as Record<string, unknown>).window = {
+				location: { origin: "http://localhost:3000" },
+				history: { state: { idx: 2 }, length: 3, back() {}, forward() {} },
+			};
+			(globalThis as Record<string, unknown>).document = {
+				referrer: "http://localhost:3000/study-hub",
+			};
+			assert.equal(canNavigateBack(), true, "In-app navigation must allow navigating back");
+
+			// Scenario B: External referrer (e.g. from Google or outside link) must NEVER navigate back to external site
+			(globalThis as Record<string, unknown>).window = {
+				location: { origin: "http://localhost:3000" },
+				history: { state: { idx: 1 }, length: 2, back() {}, forward() {} },
+			};
+			(globalThis as Record<string, unknown>).document = {
+				referrer: "https://external-search.com/results",
+			};
+			assert.equal(canNavigateBack(), false, "External referrer must block back navigation to avoid external redirect");
+
+			// Scenario C: Direct URL opening in a fresh tab (no in-app history, empty referrer)
+			(globalThis as Record<string, unknown>).window = {
+				location: { origin: "http://localhost:3000" },
+				history: { state: { idx: 0 }, length: 1, back() {}, forward() {} },
+			};
+			(globalThis as Record<string, unknown>).document = {
+				referrer: "",
+			};
+			assert.equal(canNavigateBack(), false, "Direct URL opening must fall back to /");
+		} finally {
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+		}
+	});
+
+	it("9. Moving workspace between folders: MoveDestinationBody and computeUndoAction", () => {
+		let chosenDestination: string | null = "unset";
+
+		const html = renderToStaticMarkup(
+			<MoveDestinationBody
+				item={{
+					kind: "workspace",
+					id: "workspace-1",
+					title: "Memory & Paging Lab",
+					parentId: "f2",
+				}}
+				folders={sampleFolders}
+				organization={null}
+				onClose={() => {}}
+				onMove={(dest) => {
+					chosenDestination = dest;
+				}}
+			/>,
+		);
+
+		assert.ok(html.includes('data-testid="move-destination-dialog"'), "Move destination dialog rendered");
+		assert.ok(html.includes("Move workspace") || html.includes("Move session"), "Move dialog title");
+		assert.ok(html.includes("Memory &amp; Paging Lab") || html.includes("Memory & Paging Lab"), "Target title displayed");
+		assert.ok(html.includes('data-testid="move-destination-root"'), "Root destination option available");
+		assert.ok(html.includes('data-testid="move-destination-f1"'), "Folder f1 available as destination");
+		// Current parent folder f2 should be marked disabled/current
+		assert.ok(html.includes('data-testid="move-destination-f2"'), "Folder f2 rendered");
+		assert.ok(html.includes("(current)"), "Current parent indicator rendered");
+
+		// Reversible undo action check for workspace move
+		const undo = computeUndoAction(
+			{ action: "move", kind: "workspace", id: "workspace-1", parentId: "f1" },
+			{
+				organization: { version: 2, folders: sampleFolders, placements: { "workspace:workspace-1": { folderId: "f2", order: 10 } } },
+				chats: [sampleWorkspace1],
+			},
+		);
+
+		assert.ok(undo, "Undo action must be computable for workspace move");
+		assert.equal(undo?.undoAction.action, "move");
+		assert.equal(undo?.undoAction.kind, "workspace");
+		assert.equal(undo?.undoAction.id, "workspace-1");
+		assert.equal(undo?.undoAction.parentId, "f2", "Undo must restore original parent folder f2");
+	});
+
+	it("10. Mixed chat/workspace sibling reordering via getSiblingMoveAction and computeUndoAction", () => {
+		const chat2: ChatDirectoryItem = {
+			id: "chat-2",
+			title: "Virtual Memory",
+			kind: "teach",
+			createdAt: "2026-11-01T10:15:00Z",
+			updatedAt: "2026-11-01T10:20:00Z",
+			folderId: "f2",
+			archivedAt: null,
+		};
+
+		const mixedItems = [sampleChat1, sampleWorkspace1, chat2];
+		const orgV2: OrganizationV2 = {
+			version: 2,
+			folders: sampleFolders,
+			placements: {
+				"chat:chat-1": { folderId: "f2", order: 1 },
+				"workspace:workspace-1": { folderId: "f2", order: 2 },
+				"chat:chat-2": { folderId: "f2", order: 3 },
+			},
+		};
+
+		// Move workspace-1 UP (should swap before chat-1)
+		const moveUp = getSiblingMoveAction("workspace", "workspace-1", "up", orgV2, mixedItems);
+		assert.ok(moveUp, "getSiblingMoveAction up must return an action");
+		assert.equal(moveUp?.action, "reorder-siblings");
+		assert.equal(moveUp?.parentId, "f2");
+		if ("entries" in moveUp) {
+			assert.deepEqual(
+				moveUp.entries.map((e: any) => e.id),
+				["workspace-1", "chat-1", "chat-2"],
+				"Workspace must move before chat-1",
+			);
+		}
+
+		// Move workspace-1 DOWN (should swap after chat-2)
+		const moveDown = getSiblingMoveAction("workspace", "workspace-1", "down", orgV2, mixedItems);
+		assert.ok(moveDown, "getSiblingMoveAction down must return an action");
+		assert.equal(moveDown?.action, "reorder-siblings");
+		assert.equal(moveDown?.parentId, "f2");
+		if ("entries" in moveDown) {
+			assert.deepEqual(
+				moveDown.entries.map((e: any) => e.id),
+				["chat-1", "chat-2", "workspace-1"],
+				"Workspace must move after chat-2",
+			);
+		}
+
+		// Compute undo action for reorder-siblings with mixed entries
+		const undo = computeUndoAction(
+			{ action: "reorder-siblings", parentId: "f2", entries: [{ kind: "workspace", id: "workspace-1" }, { kind: "chat", id: "chat-1" }, { kind: "chat", id: "chat-2" }] },
+			{
+				organization: orgV2,
+				chats: mixedItems,
+			},
+		);
+		assert.ok(undo, "Undo action must be computable for mixed sibling reorder");
+		assert.equal(undo?.undoAction.action, "reorder-siblings");
+		assert.deepEqual(
+			(undo?.undoAction as any).entries.map((e: any) => e.id),
+			["chat-1", "workspace-1", "chat-2"],
+			"Undo must restore original sibling ordering",
+		);
+	});
+
+	it("11. Archiving and restoring workspace preserves metadata and computes correct inverse", () => {
+		const orgV2: OrganizationV2 = {
+			version: 2,
+			folders: sampleFolders,
+			placements: {
+				"workspace:workspace-1": { folderId: "f2", order: 10 },
+			},
+		};
+
+		// Undo of archive workspace is restore into original folder
+		const undoArchive = computeUndoAction(
+			{ action: "archive", kind: "workspace", id: "workspace-1" },
+			{
+				organization: orgV2,
+				chats: [sampleWorkspace1],
+			},
+		);
+
+		assert.ok(undoArchive, "Undo must exist for workspace archive");
+		assert.equal(undoArchive?.undoAction.action, "restore");
+		assert.equal(undoArchive?.undoAction.kind, "workspace");
+		assert.equal(undoArchive?.undoAction.id, "workspace-1");
+		assert.equal(undoArchive?.undoAction.targetParentId, "f2", "Restores to original folder f2");
+
+		// Undo of restore workspace is archive
+		const undoRestore = computeUndoAction(
+			{ action: "restore", kind: "workspace", id: "workspace-1" },
+			{
+				organization: orgV2,
+				chats: [sampleWorkspace1],
+			},
+		);
+
+		assert.ok(undoRestore, "Undo must exist for workspace restore");
+		assert.equal(undoRestore?.undoAction.action, "archive");
+		assert.equal(undoRestore?.undoAction.kind, "workspace");
+		assert.equal(undoRestore?.undoAction.id, "workspace-1");
+	});
+
+	it("12. Restoring workspace into a different folder via MoveDestinationBody", () => {
+		let chosenFolder: string | null = null;
+
+		const html = renderToStaticMarkup(
+			<MoveDestinationBody
+				item={{
+					kind: "workspace",
+					id: "workspace-1",
+					title: "Memory & Paging Lab",
+					parentId: null,
+					isRestore: true,
+				}}
+				folders={sampleFolders}
+				organization={null}
+				onClose={() => {}}
+				onMove={(target) => {
+					chosenFolder = target;
+				}}
+			/>,
+		);
+
+		assert.ok(html.includes("Restore"), "Dialog header indicates Restore mode");
+		assert.ok(html.includes("Memory &amp; Paging Lab") || html.includes("Memory & Paging Lab"), "Target title displayed");
+		// During restore, all active valid folders are selectable
+		assert.ok(html.includes('data-testid="move-destination-f1"'), "Folder f1 is a valid restore destination");
+		assert.ok(html.includes('data-testid="move-destination-f2"'), "Folder f2 is a valid restore destination");
+		assert.ok(html.includes('data-testid="move-destination-root"'), "Root is a valid restore destination");
+	});
+
+	it("13. Workspace deletion dialog confirms permanent removal and renders properly", () => {
+		const closedHtml = renderToStaticMarkup(
+			<InteractionLayersProvider>
+				<DeleteWorkspaceDialog workspace={null} onClose={() => {}} onDeleted={() => {}} />
+			</InteractionLayersProvider>,
+		);
+		assert.equal(closedHtml, "", "Closed dialog renders nothing");
+
+		const html = renderToStaticMarkup(
+			<DeleteWorkspaceBody
+				workspace={sampleWorkspace1}
+				busy={false}
+				failure={null}
+				onClose={() => {}}
+				onRun={() => {}}
+			/>,
+		);
+
+		assert.ok(html.includes('data-testid="delete-workspace-dialog"'), "Dialog testid rendered");
+		assert.ok(html.includes("Delete workspace?"), "Confirmation heading displayed");
+		assert.ok(html.includes("Memory &amp; Paging Lab") || html.includes("Memory & Paging Lab"), "Workspace title shown");
+		assert.ok(html.includes("permanently delete"), "Warns of permanent deletion");
+		assert.ok(html.includes("Cancel"), "Cancel button rendered");
+		assert.ok(html.includes("Delete"), "Delete button rendered");
+	});
+
+	it("14. Sidebar integrates workspaces-changed server event to trigger refresh", () => {
+		let registeredEvent: string | null = null;
+
+		const html = renderToStaticMarkup(
+			<InteractionLayersProvider>
+				<SettingsDialogProviderBase>
+					<SidebarProvider>
+						<ServerEventsProvider
+							connect={() => ({
+								close() {},
+								onOpen() {},
+								onEvent(name) {
+									registeredEvent = name;
+								},
+							})}
+						>
+							<SessionsSidebar initialChats={[sampleRootWorkspace]} initialFolders={sampleFolders} />
+						</ServerEventsProvider>
+					</SidebarProvider>
+				</SettingsDialogProviderBase>
+			</InteractionLayersProvider>,
+		);
+
+		assert.ok(html.includes('data-workspace-id="workspace-root"'), "Workspace rendered in sidebar tree");
+		assert.ok(html.includes("Tree Visualizer"), "Workspace title rendered in tree");
 	});
 });

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/top-bar";
 import { Input } from "@/components/ui/input";
 import { usePlugins } from "@/components/plugins";
@@ -11,12 +12,69 @@ import {
 	AlertCircleIcon,
 	BoxIcon,
 	ChevronLeftIcon,
+	RefreshCwIcon,
 } from "lucide-react";
+
+function useSafeRouter() {
+	try {
+		return useRouter();
+	} catch {
+		return {
+			push: (url: string) => {
+				if (typeof window !== "undefined") window.location.href = url;
+			},
+			back: () => {
+				if (typeof window !== "undefined") window.history.back();
+			},
+			forward: () => {
+				if (typeof window !== "undefined") window.history.forward();
+			},
+			refresh: () => {},
+			replace: (url: string) => {
+				if (typeof window !== "undefined") window.location.replace(url);
+			},
+			prefetch: () => {},
+		};
+	}
+}
+
+/** Pure helper to determine if safe in-app back navigation is available. */
+export function canNavigateBack(): boolean {
+	if (typeof window === "undefined") return false;
+	// Direct opening via external link/referrer must not navigate back externally
+	if (document.referrer) {
+		try {
+			const refOrigin = new URL(document.referrer).origin;
+			if (refOrigin !== window.location.origin) {
+				return false;
+			}
+		} catch {
+			return false;
+		}
+	}
+	// In Next.js App Router, window.history.state?.idx tracks in-app history index
+	const historyIdx = (window.history.state as { idx?: number } | null)?.idx;
+	if (typeof historyIdx === "number" && historyIdx > 0) {
+		return true;
+	}
+	// Fallback when same-origin referrer exists and history.length > 1
+	if (document.referrer && document.referrer.startsWith(window.location.origin) && window.history.length > 1) {
+		return true;
+	}
+	return false;
+}
+
+export type WorkspaceScreenState =
+	| "loading"
+	| "not-found"
+	| "server-error"
+	| "network-error"
+	| WorkspaceAvailability;
 
 export interface WorkspaceScreenProps {
 	workspaceId: string;
 	initialWorkspace?: WorkspaceRecord | null;
-	initialAvailability?: WorkspaceAvailability | "not-found";
+	initialAvailability?: WorkspaceAvailability | "not-found" | "server-error" | "network-error";
 	initialPluginName?: string;
 	initialModeName?: string;
 }
@@ -29,10 +87,12 @@ export function WorkspaceScreen({
 	initialModeName,
 }: WorkspaceScreenProps) {
 	const { manager, snapshot } = usePlugins();
+	const router = useSafeRouter();
 	const [workspace, setWorkspace] = useState<WorkspaceRecord | null>(initialWorkspace);
-	const [availability, setAvailability] = useState<WorkspaceAvailability | "not-found" | "loading">(
+	const [screenState, setScreenState] = useState<WorkspaceScreenState>(
 		initialAvailability ?? (initialWorkspace ? "available" : "loading"),
 	);
+	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [pluginName, setPluginName] = useState<string>(initialPluginName ?? "");
 	const [modeName, setModeName] = useState<string>(initialModeName ?? "");
 	const [mountError, setMountError] = useState<string | null>(null);
@@ -43,14 +103,18 @@ export function WorkspaceScreen({
 	const containerRef = useRef<HTMLDivElement>(null);
 
 	const loadWorkspace = useCallback(async () => {
+		setScreenState((prev) => (prev === "server-error" || prev === "network-error" ? "loading" : prev));
+		setErrorMessage(null);
 		try {
 			const res = await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}`, { cache: "no-store" });
 			if (!res.ok) {
 				if (res.status === 404) {
-					setAvailability("not-found");
-				} else {
-					setAvailability("plugin-missing");
+					setScreenState("not-found");
+					return;
 				}
+				// 500, 503 and other temporary HTTP errors
+				setScreenState("server-error");
+				setErrorMessage(`Server error (${res.status}). Please try again.`);
 				return;
 			}
 			const data = (await res.json()) as {
@@ -60,13 +124,14 @@ export function WorkspaceScreen({
 				mode?: { id: string; name?: string };
 			};
 			setWorkspace(data.workspace);
-			setAvailability(data.availability);
+			setScreenState(data.availability);
 			setTitleDraft(data.workspace.title);
 			if (data.plugin?.name) setPluginName(data.plugin.name);
 			if (data.mode?.name) setModeName(data.mode.name);
 		} catch (err) {
 			console.error("Failed to fetch workspace:", err);
-			setAvailability("not-found");
+			setScreenState("network-error");
+			setErrorMessage("Network error: unable to reach the server. Please check your connection and try again.");
 		}
 	}, [workspaceId]);
 
@@ -114,10 +179,22 @@ export function WorkspaceScreen({
 		}
 	}, [titleDraft, workspace]);
 
+	const handleBack = useCallback(
+		(e?: React.MouseEvent) => {
+			if (e) e.preventDefault();
+			if (canNavigateBack()) {
+				router.back();
+			} else {
+				router.push("/");
+			}
+		},
+		[router],
+	);
+
 	// Mount workspace into container when available and container ready
 	useEffect(() => {
 		setMountError(null);
-		if (availability !== "available" || !workspace || !containerRef.current || !manager) {
+		if (screenState !== "available" || !workspace || !containerRef.current || !manager) {
 			return;
 		}
 
@@ -128,7 +205,7 @@ export function WorkspaceScreen({
 		return () => {
 			release();
 		};
-	}, [availability, workspace, manager, snapshot]);
+	}, [screenState, workspace, manager, snapshot]);
 
 	return (
 		<main data-testid="workspace-screen" className="flex h-dvh flex-col bg-background">
@@ -136,6 +213,7 @@ export function WorkspaceScreen({
 				<div className="flex items-center gap-3 min-w-0 flex-1">
 					<Link
 						href="/"
+						onClick={handleBack}
 						aria-label="Back"
 						data-testid="workspace-back-button"
 						className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground shrink-0 cursor-pointer"
@@ -192,7 +270,7 @@ export function WorkspaceScreen({
 			</TopBar>
 
 			<div className="relative flex-1 min-h-0 min-w-0 flex flex-col w-full h-full overflow-hidden">
-				{availability === "loading" && (
+				{screenState === "loading" && (
 					<div
 						data-testid="workspace-loading"
 						className="flex flex-1 items-center justify-center text-xs text-muted-foreground animate-pulse"
@@ -201,7 +279,7 @@ export function WorkspaceScreen({
 					</div>
 				)}
 
-				{availability === "not-found" && (
+				{screenState === "not-found" && (
 					<div
 						data-testid="workspace-not-found"
 						className="flex flex-1 flex-col items-center justify-center p-6 text-center"
@@ -220,7 +298,43 @@ export function WorkspaceScreen({
 					</div>
 				)}
 
-				{availability === "plugin-disabled" && (
+				{(screenState === "server-error" || screenState === "network-error") && (
+					<div
+						data-testid="workspace-error"
+						data-error-kind={screenState}
+						className="flex flex-1 flex-col items-center justify-center p-6 text-center"
+					>
+						<AlertCircleIcon className="size-10 text-destructive mb-3" />
+						<h2 className="text-base font-semibold text-foreground">
+							{screenState === "server-error" ? "Server error" : "Network error"}
+						</h2>
+						<p className="mt-1.5 text-xs text-muted-foreground max-w-md leading-relaxed">
+							{errorMessage ??
+								(screenState === "server-error"
+									? "A temporary server error occurred while loading this workspace. Workspace data is preserved."
+									: "Unable to connect to the server. Please check your network connection and try again.")}
+						</p>
+						<div className="mt-4 flex items-center gap-2">
+							<button
+								type="button"
+								data-testid="workspace-retry-button"
+								onClick={() => void loadWorkspace()}
+								className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors cursor-pointer"
+							>
+								<RefreshCwIcon className="size-3.5" />
+								Retry
+							</button>
+							<Link
+								href="/"
+								className="rounded-md border border-border bg-card px-3 py-1.5 text-xs text-foreground hover:bg-accent transition-colors"
+							>
+								Return home
+							</Link>
+						</div>
+					</div>
+				)}
+
+				{screenState === "plugin-disabled" && (
 					<div
 						data-testid="workspace-unavailable"
 						data-availability="plugin-disabled"
@@ -235,7 +349,7 @@ export function WorkspaceScreen({
 					</div>
 				)}
 
-				{availability === "plugin-missing" && (
+				{screenState === "plugin-missing" && (
 					<div
 						data-testid="workspace-unavailable"
 						data-availability="plugin-missing"
@@ -250,7 +364,7 @@ export function WorkspaceScreen({
 					</div>
 				)}
 
-				{availability === "mode-missing" && (
+				{screenState === "mode-missing" && (
 					<div
 						data-testid="workspace-unavailable"
 						data-availability="mode-missing"
@@ -265,7 +379,7 @@ export function WorkspaceScreen({
 					</div>
 				)}
 
-				{availability === "available" && (
+				{screenState === "available" && (
 					<div className="relative flex-1 min-h-0 min-w-0 flex flex-col w-full h-full overflow-hidden">
 						{mountError && (
 							<div

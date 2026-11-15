@@ -612,9 +612,9 @@ export function SessionsSidebar({
 	initialFolders,
 }: {
 	initialArchivedFolders?: ChatFolder[];
-	initialArchivedChats?: ChatDirectoryItem[];
+	initialArchivedChats?: (ChatDirectoryItem | WorkspaceDirectoryEntry)[];
 	initialExpandedFolderIds?: Set<string>;
-	initialChats?: ChatDirectoryItem[];
+	initialChats?: (ChatDirectoryItem | WorkspaceDirectoryEntry)[];
 	initialFolders?: ChatFolder[];
 } = {}) {
 	const { open, toggle } = useSidebar();
@@ -622,9 +622,9 @@ export function SessionsSidebar({
 	const hasActiveJobs = (activityFeed?.jobs?.length ?? 0) > 0 || (activityFeed?.extractions?.length ?? 0) > 0;
 	const [organization, setOrganization] = useState<ChatOrganization | null>(null);
 	const [folders, setFolders] = useState<ChatFolder[]>(initialFolders ?? []);
-	const [chats, setChats] = useState<ChatDirectoryItem[] | null>(initialChats ?? null);
+	const [chats, setChats] = useState<(ChatDirectoryItem | WorkspaceDirectoryEntry)[] | null>(initialChats ?? null);
 	const [archivedFolders, setArchivedFolders] = useState<ChatFolder[]>(initialArchivedFolders ?? []);
-	const [archivedChats, setArchivedChats] = useState<ChatDirectoryItem[]>(initialArchivedChats ?? []);
+	const [archivedChats, setArchivedChats] = useState<(ChatDirectoryItem | WorkspaceDirectoryEntry)[]>(initialArchivedChats ?? []);
 	const pathname = useSafePathname();
 	const searchParams = useSafeSearchParams();
 
@@ -1207,7 +1207,7 @@ export function SessionsSidebar({
 	const executeAction = useCallback(
 		async (
 			action: ChatOrganizationAction,
-			priorState?: { organization: ChatOrganization; chats: ChatDirectoryItem[] },
+			priorState?: { organization: ChatOrganization; chats: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] },
 		): Promise<boolean> => {
 			let undoPayload: { undoAction: ChatOrganizationAction; description: string } | null = null;
 			if (priorState) {

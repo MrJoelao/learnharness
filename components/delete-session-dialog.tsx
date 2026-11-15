@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { HostDialog } from "@/components/host-dialog";
-import type { ChatDeleteMode, ChatListItem } from "@/src/core";
+import type { ChatDeleteMode, ChatListItem, WorkspaceDirectoryEntry, WorkspaceRecord } from "@/src/core";
 
 /** The graph-traces checkbox copy (owner, 2026-09-24 flow rework — was
  *  the delete-nodes option's body in the two-button design): the
@@ -268,36 +268,62 @@ export function DeleteWorkspaceDialog({
 			}}
 			backdropProps={{ className: "fixed inset-0 z-50 flex items-center justify-center bg-background/80" }}
 		>
-			<div data-testid="delete-workspace-dialog" className="w-[420px] max-w-[calc(100vw-2rem)] select-none p-5 rounded-xl border bg-card shadow-2xl">
-				<h2 className="text-sm font-semibold text-destructive">Delete workspace?</h2>
-				<p className="mt-1 truncate font-mono text-sm text-muted-foreground">{workspace.title}</p>
-				<p className="mt-2 text-xs text-muted-foreground">
-					This will permanently delete this workspace and its saved state.
-				</p>
-				{failure && (
-					<div role="alert" className="mt-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-						{failure}
-					</div>
-				)}
-				<div className="mt-4 flex justify-end gap-2">
-					<button
-						type="button"
-						onClick={onClose}
-						disabled={busy}
-						className="rounded-sm px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40 cursor-pointer"
-					>
-						Cancel
-					</button>
-					<button
-						type="button"
-						onClick={onRun}
-						disabled={busy}
-						className="rounded-sm border border-destructive/50 bg-destructive/10 px-3 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-40 cursor-pointer"
-					>
-						{busy ? "Deleting…" : "Delete"}
-					</button>
-				</div>
-			</div>
+			{workspace && (
+				<DeleteWorkspaceBody
+					workspace={workspace}
+					busy={busy}
+					failure={failure}
+					onClose={onClose}
+					onRun={() => void onRun()}
+				/>
+			)}
 		</HostDialog>
+	);
+}
+
+export function DeleteWorkspaceBody({
+	workspace,
+	busy,
+	failure,
+	onClose,
+	onRun,
+}: {
+	workspace: { id: string; title: string };
+	busy: boolean;
+	failure: string | null;
+	onClose: () => void;
+	onRun: () => void;
+}) {
+	return (
+		<div data-testid="delete-workspace-dialog" className="w-[420px] max-w-[calc(100vw-2rem)] select-none p-5 rounded-xl border bg-card shadow-2xl">
+			<h2 className="text-sm font-semibold text-destructive">Delete workspace?</h2>
+			<p className="mt-1 truncate font-mono text-sm text-muted-foreground">{workspace.title}</p>
+			<p className="mt-2 text-xs text-muted-foreground">
+				This will permanently delete this workspace and its saved state.
+			</p>
+			{failure && (
+				<div role="alert" className="mt-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+					{failure}
+				</div>
+			)}
+			<div className="mt-4 flex justify-end gap-2">
+				<button
+					type="button"
+					onClick={onClose}
+					disabled={busy}
+					className="rounded-sm px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40 cursor-pointer"
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					onClick={onRun}
+					disabled={busy}
+					className="rounded-sm border border-destructive/50 bg-destructive/10 px-3 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-40 cursor-pointer"
+				>
+					{busy ? "Deleting…" : "Delete"}
+				</button>
+			</div>
+		</div>
 	);
 }
