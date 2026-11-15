@@ -126,7 +126,7 @@ export function StudyHubCatalog({
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedCategory, setSelectedCategory] = useState<string>("all");
 	const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
-	const [launchingModeKey, setLaunchingModeKey] = useState<string | null>(null);
+	const [launchingModeKeys, setLaunchingModeKeys] = useState<Set<string>>(() => new Set());
 	const [launchError, setLaunchError] = useState<{ modeKey: string; message: string } | null>(null);
 	const [isRetrying, startRetryTransition] = useTransition();
 
@@ -255,16 +255,18 @@ export function StudyHubCatalog({
 
 		// 4. Proceed with launch
 		setLaunchError(null);
-		setLaunchingModeKey(modeKey);
+		setLaunchingModeKeys(prev => {
+			const next = new Set(prev);
+			next.add(modeKey);
+			return next;
+		});
 
 		try {
 			if (propOnLaunch) {
 				await propOnLaunch(mode);
-				setLaunchingModeKey(null);
 			} else if (activeManager) {
 				const workspace = await activeManager.createWorkspace(mode.pluginId, mode.id);
 				activeRouter.push(`/workspaces/${encodeURIComponent(workspace.id)}`);
-				setLaunchingModeKey(null);
 			} else {
 				const res = await fetch("/api/workspaces", {
 					method: "POST",
@@ -277,14 +279,19 @@ export function StudyHubCatalog({
 				}
 				const data = await res.json();
 				activeRouter.push(`/workspaces/${encodeURIComponent(data.workspace.id)}`);
-				setLaunchingModeKey(null);
 			}
 		} catch (err) {
 			setLaunchError({
 				modeKey,
 				message: err instanceof Error ? err.message : "Failed to launch workspace",
 			});
-			setLaunchingModeKey(null);
+		} finally {
+			setLaunchingModeKeys(prev => {
+				if (!prev.has(modeKey)) return prev;
+				const next = new Set(prev);
+				next.delete(modeKey);
+				return next;
+			});
 		}
 	};
 
@@ -592,7 +599,7 @@ export function StudyHubCatalog({
 						{filteredModes.map(mode => {
 							const modeKey = getModeKey(mode.pluginId, mode.id);
 							const IconComponent = getModeIcon(mode.icon);
-							const isLaunching = launchingModeKey === modeKey;
+							const isLaunching = launchingModeKeys.has(modeKey);
 
 							// Renderer check
 							const hasRenderer = activeModeRenderers.some(

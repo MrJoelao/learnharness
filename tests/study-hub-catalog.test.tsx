@@ -766,4 +766,105 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			"Explains mode is no longer available"
 		);
 	}));
+
+	it("19. Concurrent launches: launching both modes maintains independent loading states when one finishes before the other", withDom(async (dom) => {
+		const root = createRoot(dom.document.getElementById("root")!);
+
+		const collisionModes = [
+			{
+				id: "quiz",
+				pluginId: "plugin-alpha",
+				name: "Quiz Alpha",
+				description: "Alpha version of quiz",
+				icon: "help-circle",
+				category: "quiz",
+				difficulty: "beginner" as const,
+			},
+			{
+				id: "quiz",
+				pluginId: "plugin-beta",
+				name: "Quiz Beta",
+				description: "Beta version of quiz",
+				icon: "help-circle",
+				category: "quiz",
+				difficulty: "intermediate" as const,
+			},
+		];
+
+		const collisionRenderers = [
+			{ pluginId: "plugin-alpha", modeId: "quiz" },
+			{ pluginId: "plugin-beta", modeId: "quiz" },
+		];
+
+		const collisionPlugins = [
+			{ info: { id: "plugin-alpha", enabled: true }, phase: "active" },
+			{ info: { id: "plugin-beta", enabled: true }, phase: "active" },
+		];
+
+		let finishAlpha: (() => void) | null = null;
+		const alphaPromise = new Promise<void>((resolve) => {
+			finishAlpha = resolve;
+		});
+
+		let finishBeta: (() => void) | null = null;
+		const betaPromise = new Promise<void>((resolve) => {
+			finishBeta = resolve;
+		});
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={collisionModes}
+					modeRenderers={collisionRenderers}
+					plugins={collisionPlugins}
+					isLoading={false}
+					onLaunch={async (mode) => {
+						if (mode.pluginId === "plugin-alpha") {
+							await alphaPromise;
+						} else if (mode.pluginId === "plugin-beta") {
+							await betaPromise;
+						}
+					}}
+				/>,
+			);
+		});
+
+		const launchAlphaBtn = dom.document.querySelector('[data-testid="launch-mode-plugin-alpha:quiz"]') as HTMLButtonElement;
+		const launchBetaBtn = dom.document.querySelector('[data-testid="launch-mode-plugin-beta:quiz"]') as HTMLButtonElement;
+		assert.ok(launchAlphaBtn, "Alpha launch button exists");
+		assert.ok(launchBetaBtn, "Beta launch button exists");
+
+		// 1. Launch both modes concurrently
+		act(() => {
+			launchAlphaBtn.click();
+		});
+		act(() => {
+			launchBetaBtn.click();
+		});
+
+		// 2. Both modes show launching state and are disabled
+		assert.ok(launchAlphaBtn.textContent?.includes("Launching..."), "Alpha displays launching state");
+		assert.equal(launchAlphaBtn.disabled, true, "Alpha is disabled");
+		assert.ok(launchBetaBtn.textContent?.includes("Launching..."), "Beta displays launching state");
+		assert.equal(launchBetaBtn.disabled, true, "Beta is disabled");
+
+		// 3. Complete alpha while beta is still in flight
+		await act(async () => {
+			finishAlpha!();
+		});
+
+		// 4. Alpha is restored, but beta STILL shows launching spinner and remains disabled
+		assert.ok(!launchAlphaBtn.textContent?.includes("Launching..."), "Alpha button restored after completion");
+		assert.equal(launchAlphaBtn.disabled, false, "Alpha button re-enabled");
+		assert.ok(launchBetaBtn.textContent?.includes("Launching..."), "Beta button still displays launching state while in flight");
+		assert.equal(launchBetaBtn.disabled, true, "Beta button remains disabled while in flight");
+
+		// 5. Complete beta and verify restoration
+		await act(async () => {
+			finishBeta!();
+		});
+
+		assert.ok(!launchBetaBtn.textContent?.includes("Launching..."), "Beta button restored after completion");
+		assert.equal(launchBetaBtn.disabled, false, "Beta button re-enabled");
+	}));
 });
