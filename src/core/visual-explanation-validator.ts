@@ -333,8 +333,14 @@ export function auditCssContent(css: string): string[] {
 	if (/@import\b/i.test(normalized)) {
 		problems.push("SVG style blocks must not contain @import rules.");
 	}
-	if (/\burl\s*\(\s*["']?\s*(https?:|\/\/|data:)/i.test(normalized)) {
-		problems.push("SVG style blocks must not load external or data URLs.");
+	// Strictly allow only local #fragment IDs in url(...) references
+	// Rejects all schemes (http, https, file, ftp, data, blob, javascript, etc.) and non-fragment/external paths
+	if (/\burl\s*\(/i.test(normalized)) {
+		const totalUrlCount = (normalized.match(/\burl\s*\(/gi) || []).length;
+		const validFragmentUrlCount = (normalized.match(/\burl\s*\(\s*['"]?#[a-zA-Z0-9_-]+['"]?\s*\)/gi) || []).length;
+		if (totalUrlCount !== validFragmentUrlCount) {
+			problems.push("SVG style blocks must not load external URLs or non-fragment paths (http, https, file, ftp, data). Only local #fragment IDs are allowed.");
+		}
 	}
 	if (/\b(behavior|-moz-binding)\b/i.test(normalized)) {
 		problems.push("SVG style blocks must not use dynamic CSS behaviors or expressions.");
@@ -446,13 +452,22 @@ function validateSvgSource(source: string): { problems: string[]; sanitized?: st
 				problems.push(`SVG contains unsafe protocol handlers (javascript:, vbscript:, data:): '${attrVal.slice(0, 15)}'.`);
 			}
 
-			// href, xlink:href, src checks
+			// href, xlink:href, src checks: strictly allow only local #fragment IDs
 			if (attrLocal === "href" || attrLocal === "src") {
 				if (/^data:/i.test(attrVal)) {
 					problems.push(`SVG contains unsafe protocol handlers (javascript:, vbscript:, data:): data URI in '${attr.name}'.`);
 				}
-				if (/^(https?:|\/\/|ftp:)/i.test(attrVal)) {
-					problems.push("SVG must not reference external URLs (http://, https://, //). Only local #fragment IDs are allowed.");
+				if (!attrVal.startsWith("#") || !/^#[a-zA-Z0-9_-]+$/.test(attrVal)) {
+					problems.push(`SVG must not reference external URLs or non-fragment paths in '${attr.name}'. Only local #fragment IDs are allowed.`);
+				}
+			}
+
+			// Presentation or general attributes containing url(...)
+			if (attrLocal !== "style" && /\burl\s*\(/i.test(attrVal)) {
+				const totalUrlCount = (attrVal.match(/\burl\s*\(/gi) || []).length;
+				const validFragmentUrlCount = (attrVal.match(/\burl\s*\(\s*['"]?#[a-zA-Z0-9_-]+['"]?\s*\)/gi) || []).length;
+				if (totalUrlCount !== validFragmentUrlCount) {
+					problems.push(`SVG attribute '${attr.name}' must not load external URLs or non-fragment paths. Only local #fragment IDs are allowed.`);
 				}
 			}
 

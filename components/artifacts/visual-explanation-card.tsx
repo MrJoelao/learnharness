@@ -229,11 +229,31 @@ export function preserveCompatibleState(
 	return next;
 }
 
+/**
+ * Computes a deterministic full signature of the visual artifact.
+ * Captures all relevant content: id, version, renderer, presentation, title, summary,
+ * full source text, controls, initialState, and accessibility configuration.
+ */
+export function computeArtifactSignature(artifact: VisualArtifact): string {
+	return [
+		artifact.id,
+		artifact.version,
+		artifact.renderer,
+		artifact.presentation ?? "auto",
+		artifact.title,
+		artifact.summary ?? "",
+		artifact.source,
+		JSON.stringify(artifact.controls ?? []),
+		JSON.stringify(artifact.initialState ?? {}),
+		JSON.stringify(artifact.accessibility ?? {}),
+	].join("::");
+}
+
 function VisualExplanationUpdateNotice({ artifact }: { artifact: VisualArtifact }) {
 	const notifiedSignatureRef = useRef<string | null>(null);
 
 	useEffect(() => {
-		const sig = `${artifact.id}:${artifact.version}:${artifact.title}:${artifact.source.length}`;
+		const sig = computeArtifactSignature(artifact);
 		if (notifiedSignatureRef.current !== sig) {
 			notifiedSignatureRef.current = sig;
 			registerVisualArtifact(artifact);
@@ -316,7 +336,7 @@ export function VisualExplanationInstance({
 	// Register initial artifact outside render phase with idempotency check
 	const lastRegisteredSignatureRef = useRef<string | null>(null);
 	useEffect(() => {
-		const sig = `${initialArtifact.id}:${initialArtifact.version}:${initialArtifact.title}:${initialArtifact.source.length}`;
+		const sig = computeArtifactSignature(initialArtifact);
 		if (lastRegisteredSignatureRef.current !== sig) {
 			lastRegisteredSignatureRef.current = sig;
 			registerVisualArtifact(initialArtifact);

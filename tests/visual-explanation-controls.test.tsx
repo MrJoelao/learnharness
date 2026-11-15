@@ -13,6 +13,7 @@ import {
 	VisualExplanationInstance,
 	applyStateToSvg,
 	clearVisualArtifactRegistry,
+	computeArtifactSignature,
 	getVisualArtifactRegistrySize,
 	preserveCompatibleState,
 	registerVisualArtifact,
@@ -600,5 +601,184 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			root.unmount();
 		});
 		assert.equal(getVisualArtifactRegistrySize(), 0, "Registry must be clean after unmounting reactive test");
+	});
+
+	it("computeArtifactSignature captures full relevant content (Phase 6.3)", () => {
+		const base: VisualArtifact = {
+			version: 1,
+			id: "sig-test-artifact",
+			title: "Signature Test",
+			renderer: "svg",
+			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="red"/></svg>',
+			presentation: "inline",
+			controls: [{ type: "button", id: "b1", label: "Button 1", action: "play" }],
+			initialState: { step: 0, speed: 10 },
+		};
+
+		const sigBase = computeArtifactSignature(base);
+
+		// Same length source, different content (e.g. fill="red" vs fill="blu")
+		const sameLengthDiffContent: VisualArtifact = {
+			...base,
+			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="blu"/></svg>',
+		};
+		assert.equal(base.source.length, sameLengthDiffContent.source.length);
+		const sigSameLen = computeArtifactSignature(sameLengthDiffContent);
+		assert.notEqual(sigBase, sigSameLen, "Signature must differ when source content differs despite same length");
+
+		// Modified controls
+		const diffControls: VisualArtifact = {
+			...base,
+			controls: [
+				{ type: "button", id: "b1", label: "Button 1", action: "play" },
+				{ type: "button", id: "b2", label: "Button 2", action: "pause" },
+			],
+		};
+		assert.notEqual(sigBase, computeArtifactSignature(diffControls), "Signature must differ when controls change");
+
+		// Modified initialState
+		const diffState: VisualArtifact = {
+			...base,
+			initialState: { step: 0, speed: 20 },
+		};
+		assert.notEqual(sigBase, computeArtifactSignature(diffState), "Signature must differ when initialState changes");
+
+		// Modified renderer
+		const diffRenderer: VisualArtifact = {
+			...base,
+			renderer: "html",
+		};
+		assert.notEqual(sigBase, computeArtifactSignature(diffRenderer), "Signature must differ when renderer changes");
+	});
+
+	it("reactively updates mounted card in-place when source changes with identical length or controls change (Phase 6.3)", async () => {
+		clearVisualArtifactRegistry();
+
+		const initialArtifact: VisualArtifact = {
+			version: 1,
+			id: "in-place-adversarial-id",
+			title: "Unchanged Title",
+			renderer: "svg",
+			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="red" width="20"/></svg>',
+			presentation: "inline",
+			controls: [{ type: "button", id: "btn-start", label: "Start", action: "play" }],
+		};
+
+		// Same id, same version, same title, EXACT SAME source length (68 chars), different SVG fill
+		const updatedArtifactSameLen: VisualArtifact = {
+			version: 1,
+			id: "in-place-adversarial-id",
+			title: "Unchanged Title",
+			renderer: "svg",
+			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="blu" width="20"/></svg>',
+			presentation: "inline",
+			controls: [{ type: "button", id: "btn-start", label: "Start", action: "play" }],
+		};
+		assert.equal(initialArtifact.source.length, updatedArtifactSameLen.source.length, "Source lengths must be identical for adversarial test");
+
+		const dom = parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
+		const globals = {
+			window: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			HTMLButtonElement: dom.window.HTMLButtonElement,
+			IS_REACT_ACT_ENVIRONMENT: true,
+		};
+		Object.assign(globalThis, globals);
+
+		const { createRoot } = await import("react-dom/client");
+		const root = createRoot(dom.document.querySelector("#root")!);
+
+		// 1. Mount initial card
+		await act(async () => {
+			root.render(
+				<div id="container">
+					<VisualExplanationCard
+						part={{
+							type: "tool-visual_explanation",
+							state: "output-available",
+							toolCallId: "call_init",
+							output: { ok: true, action: "create", artifact: initialArtifact },
+						}}
+					/>
+				</div>,
+			);
+		});
+
+		const getImgSrc = () => {
+			const img = dom.document.querySelector('[data-testid="visual-explanation-svg-container"] img');
+			return decodeURIComponent(img?.getAttribute("src") || "");
+		};
+
+		assert.ok(getImgSrc().includes('fill="red"'), "Initial card must render red rect");
+		assert.equal(dom.document.querySelectorAll('[data-testid="visual-control-button-btn-start"]').length, 1);
+
+		// 2. Render update notice with same length but different SVG fill
+		await act(async () => {
+			root.render(
+				<div id="container">
+					<VisualExplanationCard
+						part={{
+							type: "tool-visual_explanation",
+							state: "output-available",
+							toolCallId: "call_init",
+							output: { ok: true, action: "create", artifact: initialArtifact },
+						}}
+					/>
+					<VisualExplanationCard
+						part={{
+							type: "tool-visual_explanation",
+							state: "output-available",
+							toolCallId: "call_update_same_len",
+							output: { ok: true, action: "update", artifact: updatedArtifactSameLen },
+						}}
+					/>
+				</div>,
+			);
+		});
+
+		// Must reflect in-place update in the mounted viewer
+		assert.ok(getImgSrc().includes('fill="blu"'), "Mounted card must reactively update to blue rect even with same source length");
+		assert.ok(!getImgSrc().includes('fill="red"'), "Old source must no longer be present");
+
+		// 3. Render update notice with modified controls (adding a pause button)
+		const updatedArtifactWithControls: VisualArtifact = {
+			...updatedArtifactSameLen,
+			controls: [
+				{ type: "button", id: "btn-start", label: "Start", action: "play" },
+				{ type: "button", id: "btn-stop", label: "Stop", action: "pause" },
+			],
+		};
+
+		await act(async () => {
+			root.render(
+				<div id="container">
+					<VisualExplanationCard
+						part={{
+							type: "tool-visual_explanation",
+							state: "output-available",
+							toolCallId: "call_init",
+							output: { ok: true, action: "create", artifact: initialArtifact },
+						}}
+					/>
+					<VisualExplanationCard
+						part={{
+							type: "tool-visual_explanation",
+							state: "output-available",
+							toolCallId: "call_update_ctrls",
+							output: { ok: true, action: "update", artifact: updatedArtifactWithControls },
+						}}
+					/>
+				</div>,
+			);
+		});
+
+		assert.ok(dom.document.querySelector('[data-testid="visual-control-button-btn-stop"]'), "Mounted card must reactively display newly added control");
+
+		// Cleanup
+		await act(async () => {
+			root.unmount();
+		});
+		assert.equal(getVisualArtifactRegistrySize(), 0, "Registry must be clean after unmounting");
 	});
 });
