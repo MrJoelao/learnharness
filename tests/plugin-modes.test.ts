@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 import { PluginFrontendManager } from "../components/plugin-manager.ts";
 import { preparePluginMode } from "../src/core/plugin-modes.ts";
-import type { PluginFrontendModule, PluginInfo } from "../src/core/plugins.ts";
+import type { PluginFrontendModule, PluginInfo, PluginWorkspaceRendererContext } from "../src/core/plugins.ts";
 import { parseWorkspaceId } from "../src/core/workspaces.ts";
 import { parseHTML } from "linkedom";
 
@@ -82,6 +82,97 @@ it("updates renderer metadata on rename and restores persisted state on remount"
 	for (let i = 0; i < 8; i++) await Promise.resolve();
 	assert.deepEqual(await contexts[1]!.storage.get("draft"), { text: "saved" });
 	secondClose(); await manager.dispose();
+	if (previousDocument === undefined) delete (globalThis as Record<string, unknown>).document;
+	else (globalThis as Record<string, unknown>).document = previousDocument;
+});
+
+it("PluginFrontendManager reflects workspace metadata updates to renderer without remount", async () => {
+	const dom = parseHTML("<html><body><div id='mount-dyn'></div></body></html>");
+	const previousDocument = (globalThis as Record<string, unknown>).document;
+	(globalThis as Record<string, unknown>).document = dom.document;
+
+	let currentWorkspace = {
+		version: 1 as const,
+		id: parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000020"),
+		pluginId: "modes",
+		modeId: "lab",
+		title: "Titolo Iniziale",
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+	};
+
+	let rendererMountCount = 0;
+	const signals: AbortSignal[] = [];
+	const contexts: PluginWorkspaceRendererContext[] = [];
+
+	const frontend: PluginFrontendModule = {
+		activate(context) {
+			context.registerModeRenderer("modes", "lab", {
+				mount(_container, workspaceContext) {
+					rendererMountCount++;
+					signals.push(workspaceContext.signal);
+					contexts.push(workspaceContext);
+				},
+			});
+		},
+	};
+
+	const manager = new PluginFrontendManager({
+		fetch: async (input) => {
+			const url = String(input);
+			if (url.endsWith("/api/plugins/modes")) return Response.json({ modes: [mode] });
+			if (url.endsWith("/api/plugins")) return Response.json({ plugins: [info], directory: "/plugins" });
+			return Response.json({});
+		},
+		importModule: async () => frontend,
+		pathname: () => "/",
+		navigate() {},
+	});
+
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	const container = dom.document.getElementById("mount-dyn") as unknown as HTMLElement;
+	const onError = (error: string) => { throw new Error(error); };
+
+	// 1. Mount with getter supplier (as used in workspace-screen.tsx)
+	const close = manager.mountWorkspace(() => currentWorkspace, container, onError);
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	assert.equal(rendererMountCount, 1);
+	const ctx = contexts[0]!;
+	const sig = signals[0]!;
+	assert.equal(ctx.workspace.title, "Titolo Iniziale");
+	assert.equal(sig.aborted, false);
+
+	// 2. Update via supplier
+	currentWorkspace = {
+		...currentWorkspace,
+		title: "Titolo Da Supplier",
+		updatedAt: "2026-01-01T00:01:00.000Z",
+	};
+	assert.equal(ctx.workspace.title, "Titolo Da Supplier");
+	assert.equal(rendererMountCount, 1);
+	assert.equal(sig.aborted, false);
+
+	// 3. Update via manager.updateWorkspace()
+	const updatedRecord = {
+		...currentWorkspace,
+		title: "Titolo Da Manager Update",
+		updatedAt: "2026-01-01T00:02:00.000Z",
+	};
+	currentWorkspace = updatedRecord;
+	manager.updateWorkspace(updatedRecord);
+
+	assert.equal(ctx.workspace.title, "Titolo Da Manager Update");
+	assert.equal(rendererMountCount, 1);
+	assert.equal(sig.aborted, false);
+
+	// 4. Cleanup on close
+	close();
+	assert.equal(sig.aborted, true);
+	await manager.dispose();
+
 	if (previousDocument === undefined) delete (globalThis as Record<string, unknown>).document;
 	else (globalThis as Record<string, unknown>).document = previousDocument;
 });
