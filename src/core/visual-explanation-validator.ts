@@ -13,6 +13,7 @@ import {
 	type VisualPresentation,
 	VISUAL_ARTIFACT_LIMITS,
 } from "./contracts/visual-explanation.ts";
+import { parseHTML } from "linkedom";
 
 export interface ValidationResult {
 	valid: boolean;
@@ -233,32 +234,142 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 	return { valid: true, problems: [], sanitized };
 }
 
+const ALLOWED_SVG_TAGS = new Set([
+	"svg",
+	"g",
+	"path",
+	"rect",
+	"circle",
+	"ellipse",
+	"line",
+	"polyline",
+	"polygon",
+	"text",
+	"tspan",
+	"defs",
+	"use",
+	"marker",
+	"lineargradient",
+	"radialgradient",
+	"stop",
+	"pattern",
+	"clippath",
+	"mask",
+	"style",
+	"title",
+	"desc",
+]);
+
+const ALLOWED_NAMESPACES = new Set([
+	"http://www.w3.org/2000/svg",
+	"http://www.w3.org/1999/xlink",
+	"http://www.w3.org/XML/1998/namespace",
+]);
+
 function validateSvgSource(source: string): { problems: string[]; sanitized?: string } {
 	const problems: string[] = [];
 
-	if (DTD_ENTITY_REGEX.test(source)) {
+	// 1. DTD / Entity checking (pre-parse to prevent entity expansion / billion laughs attacks)
+	if (/<!(ENTITY|DOCTYPE)[\s\S]*?(SYSTEM|PUBLIC)/i.test(source) || /<!DOCTYPE\b/i.test(source) || /<!ENTITY\b/i.test(source)) {
 		problems.push("SVG must not contain external DTD or entity declarations.");
 	}
 
+	// 2. Processing instructions (<?xml-stylesheet, <?php, etc.)
+	if (/<\?[\s\S]*?\?>/.test(source)) {
+		problems.push("SVG must not contain XML processing instructions.");
+	}
+
+	// 3. Fast rejection for known forbidden tags before structural parsing
 	if (FORBIDDEN_SVG_TAG_REGEX.test(source)) {
 		problems.push("SVG contains forbidden tags (<script>, <foreignObject>, <iframe>, <link>, etc.).");
 	}
 
-	if (EVENT_HANDLER_REGEX.test(source)) {
-		problems.push("SVG contains inline event handlers (on* attributes).");
-	}
-
-	if (UNSAFE_PROTOCOL_REGEX.test(source)) {
-		problems.push("SVG contains unsafe protocol handlers (javascript:, vbscript:, data:).");
-	}
-
-	if (EXTERNAL_URL_REGEX.test(source)) {
-		problems.push("SVG must not reference external URLs (http://, https://, //). Only local #fragment IDs are allowed.");
-	}
-
-	// Must contain <svg and </svg>
+	// 4. Must contain <svg> root element
 	if (!/<svg\b[^>]*>/i.test(source) || !/<\/svg>/i.test(source)) {
 		problems.push("SVG source must be enclosed in valid <svg>...</svg> root tags.");
+	}
+
+	// 5. Structural DOM parsing using linkedom
+	let hasParsedStructure = false;
+	try {
+		const { document } = parseHTML(source);
+		const rootSvg = document.querySelector("svg");
+		if (!rootSvg) {
+			problems.push("SVG source must contain a valid root <svg> element.");
+		} else {
+			hasParsedStructure = true;
+			const allElements = Array.from(document.querySelectorAll("*"));
+
+			for (const el of allElements) {
+				const tag = el.tagName.toLowerCase();
+				// Tag allowlist enforcement
+				if (!ALLOWED_SVG_TAGS.has(tag)) {
+					problems.push(`SVG contains forbidden tags (<script>, <foreignObject>, <iframe>, <link>, etc.): disallowed <${tag}>.`);
+				}
+
+				// Style tag content auditing
+				if (tag === "style") {
+					const css = el.textContent || "";
+					if (/@import\b/i.test(css)) {
+						problems.push("SVG style blocks must not contain @import rules.");
+					}
+					if (/\burl\s*\(\s*["']?\s*(https?:|\/\/|data:)/i.test(css)) {
+						problems.push("SVG style blocks must not load external or data URLs.");
+					}
+					if (/\b(behavior|-moz-binding|expression)\b/i.test(css)) {
+						problems.push("SVG style blocks must not use dynamic CSS behaviors or expressions.");
+					}
+				}
+
+				// Inspect all attributes on element
+				for (const attr of Array.from(el.attributes || [])) {
+					const name = attr.name.toLowerCase();
+					const val = attr.value.trim();
+
+					// Reject inline event handlers (onclick, onload, onerror, etc.)
+					if (name.startsWith("on")) {
+						problems.push(`SVG contains inline event handlers (on* attributes): '${name}'.`);
+					}
+
+					// Reject unsafe protocols (javascript:, vbscript:, data:)
+					if (/^(javascript|vbscript):/i.test(val)) {
+						problems.push(`SVG contains unsafe protocol handlers (javascript:, vbscript:, data:): '${val.slice(0, 15)}'.`);
+					}
+
+					// For href, xlink:href, src: must be local #fragment ID only
+					if (name === "href" || name === "xlink:href" || name === "src") {
+						if (/^data:/i.test(val)) {
+							problems.push(`SVG contains unsafe protocol handlers (javascript:, vbscript:, data:): data URI in '${name}'.`);
+						}
+						if (/^(https?:|\/\/|ftp:)/i.test(val)) {
+							problems.push("SVG must not reference external URLs (http://, https://, //). Only local #fragment IDs are allowed.");
+						}
+					}
+
+					// Namespace declarations auditing
+					if (name.startsWith("xmlns:")) {
+						if (!ALLOWED_NAMESPACES.has(val)) {
+							problems.push(`Unexpected or unauthorized namespace '${val}' declared in '${name}'.`);
+						}
+					}
+				}
+			}
+		}
+	} catch {
+		problems.push("SVG source is malformed XML/HTML and could not be parsed.");
+	}
+
+	// 6. Regex fallbacks for safety if parsing was interrupted
+	if (!hasParsedStructure) {
+		if (EVENT_HANDLER_REGEX.test(source)) {
+			problems.push("SVG contains inline event handlers (on* attributes).");
+		}
+		if (UNSAFE_PROTOCOL_REGEX.test(source)) {
+			problems.push("SVG contains unsafe protocol handlers (javascript:, vbscript:, data:).");
+		}
+		if (EXTERNAL_URL_REGEX.test(source)) {
+			problems.push("SVG must not reference external URLs (http://, https://, //). Only local #fragment IDs are allowed.");
+		}
 	}
 
 	let sanitized = source;
@@ -275,14 +386,29 @@ function validateSvgSource(source: string): { problems: string[]; sanitized?: st
 function validateHtmlSource(source: string): { problems: string[] } {
 	const problems: string[] = [];
 
-	// HTML must not access host filesystem paths or application handles
-	if (/\b(__dirname|process\.env|require\(|import\s*\(|window\.parent\.document)\b/.test(source)) {
+	// HTML must not access host filesystem paths, credentials, storage or application handles
+	if (/(?:\b(__dirname|__filename|process\.env|window\.parent|window\.top|document\.cookie|localStorage|sessionStorage|indexedDB)\b|\brequire\s*\(|\bimport\s*\()/.test(source)) {
 		problems.push("HTML source contains disallowed host environment expressions.");
 	}
 
 	// Reject external script references
 	if (/<script\b[^>]*src\s*=\s*["'][^"']+["']/i.test(source)) {
 		problems.push("HTML source must not load external scripts via src.");
+	}
+
+	// Reject external stylesheets
+	if (/<link\b[^>]*rel\s*=\s*["']?stylesheet["']?[^>]*href\s*=\s*["']?(https?:|\/\/)/i.test(source)) {
+		problems.push("HTML source must not load external stylesheets via link.");
+	}
+
+	// Disallow foreign embed tags
+	if (/<\s*(object|embed|applet|iframe)\b/i.test(source)) {
+		problems.push("HTML source must not contain nested <object>, <embed>, <applet>, or <iframe> elements.");
+	}
+
+	// Reject unsafe protocol execution in hrefs
+	if (/(href|src)\s*=\s*["']\s*(javascript|vbscript):/i.test(source)) {
+		problems.push("HTML source contains unsafe protocol execution (javascript:, vbscript:).");
 	}
 
 	return { problems };

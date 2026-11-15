@@ -11,6 +11,7 @@ import {
 	StepBackIcon,
 	DownloadIcon,
 	InfoIcon,
+	CheckCircle2Icon,
 } from "lucide-react";
 import {
 	type ArtifactPartProps,
@@ -29,6 +30,49 @@ interface VisualExplanationCardProps extends ArtifactPartProps {
 	className?: string;
 }
 
+// ── Shared Visual Artifact Registry & State Store (Fix B) ───────────────────
+
+type RegistryEntry = {
+	artifact: VisualArtifact;
+	listeners: Set<(art: VisualArtifact) => void>;
+};
+
+const artifactRegistry = new Map<string, RegistryEntry>();
+
+export function getRegisteredVisualArtifact(id: string): VisualArtifact | undefined {
+	return artifactRegistry.get(id)?.artifact;
+}
+
+export function registerVisualArtifact(artifact: VisualArtifact): void {
+	const entry = artifactRegistry.get(artifact.id);
+	if (!entry) {
+		artifactRegistry.set(artifact.id, {
+			artifact,
+			listeners: new Set(),
+		});
+	} else {
+		entry.artifact = artifact;
+		for (const listener of entry.listeners) {
+			listener(artifact);
+		}
+	}
+}
+
+export function subscribeVisualArtifact(id: string, listener: (art: VisualArtifact) => void): () => void {
+	let entry = artifactRegistry.get(id);
+	if (!entry) {
+		entry = {
+			artifact: undefined as unknown as VisualArtifact,
+			listeners: new Set(),
+		};
+		artifactRegistry.set(id, entry);
+	}
+	entry.listeners.add(listener);
+	return () => {
+		entry?.listeners.delete(listener);
+	};
+}
+
 /** Pure helper to extract maxSteps count from SVG source data-step attributes. */
 export function countSvgSteps(source: string): number {
 	const matches = source.match(/data-step\s*=\s*["'](\d+)["']/g);
@@ -44,7 +88,6 @@ export function countSvgSteps(source: string): number {
 /** Pure helper to enhance SVG with step-based visibility if data-step attributes exist */
 export function applyStepToSvg(source: string, currentStep: number): string {
 	if (!/data-step/i.test(source)) return source;
-	// Inject styling for step-based reveal if not already present
 	const stepStyle = `
     <style>
       [data-step] { transition: opacity 0.2s ease, stroke-width 0.2s ease; }
@@ -55,13 +98,119 @@ export function applyStepToSvg(source: string, currentStep: number): string {
 	return source.replace(/<\/svg>/i, `${stepStyle}</svg>`);
 }
 
-export function VisualExplanationCard({ part, className = "" }: VisualExplanationCardProps) {
-	// Extract artifact payload safely
-	const rawOutput = (part.output as { artifact?: unknown })?.artifact ?? part.output ?? part.input;
-	const validation = useMemo(() => validateVisualArtifact(rawOutput), [rawOutput]);
-	const artifact = validation.sanitized;
+/**
+ * Pure helper to bind declarative controls & state variables to SVG source (Fix A).
+ * Injects CSS variables (--ctrl-<id>, --param-<id>) and display rules for toggles/selects.
+ */
+export function applyStateToSvg(
+	source: string,
+	currentStep: number,
+	stateValues: Record<string, unknown>,
+): string {
+	const cssVars: string[] = [];
+	const rules: string[] = [];
 
-	if (part.state === "output-error" || !validation.valid || !artifact) {
+	for (const [key, val] of Object.entries(stateValues)) {
+		if (typeof val === "number" || typeof val === "string") {
+			cssVars.push(`--ctrl-${key}: ${val};`);
+			cssVars.push(`--param-${key}: ${val};`);
+		} else if (typeof val === "boolean") {
+			cssVars.push(`--ctrl-${key}: ${val ? 1 : 0};`);
+			cssVars.push(`--param-${key}: ${val ? 1 : 0};`);
+			rules.push(`[data-toggle="${key}"] { display: ${val ? "inline" : "none"}; }`);
+			rules.push(`[data-toggle-not="${key}"] { display: ${val ? "none" : "inline"}; }`);
+		}
+
+		if (typeof val === "string") {
+			rules.push(`[data-select-${key}="${val}"] { display: inline; }`);
+			rules.push(`[data-select-${key}]:not([data-select-${key}="${val}"]) { display: none; }`);
+		}
+	}
+
+	const hasSteps = /data-step/i.test(source);
+	const stepRules = hasSteps
+		? `
+      [data-step] { transition: opacity 0.2s ease, stroke-width 0.2s ease; }
+      [data-step]:not([data-step="${currentStep}"]) { opacity: 0.35; }
+      [data-step="${currentStep}"] { opacity: 1; filter: drop-shadow(0 0 3px rgba(37,99,235,0.4)); }
+    `
+		: "";
+
+	const injectedStyle = `
+    <style>
+      :root, svg {
+        ${cssVars.join("\n        ")}
+      }
+      ${rules.join("\n      ")}
+      ${stepRules}
+    </style>
+  `;
+
+	return source.replace(/<\/svg>/i, `${injectedStyle}</svg>`);
+}
+
+/**
+ * Merges previous user state into new artifact state, preserving compatible
+ * learner values (step, slider positions, toggles, select choices) without resets (Fix B).
+ */
+export function preserveCompatibleState(
+	previousState: Record<string, unknown>,
+	newArtifact: VisualArtifact,
+	newMaxSteps: number,
+): Record<string, unknown> {
+	const next: Record<string, unknown> = {
+		...(newArtifact.initialState ?? {}),
+	};
+
+	// 1. Step preservation
+	if (typeof previousState.step === "number") {
+		next.step = Math.min(Math.max(0, previousState.step), newMaxSteps);
+	}
+
+	// 2. Declarative controls preservation
+	if (newArtifact.controls) {
+		for (const ctrl of newArtifact.controls) {
+			const prevVal = previousState[ctrl.id];
+			if (prevVal === undefined) continue;
+
+			switch (ctrl.type) {
+				case "slider":
+					if (typeof prevVal === "number" && Number.isFinite(prevVal)) {
+						next[ctrl.id] = Math.max(ctrl.min, Math.min(ctrl.max, prevVal));
+					}
+					break;
+				case "toggle":
+					if (typeof prevVal === "boolean") {
+						next[ctrl.id] = prevVal;
+					}
+					break;
+				case "select":
+					if (typeof prevVal === "string" && ctrl.options.some((o) => o.value === prevVal)) {
+						next[ctrl.id] = prevVal;
+					}
+					break;
+				case "button":
+					next[ctrl.id] = prevVal;
+					break;
+			}
+		}
+	}
+
+	return next;
+}
+
+export function VisualExplanationCard({ part, className = "" }: VisualExplanationCardProps) {
+	const rawOutput = (part.output as { artifact?: unknown })?.artifact ?? part.output ?? part.input;
+	const rawAction =
+		(part.output as { action?: string } | undefined)?.action ??
+		(part.input as { action?: string } | undefined)?.action ??
+		"create";
+
+	const validation = useMemo(() => validateVisualArtifact(rawOutput), [rawOutput]);
+	const validatedArtifact = validation.sanitized;
+
+	// Invariant: Failed artifact or failed update renders error alert without crashing
+	if (part.state === "output-error" || !validation.valid || !validatedArtifact) {
 		const errorNotes = validation.problems.join("; ") || "Invalid visual artifact envelope.";
 		return (
 			<div
@@ -78,17 +227,36 @@ export function VisualExplanationCard({ part, className = "" }: VisualExplanatio
 		);
 	}
 
+	// Update action (Fix B): Publishes update to existing visual instance instead of spawning a duplicate
+	if (rawAction === "update") {
+		registerVisualArtifact(validatedArtifact);
+		return (
+			<div
+				className="my-2.5 flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 px-4 py-2.5 text-xs text-foreground"
+				data-testid="visual-explanation-update-notice"
+				data-artifact-id={validatedArtifact.id}
+			>
+				<div className="flex items-center gap-2">
+					<CheckCircle2Icon className="size-4 text-primary shrink-0" />
+					<span className="font-semibold text-primary">Updated Visual:</span>
+					<span className="font-medium text-foreground">{validatedArtifact.title}</span>
+				</div>
+				<span className="text-[11px] text-muted-foreground">Updated in-place above</span>
+			</div>
+		);
+	}
+
 	return (
 		<VisualExplanationInstance
-			artifact={artifact}
+			artifact={validatedArtifact}
 			className={className}
-			initialExpanded={artifact.presentation === "panel"}
+			initialExpanded={validatedArtifact.presentation === "panel"}
 		/>
 	);
 }
 
 export function VisualExplanationInstance({
-	artifact,
+	artifact: initialArtifact,
 	className = "",
 	initialExpanded = false,
 }: {
@@ -96,13 +264,28 @@ export function VisualExplanationInstance({
 	className?: string;
 	initialExpanded?: boolean;
 }) {
+	// Active artifact (updated reactively when an update action arrives for this ID — Fix B)
+	const [artifact, setArtifact] = useState<VisualArtifact>(() => {
+		const registered = getRegisteredVisualArtifact(initialArtifact.id);
+		return registered ?? initialArtifact;
+	});
+
+	// Register initial artifact
+	useEffect(() => {
+		registerVisualArtifact(initialArtifact);
+	}, [initialArtifact]);
+
 	const containerRef = useRef<HTMLDivElement>(null);
+	const dialogRef = useRef<HTMLDivElement>(null);
 	const expandButtonRef = useRef<HTMLButtonElement>(null);
+	const lastFocusedElementRef = useRef<HTMLElement | null>(null);
+	const iframeRef = useRef<HTMLIFrameElement>(null);
 
 	// Shared artifact simulation state
 	const [isExpanded, setIsExpanded] = useState(initialExpanded);
 	const [isPlaying, setIsPlaying] = useState(false);
-	const [isVisible, setIsVisible] = useState(true);
+	const [isPageVisible, setIsPageVisible] = useState(() => (typeof document !== "undefined" ? !document.hidden : true));
+	const [isIntersecting, setIsIntersecting] = useState(true);
 	const [reducedMotion, setReducedMotion] = useState(false);
 
 	// State dictionary initialized from initialState
@@ -121,9 +304,31 @@ export function VisualExplanationInstance({
 		return 3;
 	}, [artifact, detectedSvgSteps]);
 
+	// Listen for artifact updates targeting this ID (Fix B: In-place update & state preservation)
+	useEffect(() => {
+		const unsubscribe = subscribeVisualArtifact(artifact.id, (updated) => {
+			setArtifact(updated);
+			const newDetectedSteps = updated.renderer === "svg" ? countSvgSteps(updated.source) : 0;
+			const newMax =
+				typeof updated.initialState?.maxSteps === "number"
+					? (updated.initialState.maxSteps as number)
+					: newDetectedSteps > 0
+						? newDetectedSteps
+						: 3;
+			setStateValues((prev) => preserveCompatibleState(prev, updated, newMax));
+			setCurrentStep((prev) => Math.min(prev, newMax));
+		});
+		return unsubscribe;
+	}, [artifact.id]);
+
 	// Accessibility: Reduced motion check
 	useEffect(() => {
-		if (typeof window === "undefined") return;
+		if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+			if (artifact.accessibility?.reducedMotionFallback) {
+				setReducedMotion(true);
+			}
+			return;
+		}
 		const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 		setReducedMotion(mediaQuery.matches || Boolean(artifact.accessibility?.reducedMotionFallback));
 
@@ -134,20 +339,20 @@ export function VisualExplanationInstance({
 		return () => mediaQuery.removeEventListener?.("change", handler);
 	}, [artifact]);
 
-	// Visibility observer: suspend animation when offscreen
+	// Visibility observer (Fix F: Pauses when hidden/offscreen, resumes cleanly when returning)
 	useEffect(() => {
 		if (!containerRef.current || typeof IntersectionObserver === "undefined") return;
 		const observer = new IntersectionObserver(
 			(entries) => {
 				const entry = entries[0];
-				setIsVisible(entry ? entry.isIntersecting : true);
+				if (entry) setIsIntersecting(entry.isIntersecting);
 			},
 			{ threshold: 0.1 },
 		);
 		observer.observe(containerRef.current);
 
 		const onVisibilityChange = () => {
-			if (document.hidden) setIsVisible(false);
+			setIsPageVisible(!document.hidden);
 		};
 		document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -157,9 +362,10 @@ export function VisualExplanationInstance({
 		};
 	}, []);
 
-	// Animation tick loop (paused when hidden, offscreen, or reduced motion)
+	// Animation tick loop (paused when hidden, offscreen, collapsed or reduced motion — Fix F)
+	const shouldAnimate = isPlaying && isPageVisible && isIntersecting && !reducedMotion;
 	useEffect(() => {
-		if (!isPlaying || !isVisible || reducedMotion) return;
+		if (!shouldAnimate) return;
 
 		const timer = setInterval(() => {
 			setCurrentStep((prev) => {
@@ -170,7 +376,7 @@ export function VisualExplanationInstance({
 		}, 1200);
 
 		return () => clearInterval(timer);
-	}, [isPlaying, isVisible, reducedMotion, maxSteps]);
+	}, [shouldAnimate, maxSteps]);
 
 	// Action handlers for declarative controls
 	const handleStepForward = useCallback(() => {
@@ -202,60 +408,178 @@ export function VisualExplanationInstance({
 		setIsPlaying((p) => !p);
 	}, [reducedMotion]);
 
-	const handleSliderChange = useCallback((id: string, value: number) => {
-		setStateValues((s) => ({ ...s, [id]: value }));
+	// Button control action dispatcher (Fix A)
+	const handleButtonClick = useCallback(
+		(ctrl: VisualButtonControl) => {
+			switch (ctrl.action) {
+				case "play":
+					if (!reducedMotion) setIsPlaying(true);
+					break;
+				case "pause":
+					setIsPlaying(false);
+					break;
+				case "reset":
+					handleReset();
+					break;
+				case "step-forward":
+					handleStepForward();
+					break;
+				case "step-backward":
+					handleStepBackward();
+					break;
+				case "custom": {
+					// Safe deterministic state transition without arbitrary code execution
+					setStateValues((s) => {
+						const currentVal = s[ctrl.id];
+						const nextVal = typeof currentVal === "boolean" ? !currentVal : typeof currentVal === "number" ? currentVal + 1 : 1;
+						return {
+							...s,
+							[ctrl.id]: nextVal,
+							lastAction: ctrl.id,
+						};
+					});
+					break;
+				}
+			}
+		},
+		[reducedMotion, handleReset, handleStepForward, handleStepBackward],
+	);
+
+	const handleSliderChange = useCallback((ctrl: VisualSliderControl, rawVal: number) => {
+		const clamped = Math.max(ctrl.min, Math.min(ctrl.max, Number.isFinite(rawVal) ? rawVal : ctrl.value));
+		setStateValues((s) => ({ ...s, [ctrl.id]: clamped }));
 	}, []);
 
 	const handleToggleChange = useCallback((id: string, value: boolean) => {
 		setStateValues((s) => ({ ...s, [id]: value }));
 	}, []);
 
-	const handleSelectChange = useCallback((id: string, value: string) => {
-		setStateValues((s) => ({ ...s, [id]: value }));
+	const handleSelectChange = useCallback((ctrl: VisualSelectControl, value: string) => {
+		const isValidOption = ctrl.options.some((o) => o.value === value);
+		const selectedVal = isValidOption ? value : ctrl.value;
+		setStateValues((s) => ({ ...s, [ctrl.id]: selectedVal }));
 	}, []);
 
-	// Handle panel open/close with focus hygiene
+	// Panel focus management & accessibility (Fix D)
 	const handleOpenPanel = () => {
+		lastFocusedElementRef.current = (document.activeElement as HTMLElement) ?? null;
 		setIsExpanded(true);
 	};
 
-	const handleClosePanel = () => {
+	const handleClosePanel = useCallback(() => {
 		setIsExpanded(false);
-		setTimeout(() => expandButtonRef.current?.focus(), 50);
-	};
+		setTimeout(() => {
+			if (lastFocusedElementRef.current && typeof lastFocusedElementRef.current.focus === "function") {
+				lastFocusedElementRef.current.focus();
+			} else if (expandButtonRef.current) {
+				expandButtonRef.current.focus();
+			}
+		}, 30);
+	}, []);
 
-	// Escape key to close panel
+	// Focus trap when modal opens (Fix D)
+	useEffect(() => {
+		if (!isExpanded || !dialogRef.current) return;
+
+		const focusableElements = Array.from(
+			dialogRef.current.querySelectorAll<HTMLElement>(
+				'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+			),
+		);
+
+		if (focusableElements.length > 0) {
+			focusableElements[0]?.focus();
+		} else {
+			dialogRef.current.focus();
+		}
+	}, [isExpanded]);
+
+	// Tab key focus trap and Escape handler (Fix D)
 	useEffect(() => {
 		if (!isExpanded) return;
+
 		const onKeyDown = (e: KeyboardEvent) => {
 			if (e.key === "Escape") {
 				e.preventDefault();
 				handleClosePanel();
+				return;
+			}
+
+			if (e.key === "Tab" && dialogRef.current) {
+				const focusableElements = Array.from(
+					dialogRef.current.querySelectorAll<HTMLElement>(
+						'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+					),
+				);
+
+				if (focusableElements.length === 0) {
+					e.preventDefault();
+					return;
+				}
+
+				const first = focusableElements[0];
+				const last = focusableElements[focusableElements.length - 1];
+
+				if (e.shiftKey) {
+					if (document.activeElement === first || !dialogRef.current.contains(document.activeElement)) {
+						e.preventDefault();
+						last?.focus();
+					}
+				} else {
+					if (document.activeElement === last || !dialogRef.current.contains(document.activeElement)) {
+						e.preventDefault();
+						first?.focus();
+					}
+				}
 			}
 		};
+
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [isExpanded]);
+	}, [isExpanded, handleClosePanel]);
 
-	// Process source for step highlight
+	// Send state update to HTML iframe when stateValues change
+	useEffect(() => {
+		if (artifact.renderer === "html" && iframeRef.current?.contentWindow) {
+			iframeRef.current.contentWindow.postMessage(
+				{ type: "LH_VISUAL_STATE_UPDATE", state: stateValues },
+				"*",
+			);
+		}
+	}, [artifact.renderer, stateValues]);
+
+	// Process SVG source with all bound control parameters and steps (Fix A)
 	const processedSvgSource = useMemo(() => {
 		if (artifact.renderer !== "svg") return artifact.source;
-		return applyStepToSvg(artifact.source, currentStep);
-	}, [artifact, currentStep]);
+		return applyStateToSvg(artifact.source, currentStep, stateValues);
+	}, [artifact, currentStep, stateValues]);
 
-	// Render the inner visual frame
+	// Render the inner visual frame (Fix C: exactly one active iframe/SVG is mounted at any time)
 	const renderVisualContent = (expanded: boolean) => {
 		if (artifact.renderer === "html") {
-			// Sandboxed iframe for HTML
+			const cssVars = Object.entries(stateValues)
+				.map(([k, v]) => `--ctrl-${k}: ${v}; --param-${k}: ${v};`)
+				.join(" ");
+
 			const srcDoc = `
         <!DOCTYPE html>
         <html>
           <head>
             <meta charset="utf-8">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; object-src 'none';">
             <style>
+              :root { ${cssVars} }
               body { margin: 0; padding: 12px; font-family: system-ui, sans-serif; box-sizing: border-box; }
             </style>
+            <script>
+              window.__LH_STATE__ = ${JSON.stringify(stateValues)};
+              window.addEventListener('message', function(e) {
+                if (e.data && e.data.type === 'LH_VISUAL_STATE_UPDATE') {
+                  window.__LH_STATE__ = e.data.state;
+                  window.dispatchEvent(new CustomEvent('lh-state-change', { detail: e.data.state }));
+                }
+              });
+            </script>
           </head>
           <body>
             ${artifact.source}
@@ -264,6 +588,7 @@ export function VisualExplanationInstance({
       `;
 			return (
 				<iframe
+					ref={iframeRef}
 					title={artifact.title}
 					sandbox="allow-scripts"
 					srcDoc={srcDoc}
@@ -274,29 +599,26 @@ export function VisualExplanationInstance({
 			);
 		}
 
-		// SVG image boundary (no script execution, isolated)
+		// SVG image boundary (isolated, reactive to state)
 		return (
 			<div
 				className="flex items-center justify-center overflow-hidden rounded-md bg-white p-2"
 				style={{ minHeight: expanded ? "340px" : "180px", maxHeight: expanded ? "70vh" : "360px" }}
 				data-testid="visual-explanation-svg-container"
 			>
-				<SvgImage
-					svg={processedSvgSource}
-					className="block h-auto max-h-full max-w-full"
-				/>
+				<SvgImage svg={processedSvgSource} className="block h-auto max-h-full max-w-full" />
 			</div>
 		);
 	};
 
-	// Controls toolbar
+	// Controls toolbar (Fix A: renders buttons, sliders, toggles, selects)
 	const renderControls = () => {
-		const hasStepControls = maxSteps > 0 || artifact.controls?.some((c) => c.type === "button");
+		const hasStepControls = maxSteps > 0;
 
 		return (
 			<div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 text-xs">
 				<div className="flex flex-wrap items-center gap-1.5">
-					{/* Standard Step / Play / Pause / Reset buttons */}
+					{/* Standard Step Controls */}
 					{hasStepControls && (
 						<>
 							<button
@@ -352,9 +674,23 @@ export function VisualExplanationInstance({
 						</>
 					)}
 
-					{/* Custom declarative controls from artifact descriptor */}
+					{/* Declarative controls from artifact descriptor (Fix A) */}
 					{artifact.controls?.map((ctrl) => {
 						switch (ctrl.type) {
+							case "button":
+								return (
+									<button
+										key={ctrl.id}
+										type="button"
+										disabled={ctrl.disabled || (ctrl.action === "play" && reducedMotion)}
+										onClick={() => handleButtonClick(ctrl)}
+										className="ml-1 rounded-md border bg-secondary/50 px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+										data-testid={`visual-control-button-${ctrl.id}`}
+										data-action={ctrl.action}
+									>
+										{ctrl.label}
+									</button>
+								);
 							case "slider":
 								return (
 									<label key={ctrl.id} className="ml-2 flex items-center gap-1.5 text-muted-foreground">
@@ -366,7 +702,7 @@ export function VisualExplanationInstance({
 											step={ctrl.step ?? 1}
 											value={(stateValues[ctrl.id] as number) ?? ctrl.value}
 											aria-label={ctrl.label}
-											onChange={(e) => handleSliderChange(ctrl.id, Number.parseFloat(e.target.value))}
+											onChange={(e) => handleSliderChange(ctrl, Number.parseFloat(e.target.value))}
 											className="h-1.5 w-18 cursor-pointer rounded-lg bg-secondary accent-primary"
 											data-testid={`visual-control-slider-${ctrl.id}`}
 										/>
@@ -396,7 +732,7 @@ export function VisualExplanationInstance({
 										<select
 											value={(stateValues[ctrl.id] as string) ?? ctrl.value}
 											aria-label={ctrl.label}
-											onChange={(e) => handleSelectChange(ctrl.id, e.target.value)}
+											onChange={(e) => handleSelectChange(ctrl, e.target.value)}
 											className="rounded border bg-background px-1.5 py-0.5 text-xs text-foreground"
 											data-testid={`visual-control-select-${ctrl.id}`}
 										>
@@ -489,18 +825,29 @@ export function VisualExplanationInstance({
 				</p>
 			)}
 
-			{/* Inline Visual View */}
-			{renderVisualContent(false)}
+			{/* Inline Visual View or Expanded Placeholder (Fix C: Single active iframe) */}
+			{isExpanded ? (
+				<div
+					className="flex h-36 w-full items-center justify-center rounded-md border border-dashed border-border/60 bg-muted/20 text-xs text-muted-foreground"
+					data-testid="visual-inline-expanded-placeholder"
+				>
+					<span>Visualization expanded in panel</span>
+				</div>
+			) : (
+				renderVisualContent(false)
+			)}
 
-			{/* Controls Toolbar */}
-			{renderControls()}
+			{/* Inline Controls Toolbar */}
+			{!isExpanded && renderControls()}
 
-			{/* Expanded Panel Overlay */}
+			{/* Expanded Panel Overlay (Fix C & Fix D) */}
 			{isExpanded && (
 				<div
+					ref={dialogRef}
 					role="dialog"
 					aria-modal="true"
 					aria-label={artifact.title}
+					tabIndex={-1}
 					className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-xs"
 					data-testid="visual-explanation-panel"
 				>
