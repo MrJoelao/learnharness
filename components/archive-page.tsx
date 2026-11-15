@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { TopBar } from "@/components/top-bar";
 import { MenuShell } from "@/components/menu-shell";
-import { DeleteSessionDialog } from "@/components/delete-session-dialog";
+import { DeleteSessionDialog, DeleteWorkspaceDialog } from "@/components/delete-session-dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { fuzzyScore } from "@/src/core";
@@ -14,6 +14,8 @@ import { useServerEvent, useServerResync } from "@/components/server-events";
 import type {
 	ChatFolder,
 	ChatDirectoryItem,
+	WorkspaceDirectoryEntry,
+	DirectoryEntry,
 	ChatOrganization,
 	ChatOrganizationAction,
 } from "@/src/core";
@@ -41,6 +43,7 @@ import {
 	XIcon,
 	DumbbellIcon,
 	GraduationCapIcon,
+	BoxIcon,
 } from "lucide-react";
 
 function useSafeRouter() {
@@ -83,6 +86,7 @@ export function ArchivePage({
 	initialLoading = false,
 	initialFolders,
 	initialChats,
+	initialItems,
 	initialActiveFolders,
 	initialSearchQuery,
 	initialKindFilter,
@@ -90,6 +94,7 @@ export function ArchivePage({
 	initialLoading?: boolean;
 	initialFolders?: ChatFolder[];
 	initialChats?: ChatDirectoryItem[];
+	initialItems?: (ChatDirectoryItem | WorkspaceDirectoryEntry)[];
 	initialActiveFolders?: ChatFolder[];
 	initialSearchQuery?: string;
 	initialKindFilter?: "all" | "teach" | "practice";
@@ -98,7 +103,9 @@ export function ArchivePage({
 	const searchParams = useSafeSearchParams();
 
 	const [archivedFolders, setArchivedFolders] = useState<ChatFolder[]>(initialFolders ?? []);
-	const [archivedChats, setArchivedChats] = useState<ChatDirectoryItem[]>(initialChats ?? []);
+	const [archivedChats, setArchivedChats] = useState<(ChatDirectoryItem | WorkspaceDirectoryEntry)[]>(
+		(initialItems ?? initialChats) ?? [],
+	);
 	const [activeFolders, setActiveFolders] = useState<ChatFolder[]>(initialActiveFolders ?? []);
 	const [organization, setOrganization] = useState<ChatOrganization | null>(null);
 	const [loading, setLoading] = useState(initialLoading);
@@ -127,6 +134,7 @@ export function ArchivePage({
 	// Dialog & menu state
 	const [movingTarget, setMovingTarget] = useState<MoveTargetItem | null>(null);
 	const [deletingChat, setDeletingChat] = useState<Pick<ChatDirectoryItem, "id" | "title"> | null>(null);
+	const [deletingWorkspace, setDeletingWorkspace] = useState<WorkspaceDirectoryEntry | null>(null);
 	const [deletingFolder, setDeletingFolder] = useState<ChatFolder | null>(null);
 	const [feedback, setFeedback] = useState<OrganizationFeedback | null>(null);
 
@@ -142,29 +150,54 @@ export function ArchivePage({
 		if (refreshInFlightRef.current) return;
 		refreshInFlightRef.current = true;
 		try {
-			const [archRes, orgRes] = await Promise.all([
-				fetch("/api/chats/organization?archived=true", { cache: "no-store" }),
-				fetch("/api/chats/organization", { cache: "no-store" }),
+			const [archDirRes, orgDirRes] = await Promise.all([
+				fetch("/api/directory?archived=true", { cache: "no-store" }).catch(() => null),
+				fetch("/api/directory", { cache: "no-store" }).catch(() => null),
 			]);
 
-			if (archRes.ok) {
-				const data = (await archRes.json()) as {
-					folders: ChatFolder[];
-					chats: ChatDirectoryItem[];
+			if (archDirRes && archDirRes.ok) {
+				const data = (await archDirRes.json()) as {
+					archivedFolders?: ChatFolder[];
+					folders?: ChatFolder[];
+					items?: (ChatDirectoryItem | WorkspaceDirectoryEntry)[];
+					chats?: ChatDirectoryItem[];
 					activeFolders?: ChatFolder[];
 				};
-				setArchivedFolders(data.folders);
-				setArchivedChats(data.chats);
+				setArchivedFolders(data.archivedFolders ?? data.folders ?? []);
+				setArchivedChats((data.items ?? data.chats ?? []) as any);
 				if (data.activeFolders) {
 					setActiveFolders(data.activeFolders);
 				}
+			} else {
+				const archRes = await fetch("/api/chats/organization?archived=true", { cache: "no-store" }).catch(() => null);
+				if (archRes && archRes.ok) {
+					const data = (await archRes.json()) as {
+						folders: ChatFolder[];
+						chats: ChatDirectoryItem[];
+						activeFolders?: ChatFolder[];
+					};
+					setArchivedFolders(data.folders);
+					setArchivedChats(data.chats);
+					if (data.activeFolders) {
+						setActiveFolders(data.activeFolders);
+					}
+				}
 			}
 
-			if (orgRes.ok) {
-				const orgData = (await orgRes.json()) as { organization: ChatOrganization };
+			if (orgDirRes && orgDirRes.ok) {
+				const orgData = (await orgDirRes.json()) as { organization: any; folders: ChatFolder[] };
 				setOrganization(orgData.organization);
-				if (!activeFolders.length && orgData.organization.folders) {
-					setActiveFolders(orgData.organization.folders.filter((f) => !f.archivedAt));
+				if (!activeFolders.length && (orgData.folders || orgData.organization?.folders)) {
+					setActiveFolders((orgData.folders || orgData.organization.folders).filter((f: ChatFolder) => !f.archivedAt));
+				}
+			} else {
+				const orgRes = await fetch("/api/chats/organization", { cache: "no-store" }).catch(() => null);
+				if (orgRes && orgRes.ok) {
+					const orgData = (await orgRes.json()) as { organization: ChatOrganization };
+					setOrganization(orgData.organization);
+					if (!activeFolders.length && orgData.organization.folders) {
+						setActiveFolders(orgData.organization.folders.filter((f) => !f.archivedAt));
+					}
 				}
 			}
 		} catch (err) {
@@ -262,6 +295,7 @@ export function ArchivePage({
 
 	useServerEvent("chat-organization-changed", () => void refresh());
 	useServerEvent("chats-changed", () => void refresh());
+	useServerEvent("workspaces-changed", () => void refresh());
 	useServerResync(() => void refresh());
 
 	const closeContextMenus = useCallback(() => {
@@ -269,7 +303,7 @@ export function ArchivePage({
 		setCtxFolderId(null);
 	}, []);
 
-	const openChatContext = (e: React.MouseEvent<HTMLElement>, chat: ChatDirectoryItem) => {
+	const openChatContext = (e: React.MouseEvent<HTMLElement>, chat: ChatDirectoryItem | WorkspaceDirectoryEntry) => {
 		e.preventDefault();
 		e.stopPropagation();
 		closeContextMenus();
@@ -311,7 +345,7 @@ export function ArchivePage({
 	const executeAction = useCallback(
 		async (
 			action: ChatOrganizationAction,
-			priorState?: { organization: ChatOrganization; chats: ChatDirectoryItem[] },
+			priorState?: { organization: ChatOrganization; chats: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] },
 		): Promise<boolean> => {
 			let undoPayload: { undoAction: ChatOrganizationAction; description: string } | null = null;
 			if (priorState) {
@@ -397,13 +431,13 @@ export function ArchivePage({
 		return archivedChats;
 	}, [destination, selectedFolder, selectedFolderDescendantIds, archivedChats]);
 
-	// Filtering: kind and search query on scoped chats
+	// Filtering: kind and search query on scoped chats & workspaces
 	const filteredChats = useMemo(() => {
 		let list = scopedChats;
 
 		// Kind filter
 		if (kindFilter !== "all") {
-			list = list.filter((c) => (c.kind ?? "teach") === kindFilter);
+			list = list.filter((c: any) => c.kind === "workspace" || (c.kind ?? "teach") === kindFilter);
 		}
 
 		// Search filter
@@ -412,7 +446,7 @@ export function ArchivePage({
 
 		return list
 			.map((c) => ({ c, score: fuzzyScore(q, c.title) }))
-			.filter((r): r is { c: ChatDirectoryItem; score: number } => r.score !== null)
+			.filter((r): r is { c: any; score: number } => r.score !== null)
 			.sort((a, b) => b.score - a.score)
 			.map((r) => r.c);
 	}, [scopedChats, kindFilter, searchQuery]);
@@ -611,28 +645,38 @@ export function ArchivePage({
 		);
 	};
 
-	const renderChatRow = (chat: ChatDirectoryItem, depth = 0): ReactNode => {
-		const isPractice = chat.kind === "practice";
+	const renderChatRow = (chat: ChatDirectoryItem | WorkspaceDirectoryEntry, depth = 0): ReactNode => {
+		const isWorkspace = chat.kind === "workspace";
+		const isPractice = !isWorkspace && (chat as ChatDirectoryItem).kind === "practice";
 		const folderPath = getFolderPathString(chat.folderId, allKnownFolders);
 
-		let chatHref = `/chat/${chat.id}?from=archive`;
-		if (currentFolderId) {
-			chatHref += `&folder=${encodeURIComponent(currentFolderId)}`;
-		} else if (currentView === "unorganized") {
-			chatHref += `&view=unorganized`;
+		let chatHref = isWorkspace ? `/workspaces/${chat.id}` : `/chat/${chat.id}?from=archive`;
+		if (!isWorkspace) {
+			if (currentFolderId) {
+				chatHref += `&folder=${encodeURIComponent(currentFolderId)}`;
+			} else if (currentView === "unorganized") {
+				chatHref += `&view=unorganized`;
+			}
 		}
 
 		return (
 			<div
 				key={chat.id}
 				data-testid={`archive-chat-${chat.id}`}
+				data-workspace-item={isWorkspace ? "true" : undefined}
 				className="group flex w-full items-center gap-2 rounded-md border border-border/40 bg-card px-3 py-2 text-left transition-colors hover:bg-accent/50 cursor-pointer"
 				style={{ paddingLeft: `${12 + depth * 16}px` }}
 				onClick={() => router.push(chatHref)}
 				onContextMenu={(e) => openChatContext(e, chat)}
 			>
 				<span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/80">
-					{isPractice ? <DumbbellIcon className="size-3.5" /> : <GraduationCapIcon className="size-3.5" />}
+					{isWorkspace ? (
+						<BoxIcon className="size-3.5" />
+					) : isPractice ? (
+						<DumbbellIcon className="size-3.5" />
+					) : (
+						<GraduationCapIcon className="size-3.5" />
+					)}
 				</span>
 
 				<div className="min-w-0 flex-1">
@@ -643,6 +687,11 @@ export function ArchivePage({
 						{isPractice && (
 							<span className="rounded bg-muted px-1.5 py-0.2 text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
 								Practice
+							</span>
+						)}
+						{isWorkspace && (chat as WorkspaceDirectoryEntry).availability !== "available" && (
+							<span className="rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.2 text-[9px] font-mono uppercase tracking-wider">
+								{(chat as WorkspaceDirectoryEntry).availability}
 							</span>
 						)}
 					</div>
@@ -1109,60 +1158,73 @@ export function ArchivePage({
 				)}
 			</div>
 
-			{/* Context Menu for Chats */}
-			{ctxChatId !== null && (
-				<MenuShell
-					anchorRef={ctxChatAnchorRef}
-					testid="archive-chat-context-menu"
-					preferredSide="down"
-					menuClass="flex w-52 flex-col gap-0.5 rounded-xl border bg-card p-2 text-xs shadow-xl"
-				>
-					<button
-						type="button"
-						data-testid="ctx-restore-chat"
-						onClick={() => {
-							const id = ctxChatId;
-							closeContextMenus();
-							handleRestoreChat(id);
-						}}
-						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+			{/* Context Menu for Chats and Workspaces */}
+			{ctxChatId !== null && (() => {
+				const target = archivedChats.find((c) => c.id === ctxChatId);
+				const isWorkspace = target && "kind" in target && (target as any).kind === "workspace";
+				return (
+					<MenuShell
+						anchorRef={ctxChatAnchorRef}
+						testid="archive-chat-context-menu"
+						preferredSide="down"
+						menuClass="flex w-52 flex-col gap-0.5 rounded-xl border bg-card p-2 text-xs shadow-xl"
 					>
-						Restore session
-					</button>
-					<button
-						type="button"
-						data-testid="ctx-restore-to-chat"
-						onClick={() => {
-							const target = archivedChats.find((c) => c.id === ctxChatId);
-							if (target) {
-								setMovingTarget({
-									kind: "chat",
-									id: target.id,
-									title: target.title,
-									parentId: null,
-									isRestore: true,
-								});
-							}
-							closeContextMenus();
-						}}
-						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
-					>
-						Restore to…
-					</button>
-					<button
-						type="button"
-						data-testid="ctx-delete-chat"
-						onClick={() => {
-							const target = archivedChats.find((c) => c.id === ctxChatId);
-							if (target) setDeletingChat(target);
-							closeContextMenus();
-						}}
-						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
-					>
-						Delete…
-					</button>
-				</MenuShell>
-			)}
+						<button
+							type="button"
+							data-testid="ctx-restore-chat"
+							onClick={() => {
+								const id = ctxChatId;
+								closeContextMenus();
+								if (isWorkspace) {
+									const prior = organization ? { organization, chats: archivedChats as any } : undefined;
+									void executeAction({ action: "restore", kind: "workspace", id }, prior);
+								} else {
+									handleRestoreChat(id);
+								}
+							}}
+							className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+						>
+							{isWorkspace ? "Restore workspace" : "Restore session"}
+						</button>
+						<button
+							type="button"
+							data-testid="ctx-restore-to-chat"
+							onClick={() => {
+								if (target) {
+									setMovingTarget({
+										kind: isWorkspace ? "workspace" : "chat",
+										id: target.id,
+										title: target.title,
+										parentId: null,
+										isRestore: true,
+									});
+								}
+								closeContextMenus();
+							}}
+							className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+						>
+							Restore to…
+						</button>
+						<button
+							type="button"
+							data-testid="ctx-delete-chat"
+							onClick={() => {
+								if (target) {
+									if (isWorkspace) {
+										setDeletingWorkspace(target as WorkspaceDirectoryEntry);
+									} else {
+										setDeletingChat(target as ChatDirectoryItem);
+									}
+								}
+								closeContextMenus();
+							}}
+							className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-muted-foreground/80 transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+						>
+							Delete…
+						</button>
+					</MenuShell>
+				);
+			})()}
 
 			{/* Context Menu for Folders */}
 			{ctxFolderId !== null && (
@@ -1234,6 +1296,16 @@ export function ArchivePage({
 				onClose={() => setDeletingChat(null)}
 				onDeleted={(id) => {
 					setDeletingChat(null);
+					setArchivedChats((prev) => prev.filter((c) => c.id !== id));
+				}}
+			/>
+
+			{/* Delete Workspace Dialog */}
+			<DeleteWorkspaceDialog
+				workspace={deletingWorkspace}
+				onClose={() => setDeletingWorkspace(null)}
+				onDeleted={(id) => {
+					setDeletingWorkspace(null);
 					setArchivedChats((prev) => prev.filter((c) => c.id !== id));
 				}}
 			/>

@@ -15,10 +15,14 @@ import {
 	canMoveChatFolder,
 	fuzzyScore,
 	type ChatDirectoryItem,
+	type WorkspaceDirectoryEntry,
+	type DirectoryEntry,
+	type SiblingEntry,
 	type ChatFolder,
 	type ChatOrganization,
 } from "@/src/core";
 import { SessionRow, RenameRow } from "@/components/sidebar";
+import { WorkspaceRow, RenameWorkspaceRow } from "@/components/workspace-row";
 import { cn } from "@/lib/utils";
 import {
 	CHAT_DRAG_TYPE,
@@ -31,13 +35,17 @@ import {
 
 export interface ChatFolderTreeProps {
 	folders: ChatFolder[];
-	chats: ChatDirectoryItem[];
+	chats?: ChatDirectoryItem[];
+	items?: (ChatDirectoryItem | WorkspaceDirectoryEntry)[];
 	activeChatId: string | null;
+	activeWorkspaceId?: string | null;
 	kbdChatId?: string | null;
 	expandedFolderIds: ReadonlySet<string>;
 	onToggleFolder: (folderId: string) => void;
 	onSelectChat: (chatId: string) => void;
+	onSelectWorkspace?: (workspaceId: string) => void;
 	onContextMenuChat?: (e: React.MouseEvent<HTMLButtonElement>, chat: ChatDirectoryItem) => void;
+	onContextMenuWorkspace?: (e: React.MouseEvent<HTMLButtonElement>, workspace: WorkspaceDirectoryEntry) => void;
 	onNewSessionInFolder?: (folderId: string) => void;
 	onFolderContextMenu?: (e: React.MouseEvent<HTMLElement>, folder: ChatFolder) => void;
 	selectedFolderId?: string | null;
@@ -45,20 +53,21 @@ export interface ChatFolderTreeProps {
 	renamingId?: string | null;
 	onCommitRename?: (id: string, next: string) => void;
 	onCancelRename?: () => void;
-	organization?: ChatOrganization | null;
+	organization?: any;
 	renamingFolderId?: string | null;
 	onCommitFolderRename?: (id: string, next: string) => void;
 	onCancelFolderRename?: () => void;
 	onMoveItem?: (
-		kind: "chat" | "folder",
+		kind: "chat" | "workspace" | "folder",
 		id: string,
 		targetParentId: string | null,
 		targetOrder?: number,
 	) => void;
 	onReorderSiblings?: (
 		parentId: string | null,
-		kind: "chat" | "folder",
+		kind: "chat" | "workspace" | "folder",
 		ids: string[],
+		entries?: SiblingEntry[],
 	) => void;
 	isSearchActive?: boolean;
 	searchQuery?: string;
@@ -71,12 +80,12 @@ export interface ChatFolderTreeProps {
 export function folderHasMatchingChat(
 	folderId: string,
 	folders: ChatFolder[],
-	chats: ChatDirectoryItem[],
+	chats: (ChatDirectoryItem | DirectoryEntry)[],
 	query: string,
 ): boolean {
 	const q = query.trim();
 	if (!q) return true;
-	// Direct chats
+	// Direct items
 	if (chats.some((c) => c.folderId === folderId && fuzzyScore(q, c.title) !== null)) {
 		return true;
 	}
@@ -89,7 +98,7 @@ export function folderHasMatchingChat(
 export function getFolderChatCount(
 	folderId: string,
 	folders: ChatFolder[],
-	chats: ChatDirectoryItem[],
+	chats: (ChatDirectoryItem | DirectoryEntry)[],
 ): number {
 	const direct = chats.filter((c) => c.folderId === folderId).length;
 	const childFolders = folders.filter((f) => f.parentId === folderId);
@@ -438,12 +447,16 @@ export function CollapsibleFolderContent({
 export function ChatFolderTree({
 	folders,
 	chats,
+	items,
 	activeChatId,
+	activeWorkspaceId,
 	kbdChatId,
 	expandedFolderIds,
 	onToggleFolder,
 	onSelectChat,
+	onSelectWorkspace,
 	onContextMenuChat,
+	onContextMenuWorkspace,
 	onNewSessionInFolder,
 	onFolderContextMenu,
 	selectedFolderId,
@@ -468,6 +481,10 @@ export function ChatFolderTree({
 	const [draggedItem, setDraggedItem] = useState<DraggedItemPayload | null>(null);
 	const [dropTarget, setDropTarget] = useState<DropTargetState | null>(null);
 
+	const allItems = useMemo(() => {
+		return (items ?? chats ?? []) as (ChatDirectoryItem | WorkspaceDirectoryEntry)[];
+	}, [items, chats]);
+
 	// Filter & sort folders and chats
 	const topFolders = useMemo(() => {
 		const roots = folders.filter((f) => f.parentId === null);
@@ -479,14 +496,14 @@ export function ChatFolderTree({
 		});
 	}, [folders]);
 
-	const unorganizedChats = useMemo(() => {
-		return chats.filter((c) => c.folderId === null);
-	}, [chats]);
+	const unorganizedItems = useMemo(() => {
+		return allItems.filter((c) => c.folderId === null);
+	}, [allItems]);
 
 	// Drag event handlers
 	const handleDragStart = (
 		e: React.DragEvent,
-		kind: "chat" | "folder",
+		kind: "chat" | "workspace" | "folder",
 		id: string,
 		parentId: string | null,
 		title: string,
@@ -589,20 +606,20 @@ export function ChatFolderTree({
 				onMoveItem?.("folder", payload.id, parentId, insertIdx);
 			}
 		} else {
-			// Chat dropped before/after a folder -> place chat inside that folder
-			onMoveItem?.("chat", payload.id, folder.id);
+			// Chat or workspace dropped before/after a folder -> place inside that folder
+			onMoveItem?.(payload.kind, payload.id, folder.id);
 		}
 	};
 
-	const handleChatDragOver = (
+	const handleItemDragOver = (
 		e: React.DragEvent<HTMLDivElement>,
-		chat: ChatDirectoryItem,
+		item: ChatDirectoryItem | WorkspaceDirectoryEntry,
 	) => {
 		if (!e.dataTransfer.types.includes(CHAT_DRAG_TYPE)) return;
 		e.preventDefault();
 		e.stopPropagation();
 
-		// Folders cannot be dropped onto chats
+		// Folders cannot be dropped onto items
 		if (draggedItem?.kind === "folder") {
 			e.dataTransfer.dropEffect = "none";
 			setDropTarget(null);
@@ -611,15 +628,16 @@ export function ChatFolderTree({
 
 		const rect = e.currentTarget.getBoundingClientRect();
 		const offsetY = e.clientY - rect.top;
-		const pos = calculateDropPosition(offsetY, rect.height, "chat");
+		const itemKind = (item.kind === "workspace" ? "workspace" : "chat") as "workspace" | "chat";
+		const pos = calculateDropPosition(offsetY, rect.height, itemKind);
 
 		e.dataTransfer.dropEffect = "move";
-		setDropTarget({ id: chat.id, kind: "chat", position: pos });
+		setDropTarget({ id: item.id, kind: itemKind, position: pos });
 	};
 
-	const handleChatDrop = (
+	const handleItemDrop = (
 		e: React.DragEvent<HTMLDivElement>,
-		chat: ChatDirectoryItem,
+		item: ChatDirectoryItem | WorkspaceDirectoryEntry,
 	) => {
 		const raw = e.dataTransfer.getData(CHAT_DRAG_TYPE);
 		if (!raw) return;
@@ -633,31 +651,40 @@ export function ChatFolderTree({
 			return;
 		}
 
-		if (payload.kind !== "chat") return;
+		if (payload.kind === "folder") return;
 		const target = dropTarget;
 		setDropTarget(null);
 		setDraggedItem(null);
 
-		if (!target || target.id !== chat.id) return;
+		if (!target || target.id !== item.id) return;
 
-		const parentId = chat.folderId;
-		const siblings = chats
+		const parentId = item.folderId;
+		const siblings = allItems
 			.filter((c) => c.folderId === parentId)
 			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-		const remainingIds = siblings.map((s) => s.id).filter((id) => id !== payload.id);
-		const targetIdx = remainingIds.indexOf(chat.id);
+		const remaining = siblings.filter((s) => s.id !== payload.id);
+		const targetIdx = remaining.findIndex((s) => s.id === item.id);
 		const insertIdx = target.position === "before" ? targetIdx : targetIdx + 1;
-		const newIds = [
-			...remainingIds.slice(0, insertIdx),
-			payload.id,
-			...remainingIds.slice(insertIdx),
+		const draggedEntry = siblings.find((s) => s.id === payload.id) ?? {
+			kind: payload.kind,
+			id: payload.id,
+		};
+		const newItems = [
+			...remaining.slice(0, insertIdx),
+			draggedEntry,
+			...remaining.slice(insertIdx),
 		];
+		const newIds = newItems.map((i) => i.id);
+		const entries: SiblingEntry[] = newItems.map((i) => ({
+			kind: ("kind" in i && i.kind === "workspace") ? "workspace" : "chat",
+			id: i.id,
+		}));
 
 		if (payload.parentId === parentId) {
-			onReorderSiblings?.(parentId, "chat", newIds);
+			onReorderSiblings?.(parentId, payload.kind, newIds, entries);
 		} else {
-			onMoveItem?.("chat", payload.id, parentId, insertIdx);
+			onMoveItem?.(payload.kind, payload.id, parentId, insertIdx);
 		}
 	};
 
@@ -687,16 +714,101 @@ export function ChatFolderTree({
 		onMoveItem?.(payload.kind, payload.id, null);
 	};
 
+	const renderItemRow = (
+		item: ChatDirectoryItem | WorkspaceDirectoryEntry,
+		depth?: number,
+	): ReactNode => {
+		const isDrop = dropTarget?.id === item.id;
+		const isWorkspace = item.kind === "workspace";
+		const isActive = isWorkspace
+			? activeWorkspaceId === item.id
+			: activeChatId === item.id;
+		const isKbd = isWorkspace ? false : kbdChatId === item.id;
+
+		if (renamingId === item.id) {
+			return isWorkspace ? (
+				<div key={item.id} className="w-full">
+					<RenameWorkspaceRow
+						workspace={item}
+						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
+						onCommit={(next) => onCommitRename?.(item.id, next)}
+						onCancel={() => onCancelRename?.()}
+					/>
+				</div>
+			) : (
+				<div key={item.id} className="w-full">
+					<RenameRow
+						chat={item as ChatDirectoryItem}
+						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
+						onCommit={(next) => onCommitRename?.(item.id, next)}
+						onCancel={() => onCancelRename?.()}
+					/>
+				</div>
+			);
+		}
+
+		return (
+			<div
+				key={item.id}
+				data-chat-drag-row={item.id}
+				data-workspace-drag-row={isWorkspace ? item.id : undefined}
+				data-drop-position={isDrop ? dropTarget?.position : undefined}
+				draggable={true}
+				onDragStart={(e) =>
+					handleDragStart(e, isWorkspace ? "workspace" : "chat", item.id, item.folderId, item.title)
+				}
+				onDragEnd={handleDragEnd}
+				onDragOver={(e) => handleItemDragOver(e, item)}
+				onDragLeave={(e) => {
+					if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+					if (dropTarget?.id === item.id) setDropTarget(null);
+				}}
+				onDrop={(e) => handleItemDrop(e, item)}
+				className={cn(
+					"w-full",
+					isDrop && dropTarget?.position === "before" && "border-t-2 border-primary -mt-0.5",
+					isDrop && dropTarget?.position === "after" && "border-b-2 border-primary -mb-0.5",
+				)}
+			>
+				{isWorkspace ? (
+					<WorkspaceRow
+						workspace={item as WorkspaceDirectoryEntry}
+						active={isActive}
+						kbdSelected={isKbd}
+						onOpen={() => (onSelectWorkspace ? onSelectWorkspace(item.id) : onSelectChat(item.id))}
+						onContextMenu={
+							onContextMenuWorkspace
+								? (e) => onContextMenuWorkspace(e, item as WorkspaceDirectoryEntry)
+								: (e) => onContextMenuChat?.(e, item as any)
+						}
+						folderPath={isSearch ? getFolderPathString(item.folderId, folders) : undefined}
+						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
+					/>
+				) : (
+					<SessionRow
+						chat={item as ChatDirectoryItem}
+						active={isActive}
+						kbdSelected={isKbd}
+						onOpen={() => onSelectChat(item.id)}
+						onContextMenu={onContextMenuChat ? (e) => onContextMenuChat(e, item as ChatDirectoryItem) : undefined}
+						folderPath={isSearch ? getFolderPathString(item.folderId, folders) : undefined}
+						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
+					/>
+				)}
+			</div>
+		);
+	};
+
 	const renderFolderContent = (folder: ChatFolder, depth: number): ReactNode => {
 		const isSearch = isSearchActive && searchQuery.trim() !== "";
-		const hasMatches = isSearch ? folderHasMatchingChat(folder.id, folders, chats, searchQuery) : true;
+		const hasMatches = isSearch ? folderHasMatchingChat(folder.id, folders, allItems, searchQuery) : true;
 		if (isSearch && !hasMatches) {
 			return null;
 		}
 
 		// When searching, folders with matches are automatically displayed as open
 		const open = isSearch ? hasMatches : expandedFolderIds.has(folder.id);
-		const count = getFolderChatCount(folder.id, folders, chats);
+		const count = getFolderChatCount(folder.id, folders, allItems);
 
 		// Child folders
 		const childFolders = folders
@@ -708,8 +820,10 @@ export function ChatFolderTree({
 				return a.name.localeCompare(b.name);
 			});
 
-		// Child chats
-		const childChats = chats.filter((c) => c.folderId === folder.id);
+		// Child items (chats + workspaces interleaved by order)
+		const childItems = allItems
+			.filter((c) => c.folderId === folder.id)
+			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 		const isSelected = selectedFolderId === folder.id;
 		const isFolderDrop = dropTarget?.id === folder.id;
 
@@ -754,51 +868,9 @@ export function ChatFolderTree({
 					<div className="relative">
 						{childFolders.map((child) => renderFolderContent(child, depth + 1))}
 
-						{childChats.map((c) => {
-							const isChatDrop = dropTarget?.id === c.id;
-							return renamingId === c.id ? (
-								<div key={c.id} className="w-full">
-									<RenameRow
-										chat={c}
-										style={{ paddingLeft: `${chatPaddingLeft(depth)}px` }}
-										onCommit={(next) => onCommitRename?.(c.id, next)}
-										onCancel={() => onCancelRename?.()}
-									/>
-								</div>
-							) : (
-								<div
-									key={c.id}
-									data-chat-drag-row={c.id}
-									data-drop-position={isChatDrop ? dropTarget.position : undefined}
-									draggable={true}
-									onDragStart={(e) => handleDragStart(e, "chat", c.id, c.folderId, c.title)}
-									onDragEnd={handleDragEnd}
-									onDragOver={(e) => handleChatDragOver(e, c)}
-									onDragLeave={(e) => {
-										if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-										if (dropTarget?.id === c.id) setDropTarget(null);
-									}}
-									onDrop={(e) => handleChatDrop(e, c)}
-									className={cn(
-										"w-full",
-										isChatDrop && dropTarget.position === "before" && "border-t-2 border-primary -mt-0.5",
-										isChatDrop && dropTarget.position === "after" && "border-b-2 border-primary -mb-0.5",
-									)}
-								>
-									<SessionRow
-										chat={c}
-										active={activeChatId === c.id}
-										kbdSelected={kbdChatId === c.id}
-										onOpen={() => onSelectChat(c.id)}
-										onContextMenu={onContextMenuChat ? (e) => onContextMenuChat(e, c) : undefined}
-										folderPath={isSearch ? getFolderPathString(c.folderId, folders) : undefined}
-										style={{ paddingLeft: `${chatPaddingLeft(depth)}px` }}
-									/>
-								</div>
-							);
-						})}
+						{childItems.map((item) => renderItemRow(item, depth))}
 
-						{!isSearch && childFolders.length === 0 && childChats.length === 0 && (
+						{!isSearch && childFolders.length === 0 && childItems.length === 0 && (
 							<div
 								data-testid={`empty-folder-${folder.id}`}
 								style={{ paddingLeft: `${chatPaddingLeft(depth)}px` }}
@@ -813,8 +885,8 @@ export function ChatFolderTree({
 		);
 	};
 
-	const totalActiveChats = chats.length;
-	if (totalActiveChats === 0 && topFolders.length === 0) {
+	const totalActiveItems = allItems.length;
+	if (totalActiveItems === 0 && topFolders.length === 0) {
 		return <div className="px-3 py-4 text-xs text-muted-foreground">{emptyMessage}</div>;
 	}
 
@@ -823,8 +895,8 @@ export function ChatFolderTree({
 			{/* Top-level folders */}
 			{topFolders.map((f) => renderFolderContent(f, 0))}
 
-			{/* Unorganized section for root-level chats (legacy / unplaced) */}
-			{unorganizedChats.length > 0 && (
+			{/* Unorganized section for root-level chats & workspaces */}
+			{unorganizedItems.length > 0 && (
 				<div data-testid="unorganized-section" className="mt-1">
 					<div
 						data-testid="unorganized-header"
@@ -846,50 +918,11 @@ export function ChatFolderTree({
 							<span>Unorganized</span>
 						</button>
 						<span className="text-[10px] tabular-nums text-muted-foreground/60">
-							{unorganizedChats.length}
+							{unorganizedItems.length}
 						</span>
 					</div>
 
-					{unorganizedExpanded &&
-						unorganizedChats.map((c) => {
-							const isChatDrop = dropTarget?.id === c.id;
-							return renamingId === c.id ? (
-								<RenameRow
-									key={c.id}
-									chat={c}
-									onCommit={(next) => onCommitRename?.(c.id, next)}
-									onCancel={() => onCancelRename?.()}
-								/>
-							) : (
-								<div
-									key={c.id}
-									data-chat-drag-row={c.id}
-									data-drop-position={isChatDrop ? dropTarget.position : undefined}
-									draggable={true}
-									onDragStart={(e) => handleDragStart(e, "chat", c.id, c.folderId, c.title)}
-									onDragEnd={handleDragEnd}
-									onDragOver={(e) => handleChatDragOver(e, c)}
-									onDragLeave={(e) => {
-										if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-										if (dropTarget?.id === c.id) setDropTarget(null);
-									}}
-									onDrop={(e) => handleChatDrop(e, c)}
-									className={cn(
-										isChatDrop && dropTarget.position === "before" && "border-t-2 border-primary -mt-0.5",
-										isChatDrop && dropTarget.position === "after" && "border-b-2 border-primary -mb-0.5",
-									)}
-								>
-									<SessionRow
-										chat={c}
-										active={activeChatId === c.id}
-										kbdSelected={kbdChatId === c.id}
-										onOpen={() => onSelectChat(c.id)}
-										onContextMenu={onContextMenuChat ? (e) => onContextMenuChat(e, c) : undefined}
-										folderPath={isSearch ? getFolderPathString(c.folderId, folders) : undefined}
-									/>
-								</div>
-							);
-						})}
+					{unorganizedExpanded && unorganizedItems.map((item) => renderItemRow(item))}
 				</div>
 			)}
 

@@ -17,7 +17,7 @@ import type { ServerEvent } from "../core/events.ts";
 import { safePluginDataDirectory } from "../store/plugin-data-paths.ts";
 import { PLUGIN_MODE_ID_PATTERN, preparePluginMode } from "../core/plugin-modes.ts";
 import type { PluginModeMetadata, PluginWorkspaceCreateContext } from "../core/plugins.ts";
-import { parseWorkspaceId, parseWorkspaceTitle, resolveWorkspaceAvailability, type WorkspaceDeletionJournalEntry, type WorkspaceId, type WorkspaceReconciliation, type WorkspaceRecord } from "../core/workspaces.ts";
+import { parseWorkspaceId, parseWorkspaceTitle, resolveWorkspaceAvailability, type WorkspaceAvailability, type WorkspaceDeletionJournalEntry, type WorkspaceId, type WorkspaceReconciliation, type WorkspaceRecord } from "../core/workspaces.ts";
 import type { PluginWorkspaceStateStore } from "../core/ports.ts";
 
 /** Expected host/transport failure. Exceptions thrown by plugin handlers stay ordinary 500 errors. */
@@ -766,6 +766,17 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			if (operation === "get") { const stored = storage.get(key); return stored === undefined ? { found: false } : { found: true, value: stored }; }
 			if (operation === "set") { storage.set(key, value); return { found: true }; }
 			storage.delete(key); return { found: false };
+		},
+		getWorkspace(idValue: string): { workspace: WorkspaceRecord; availability: WorkspaceAvailability } {
+			assertOpen();
+			if (!initialized) throw new PluginHostError(503, "Plugin host is not initialized");
+			if (!deps.workspaces) throw new PluginHostError(503, "Workspace storage is unavailable");
+			let id: WorkspaceId;
+			try { id = parseWorkspaceId(idValue); } catch { throw new PluginHostError(400, "Invalid workspace ID"); }
+			const workspace = deps.workspaces.read(id);
+			if (!workspace) throw new PluginHostError(404, "Workspace not found");
+			const availability = this.workspaceAvailability(workspace);
+			return { workspace, availability };
 		},
 		renameWorkspace(idValue: string, title: string): WorkspaceRecord {
 			assertOpen();

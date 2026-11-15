@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 export const CHAT_DRAG_TYPE = "application/x-learnharness-chat";
 
 export interface DraggedItemPayload {
-	kind: "chat" | "folder";
+	kind: "chat" | "workspace" | "folder";
 	id: string;
 	parentId: string | null;
 }
@@ -33,7 +33,7 @@ export type DropPosition = "inside" | "before" | "after" | "root";
 
 export interface DropTargetState {
 	id: string;
-	kind: "folder" | "chat" | "root";
+	kind: "folder" | "chat" | "workspace" | "root";
 	position: DropPosition;
 }
 
@@ -44,7 +44,7 @@ export interface OrganizationFeedback {
 }
 
 export interface MoveTargetItem {
-	kind: "chat" | "folder";
+	kind: "chat" | "workspace" | "folder";
 	id: string;
 	title: string;
 	parentId: string | null;
@@ -55,7 +55,7 @@ export interface MoveTargetItem {
 export function calculateDropPosition(
 	offsetY: number,
 	height: number,
-	kind: "folder" | "chat",
+	kind: "folder" | "chat" | "workspace",
 ): "before" | "after" | "inside" {
 	if (kind === "folder") {
 		if (offsetY < height * 0.25) return "before";
@@ -70,16 +70,16 @@ export function calculateDropPosition(
  * Returns null for non-reversible operations like permanent deletions.
  */
 export function computeUndoAction(
-	action: ChatOrganizationAction,
+	action: any,
 	previousState: {
-		organization: ChatOrganization;
-		chats: ChatDirectoryItem[];
+		organization: any;
+		chats: any[];
 	},
-): { undoAction: ChatOrganizationAction; description: string } | null {
+): { undoAction: any; description: string } | null {
 	switch (action.action) {
 		case "move": {
 			if (action.kind === "folder") {
-				const folder = previousState.organization.folders.find((f) => f.id === action.id);
+				const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
 				if (!folder) return null;
 				const oldParentId = folder.parentId;
 				const oldOrder = folder.order;
@@ -94,27 +94,42 @@ export function computeUndoAction(
 					description: `Moved folder "${folder.name}"`,
 				};
 			}
-			const chat = previousState.chats.find((c) => c.id === action.id);
-			const placement = chatPlacementOf(previousState.organization, action.id);
-			const oldParentId = chat?.folderId ?? placement?.folderId ?? null;
-			const oldOrder = chat?.order ?? placement?.order;
+			const item = previousState.chats.find((c: any) => c.id === action.id);
+			const itemKind = action.kind === "workspace" ? "workspace" : "chat";
+			const placement = "placements" in previousState.organization
+				? (action.kind === "workspace" ? previousState.organization.placements[`workspace:${action.id}`] : previousState.organization.placements[`chat:${action.id}`] ?? previousState.organization.placements[action.id])
+				: chatPlacementOf(previousState.organization, action.id);
+			const oldParentId = item?.folderId ?? placement?.folderId ?? null;
+			const oldOrder = item?.order ?? placement?.order;
 			return {
 				undoAction: {
 					action: "move",
-					kind: "chat",
+					kind: itemKind,
 					id: action.id,
 					parentId: oldParentId,
 					...(oldOrder !== undefined ? { targetOrder: oldOrder } : {}),
 				},
-				description: `Moved session "${chat?.title ?? action.id}"`,
+				description: `Moved ${itemKind === "workspace" ? "workspace" : "session"} "${item?.title ?? action.id}"`,
 			};
 		}
 		case "reorder-siblings": {
+			if ("entries" in action && Array.isArray(action.entries)) {
+				const siblings = previousState.chats.filter((c: any) => (c.folderId ?? null) === action.parentId);
+				const oldEntries = siblings.map((s: any) => ({ kind: s.kind === "workspace" ? "workspace" : "chat", id: s.id }));
+				return {
+					undoAction: {
+						action: "reorder-siblings",
+						parentId: action.parentId,
+						entries: oldEntries,
+					},
+					description: "Reordered items",
+				};
+			}
 			const siblings =
 				action.kind === "folder"
-					? previousState.organization.folders.filter((f) => f.parentId === action.parentId)
-					: previousState.chats.filter((c) => c.folderId === action.parentId);
-			const oldIds = siblings.map((s) => s.id);
+					? previousState.organization.folders.filter((f: any) => f.parentId === action.parentId)
+					: previousState.chats.filter((c: any) => c.folderId === action.parentId);
+			const oldIds = siblings.map((s: any) => s.id);
 			return {
 				undoAction: {
 					action: "reorder-siblings",
@@ -127,7 +142,7 @@ export function computeUndoAction(
 		}
 		case "reorder": {
 			if (action.kind === "folder") {
-				const folder = previousState.organization.folders.find((f) => f.id === action.id);
+				const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
 				if (!folder) return null;
 				return {
 					undoAction: {
@@ -139,20 +154,21 @@ export function computeUndoAction(
 					description: `Reordered folder "${folder.name}"`,
 				};
 			}
-			const chat = previousState.chats.find((c) => c.id === action.id);
+			const item = previousState.chats.find((c: any) => c.id === action.id);
+			const itemKind = action.kind === "workspace" ? "workspace" : "chat";
 			return {
 				undoAction: {
 					action: "reorder",
-					kind: "chat",
+					kind: itemKind,
 					id: action.id,
-					targetOrder: chat?.order ?? 0,
+					targetOrder: item?.order ?? 0,
 				},
-				description: `Reordered session "${chat?.title ?? action.id}"`,
+				description: `Reordered ${itemKind === "workspace" ? "workspace" : "session"} "${item?.title ?? action.id}"`,
 			};
 		}
 		case "archive": {
 			if (action.kind === "folder") {
-				const folder = previousState.organization.folders.find((f) => f.id === action.id);
+				const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
 				const oldParentId = folder?.parentId ?? null;
 				return {
 					undoAction: {
@@ -164,22 +180,25 @@ export function computeUndoAction(
 					description: `Archived folder "${folder?.name ?? action.id}"`,
 				};
 			}
-			const chat = previousState.chats.find((c) => c.id === action.id);
-			const placement = chatPlacementOf(previousState.organization, action.id);
-			const oldParentId = chat?.folderId ?? placement?.folderId ?? null;
+			const item = previousState.chats.find((c: any) => c.id === action.id);
+			const itemKind = action.kind === "workspace" ? "workspace" : "chat";
+			const placement = "placements" in previousState.organization
+				? (action.kind === "workspace" ? previousState.organization.placements[`workspace:${action.id}`] : previousState.organization.placements[`chat:${action.id}`] ?? previousState.organization.placements[action.id])
+				: chatPlacementOf(previousState.organization, action.id);
+			const oldParentId = item?.folderId ?? placement?.folderId ?? null;
 			return {
 				undoAction: {
 					action: "restore",
-					kind: "chat",
+					kind: itemKind,
 					id: action.id,
 					targetParentId: oldParentId,
 				},
-				description: `Archived session "${chat?.title ?? action.id}"`,
+				description: `Archived ${itemKind === "workspace" ? "workspace" : "session"} "${item?.title ?? action.id}"`,
 			};
 		}
 		case "restore": {
 			if (action.kind === "folder") {
-				const folder = previousState.organization.folders.find((f) => f.id === action.id);
+				const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
 				if (!folder || (action.targetParentId !== undefined && action.targetParentId !== folder.parentId)) return null;
 				return {
 					undoAction: {
@@ -190,22 +209,25 @@ export function computeUndoAction(
 					description: `Restored folder "${folder?.name ?? action.id}"`,
 				};
 			}
-			const chat = previousState.chats.find((c) => c.id === action.id);
-			const placement = chatPlacementOf(previousState.organization, action.id);
-			const originalParentId = chat?.folderId ?? placement?.folderId ?? null;
+			const item = previousState.chats.find((c: any) => c.id === action.id);
+			const itemKind = action.kind === "workspace" ? "workspace" : "chat";
+			const placement = "placements" in previousState.organization
+				? (action.kind === "workspace" ? previousState.organization.placements[`workspace:${action.id}`] : previousState.organization.placements[`chat:${action.id}`] ?? previousState.organization.placements[action.id])
+				: chatPlacementOf(previousState.organization, action.id);
+			const originalParentId = item?.folderId ?? placement?.folderId ?? null;
 			if (action.targetParentId !== undefined && action.targetParentId !== originalParentId) return null;
-			if (originalParentId !== null && !previousState.organization.folders.some((f) => f.id === originalParentId)) return null;
+			if (originalParentId !== null && !previousState.organization.folders.some((f: any) => f.id === originalParentId)) return null;
 			return {
 				undoAction: {
 					action: "archive",
-					kind: "chat",
+					kind: itemKind,
 					id: action.id,
 				},
-				description: `Restored session "${chat?.title ?? action.id}"`,
+				description: `Restored ${itemKind === "workspace" ? "workspace" : "session"} "${item?.title ?? action.id}"`,
 			};
 		}
 		case "rename-folder": {
-			const folder = previousState.organization.folders.find((f) => f.id === action.id);
+			const folder = previousState.organization.folders.find((f: any) => f.id === action.id);
 			if (!folder) return null;
 			return {
 				undoAction: {
@@ -225,25 +247,25 @@ export function computeUndoAction(
 
 /** Pure: helper to generate sibling move actions for keyboard/touch Move Up and Move Down. */
 export function getSiblingMoveAction(
-	kind: "chat" | "folder",
+	kind: "chat" | "workspace" | "folder",
 	id: string,
 	direction: "up" | "down",
-	organization: ChatOrganization,
-	chats: ChatDirectoryItem[],
-): ChatOrganizationAction | null {
+	organization: any,
+	chats: any[],
+): any | null {
 	if (kind === "folder") {
-		const target = organization.folders.find((f) => f.id === id);
+		const target = organization.folders.find((f: any) => f.id === id);
 		if (!target) return null;
 		const parentId = target.parentId;
 		const siblings = organization.folders
-			.filter((f) => f.parentId === parentId)
-			.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-		const idx = siblings.findIndex((f) => f.id === id);
+			.filter((f: any) => f.parentId === parentId)
+			.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
+		const idx = siblings.findIndex((f: any) => f.id === id);
 		if (idx === -1) return null;
 		const targetIdx = direction === "up" ? idx - 1 : idx + 1;
 		if (targetIdx < 0 || targetIdx >= siblings.length) return null;
 
-		const ids = siblings.map((s) => s.id);
+		const ids = siblings.map((s: any) => s.id);
 		const temp = ids[idx]!;
 		ids[idx] = ids[targetIdx]!;
 		ids[targetIdx] = temp;
@@ -255,26 +277,39 @@ export function getSiblingMoveAction(
 		};
 	}
 
-	const targetChat = chats.find((c) => c.id === id);
-	if (!targetChat) return null;
-	const parentId = targetChat.folderId;
+	const targetItem = chats.find((c: any) => c.id === id);
+	if (!targetItem) return null;
+	const parentId = targetItem.folderId;
 	const siblings = chats
-		.filter((c) => c.folderId === parentId)
-		.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-	const idx = siblings.findIndex((c) => c.id === id);
+		.filter((c: any) => c.folderId === parentId)
+		.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
+	const idx = siblings.findIndex((c: any) => c.id === id);
 	if (idx === -1) return null;
 	const targetIdx = direction === "up" ? idx - 1 : idx + 1;
 	if (targetIdx < 0 || targetIdx >= siblings.length) return null;
 
-	const ids = siblings.map((s) => s.id);
-	const temp = ids[idx]!;
-	ids[idx] = ids[targetIdx]!;
-	ids[targetIdx] = temp;
+	const entries = siblings.map((s: any) => ({
+		kind: (s.kind === "workspace" ? "workspace" : "chat") as "chat" | "workspace",
+		id: s.id,
+	}));
+	const temp = entries[idx]!;
+	entries[idx] = entries[targetIdx]!;
+	entries[targetIdx] = temp;
+
+	const hasWorkspace = entries.some((e: any) => e.kind === "workspace");
+	if (hasWorkspace) {
+		return {
+			action: "reorder-siblings",
+			parentId,
+			entries,
+		};
+	}
+
 	return {
 		action: "reorder-siblings",
 		parentId,
 		kind: "chat",
-		ids,
+		ids: entries.map((e: any) => e.id),
 	};
 }
 

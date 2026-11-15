@@ -371,7 +371,9 @@ export function Chat({
 	const submissionMounted = useRef(true);
 	useEffect(() => { submissionMounted.current = true; return () => { submissionMounted.current = false; submissionRunner.dispose(); }; }, [submissionRunner]);
 	useEffect(() => () => submissionRunner.dispose(), [surfaceTarget, submissionRunner]);
-	const inputViewReader = useRef<(() => PluginSessionViewInput) | null>(null) as SessionInputViewReader;
+	const inputViewReaderRef = useRef<SessionInputViewReader | null>(null);
+	if (!inputViewReaderRef.current) inputViewReaderRef.current = { current: null };
+	const inputViewReader = inputViewReaderRef.current;
 	const refreshPluginActions = useRef<(() => void) | null>(null);
 	const notifyViewChanged = useCallback(() => { if (submissionMounted.current) refreshPluginActions.current?.(); }, []);
 	inputViewReader.changed = notifyViewChanged;
@@ -2569,7 +2571,6 @@ export function DockOverlay({
 	const nativeViewReader = useRef<ViewReaderRef<NativeQuestionViewState>>({ current: null }).current;
 	const practiceViewReader = useRef<ViewReaderRef<string>>({ current: null }).current;
 	const customViewReader = useRef<ViewReaderRef<{ available: boolean }>>({ current: null }).current;
-	nativeViewReader.changed = practiceViewReader.changed = customViewReader.changed = viewReader?.changed;
 	nativeViewReader.changed = practiceViewReader.changed = customViewReader.changed = viewReader?.changed;
 
 	// Teach-question ARRIVAL state, applied during render — BEFORE the

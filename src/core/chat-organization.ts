@@ -57,11 +57,11 @@ export type ChatOrganizationAction =
 	| { action: "create-folder"; name: string; parentId: string | null; order?: number }
 	| { action: "rename-folder"; id: string; name: string }
 	| { action: "delete-folder"; id: string }
-	| { action: "move"; kind: "chat" | "folder"; id: string; parentId: string | null; targetOrder?: number }
-	| { action: "reorder"; kind: "chat" | "folder"; id: string; targetOrder?: number; targetIndex?: number }
-	| { action: "reorder-siblings"; parentId: string | null; kind: "chat" | "folder"; ids: string[] }
-	| { action: "archive"; kind: "chat" | "folder"; id: string }
-	| { action: "restore"; kind: "chat" | "folder"; id: string; targetParentId?: string | null };
+	| { action: "move"; kind: "chat" | "workspace" | "folder"; id: string; parentId: string | null; targetOrder?: number }
+	| { action: "reorder"; kind: "chat" | "workspace" | "folder"; id: string; targetOrder?: number; targetIndex?: number }
+	| { action: "reorder-siblings"; parentId: string | null; kind: "chat" | "workspace" | "folder"; ids: string[] }
+	| { action: "archive"; kind: "chat" | "workspace" | "folder"; id: string }
+	| { action: "restore"; kind: "chat" | "workspace" | "folder"; id: string; targetParentId?: string | null };
 
 export const emptyChatOrganization = (): ChatOrganization => ({
 	version: 1,

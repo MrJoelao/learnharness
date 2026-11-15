@@ -8,6 +8,7 @@ export interface PluginTransportHost {
 	list(): PluginInfo[];
 	modes(): PluginModeMetadata[];
 	createWorkspace(input: { pluginId: string; modeId: string; title?: string }): Promise<WorkspaceRecord>;
+	getWorkspace?(id: string): { workspace: WorkspaceRecord; availability: import("../core/workspaces.ts").WorkspaceAvailability };
 	workspaceState(id: string, key: string, operation: "get" | "set" | "delete", value?: unknown): { found: boolean; value?: unknown };
 	renameWorkspace(id: string, title: string): WorkspaceRecord;
 	deleteWorkspace(id: string): Promise<void>;
@@ -48,6 +49,11 @@ export function createPluginTransport(deps: { getHost(): Promise<PluginTransport
 			const body = await objectBody(request);
 			if (Object.keys(body).some(key => !["pluginId", "modeId", "title"].includes(key)) || typeof body.pluginId !== "string" || typeof body.modeId !== "string" || (body.title !== undefined && typeof body.title !== "string")) throw new InputError("Invalid workspace creation request");
 			return json({ workspace: await (await deps.getHost()).createWorkspace({ pluginId: body.pluginId, modeId: body.modeId, ...(body.title === undefined ? {} : { title: body.title }) }) });
+		}),
+		readWorkspace: (id: string) => guarded(async () => {
+			const host = await deps.getHost();
+			if (!host.getWorkspace) throw new InputError("Workspace read is not supported");
+			return json(host.getWorkspace(id));
 		}),
 		workspaceTitle: (id: string, request: Request) => guarded(async () => {
 			const body = await objectBody(request);

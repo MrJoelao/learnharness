@@ -4,7 +4,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MenuShell } from "@/components/menu-shell";
-import { DeleteSessionDialog } from "@/components/delete-session-dialog";
 import type { ThemeMode, ChatDeleteMode } from "@/src/core";
 import {
 	DumbbellIcon,
@@ -22,6 +21,7 @@ import {
 	FolderOpenIcon,
 	MoreVerticalIcon,
 	MessageSquareDotIcon,
+	LayoutGridIcon,
 } from "lucide-react";
 import { ActivitySection, useActivity } from "@/components/activity-dock";
 import { CoverageMenuBlock } from "@/components/extraction-coverage";
@@ -39,10 +39,13 @@ import {
 	chatFolderIsEmpty,
 	type ChatListItem,
 	type ChatDirectoryItem,
+	type WorkspaceDirectoryEntry,
+	type DirectoryEntry,
 	type ChatFolder,
 	type ChatOrganization,
 	type ChatOrganizationAction,
 } from "@/src/core";
+import { DeleteSessionDialog, DeleteWorkspaceDialog } from "@/components/delete-session-dialog";
 import {
 	MoveDestinationDialog,
 	DeleteFolderDialog,
@@ -886,14 +889,18 @@ export function SessionsSidebar({
 		});
 	}, []);
 
-	// Auto-expand folder chain for the currently active session
+	// Auto-expand folder chain for the currently active session or workspace
 	useEffect(() => {
-		if (!pathname?.startsWith("/chat/")) return;
-		const chatId = pathname.replace("/chat/", "");
-		if (!chatId || !chats || folders.length === 0) return;
-		const chat = chats.find((c) => c.id === chatId);
-		if (chat?.folderId) {
-			const chain = getChatFolderChain(chat.folderId, folders);
+		let targetId: string | null = null;
+		if (pathname?.startsWith("/chat/")) {
+			targetId = pathname.replace("/chat/", "").split("/")[0] ?? null;
+		} else if (pathname?.startsWith("/workspaces/")) {
+			targetId = pathname.replace("/workspaces/", "").split("/")[0] ?? null;
+		}
+		if (!targetId || !chats || folders.length === 0) return;
+		const item = chats.find((c) => c.id === targetId);
+		if (item?.folderId) {
+			const chain = getChatFolderChain(item.folderId, folders);
 			setExpandedFolderIds((prev) => {
 				const next = new Set(prev);
 				let changed = false;
@@ -908,18 +915,18 @@ export function SessionsSidebar({
 		}
 	}, [pathname, chats, folders]);
 
-	/* FUZZY: subsequence match ranked by fuzzyScore over ACTIVE chats */
+	/* FUZZY: subsequence match ranked by fuzzyScore over ACTIVE chats & workspaces */
 	const shown = useMemo(() => {
 		const q = query.trim();
 		let list = activeChats;
 		if (list && kindFilter !== "all") {
-			list = list.filter((c) => (c.kind ?? "teach") === kindFilter);
+			list = list.filter((c: any) => c.kind === "workspace" || (c.kind ?? "teach") === kindFilter);
 		}
 		if (!list) return list ?? null;
 		if (!q) return list;
 		return list
 			.map((c) => ({ c, score: fuzzyScore(q, c.title) }))
-			.filter((r): r is { c: ChatDirectoryItem; score: number } => r.score !== null)
+			.filter((r): r is { c: any; score: number } => r.score !== null)
 			.sort((a, b) => b.score - a.score)
 			.map((r) => r.c);
 	}, [activeChats, query, kindFilter]);
@@ -929,41 +936,79 @@ export function SessionsSidebar({
 		if (refreshInFlightRef.current) return;
 		refreshInFlightRef.current = true;
 		try {
-			const [orgRes, chatsRes, archRes] = await Promise.all([
-				fetch("/api/chats/organization", { cache: "no-store" }),
+			const [dirRes, chatsRes, archDirRes] = await Promise.all([
+				fetch("/api/directory", { cache: "no-store" }).catch(() => null),
 				fetch("/api/chats", { cache: "no-store" }).catch(() => null),
-				fetch("/api/chats/organization?archived=true", { cache: "no-store" }).catch(() => null),
+				fetch("/api/directory?archived=true", { cache: "no-store" }).catch(() => null),
 			]);
 
-			if (orgRes.ok) {
-				const d = (await orgRes.json()) as { organization: ChatOrganization; chats: ChatDirectoryItem[] };
-				let rawChats = d.chats;
+			if (dirRes && dirRes.ok) {
+				const d = (await dirRes.json()) as { organization: any; folders: ChatFolder[]; items: (ChatDirectoryItem | WorkspaceDirectoryEntry)[] };
+				let rawItems = d.items ?? [];
 				if (chatsRes && chatsRes.ok) {
 					try {
 						const cData = (await chatsRes.json()) as { chats: ChatListItem[] };
 						const busyMap = new Map(cData.chats.map((c) => [c.id, Boolean(c.busy)]));
 						const compactingMap = new Map(cData.chats.map((c) => [c.id, Boolean(c.compacting)]));
-						rawChats = rawChats.map((c) => ({
-							...c,
-							busy: busyMap.get(c.id) ?? c.busy,
-							compacting: compactingMap.get(c.id) ?? c.compacting,
-						}));
+						rawItems = rawItems.map((c) => {
+							if (c.kind === "workspace") return c;
+							return {
+								...c,
+								busy: busyMap.get(c.id) ?? (c as any).busy,
+								compacting: compactingMap.get(c.id) ?? (c as any).compacting,
+							};
+						});
 					} catch {
 						// fallback
 					}
 				}
 				setOrganization(d.organization);
-				setFolders(d.organization.folders);
-				setChats(rawChats);
+				setFolders(d.folders ?? d.organization?.folders ?? []);
+				setChats(rawItems as any);
+			} else {
+				const orgRes = await fetch("/api/chats/organization", { cache: "no-store" });
+				if (orgRes.ok) {
+					const d = (await orgRes.json()) as { organization: ChatOrganization; chats: ChatDirectoryItem[] };
+					let rawChats = d.chats;
+					if (chatsRes && chatsRes.ok) {
+						try {
+							const cData = (await chatsRes.json()) as { chats: ChatListItem[] };
+							const busyMap = new Map(cData.chats.map((c) => [c.id, Boolean(c.busy)]));
+							const compactingMap = new Map(cData.chats.map((c) => [c.id, Boolean(c.compacting)]));
+							rawChats = rawChats.map((c) => ({
+								...c,
+								busy: busyMap.get(c.id) ?? c.busy,
+								compacting: compactingMap.get(c.id) ?? c.compacting,
+							}));
+						} catch {
+							// fallback
+						}
+					}
+					setOrganization(d.organization);
+					setFolders(d.organization.folders);
+					setChats(rawChats);
+				}
 			}
 
-			if (archRes && archRes.ok) {
-				const archData = (await archRes.json()) as {
-					folders: ChatFolder[];
-					chats: ChatDirectoryItem[];
+			if (archDirRes && archDirRes.ok) {
+				const archData = (await archDirRes.json()) as {
+					archivedFolders?: ChatFolder[];
+					folders?: ChatFolder[];
+					items?: (ChatDirectoryItem | WorkspaceDirectoryEntry)[];
+					chats?: ChatDirectoryItem[];
 				};
-				setArchivedFolders(archData.folders ?? []);
-				setArchivedChats(archData.chats ?? []);
+				setArchivedFolders(archData.archivedFolders ?? archData.folders ?? []);
+				setArchivedChats((archData.items ?? archData.chats ?? []) as any);
+			} else {
+				const archRes = await fetch("/api/chats/organization?archived=true", { cache: "no-store" }).catch(() => null);
+				if (archRes && archRes.ok) {
+					const archData = (await archRes.json()) as {
+						folders: ChatFolder[];
+						chats: ChatDirectoryItem[];
+					};
+					setArchivedFolders(archData.folders ?? []);
+					setArchivedChats(archData.chats ?? []);
+				}
 			}
 		} catch {
 			setChats((prev) => prev ?? []);
@@ -1053,6 +1098,7 @@ export function SessionsSidebar({
 	};
 	useServerEvent("chats-changed", scheduleEventRefresh);
 	useServerEvent("chat-organization-changed", scheduleEventRefresh);
+	useServerEvent("workspaces-changed", scheduleEventRefresh);
 	useServerEvent("turn-started", scheduleEventRefresh);
 	useServerEvent("turn-settled", scheduleEventRefresh);
 	useServerEvent("compaction-changed", scheduleEventRefresh);
@@ -1070,18 +1116,22 @@ export function SessionsSidebar({
 
 	const [ctxChatId, setCtxChatId] = useState<string | null>(null);
 	const ctxAnchorRef = useRef<HTMLElement | null>(null);
+	const [ctxWorkspaceId, setCtxWorkspaceId] = useState<string | null>(null);
+	const ctxWorkspaceAnchorRef = useRef<HTMLElement | null>(null);
 	const [ctxFolderId, setCtxFolderId] = useState<string | null>(null);
 	const ctxFolderAnchorRef = useRef<HTMLElement | null>(null);
 
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
 	const [deleting, setDeleting] = useState<Pick<ChatListItem, "id" | "title"> | null>(null);
+	const [deletingWorkspace, setDeletingWorkspace] = useState<WorkspaceDirectoryEntry | null>(null);
 	const [deletingFolder, setDeletingFolder] = useState<ChatFolder | null>(null);
 	const [movingTarget, setMovingTarget] = useState<MoveTargetItem | null>(null);
 	const [feedback, setFeedback] = useState<OrganizationFeedback | null>(null);
 
 	const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
 	const newMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
+	/* Focus handled by MenuShell; firstItem?.focus() */
 
 	// Auto-dismiss feedback toast
 	useEffect(() => {
@@ -1094,6 +1144,7 @@ export function SessionsSidebar({
 
 	const closeContextMenus = useCallback(() => {
 		setCtxChatId(null);
+		setCtxWorkspaceId(null);
 		setCtxFolderId(null);
 		setIsNewMenuOpen(false);
 	}, []);
@@ -1105,6 +1156,13 @@ export function SessionsSidebar({
 		setCtxChatId(chat.id);
 	};
 
+	const openWorkspaceContext = (e: React.MouseEvent<HTMLButtonElement>, workspace: WorkspaceDirectoryEntry) => {
+		e.preventDefault();
+		closeContextMenus();
+		ctxWorkspaceAnchorRef.current = e.currentTarget;
+		setCtxWorkspaceId(workspace.id);
+	};
+
 	const openFolderContext = (e: React.MouseEvent<HTMLElement>, folder: ChatFolder) => {
 		e.preventDefault();
 		closeContextMenus();
@@ -1114,6 +1172,7 @@ export function SessionsSidebar({
 
 	const isAnyMenuOpen =
 		ctxChatId !== null ||
+		ctxWorkspaceId !== null ||
 		ctxFolderId !== null ||
 		isNewMenuOpen;
 
@@ -1123,6 +1182,7 @@ export function SessionsSidebar({
 			const target = e.target as Node;
 			if (target instanceof Element && target.closest("[data-lh-menu]")) return;
 			if (ctxAnchorRef.current?.contains(target)) return;
+			if (ctxWorkspaceAnchorRef.current?.contains(target)) return;
 			if (ctxFolderAnchorRef.current?.contains(target)) return;
 			if (newMenuAnchorRef.current?.contains(target)) return;
 			closeContextMenus();
@@ -1214,17 +1274,20 @@ export function SessionsSidebar({
 		const t = next.trim();
 		if (t === "") return;
 		try {
-			const res = await fetch(`/api/chats/${id}`, {
+			const target = chats?.find((c) => c.id === id);
+			const isWs = target && "kind" in target && (target as any).kind === "workspace";
+			const res = await fetch(isWs ? `/api/workspaces/${id}` : `/api/chats/${id}`, {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ title: t }),
 			});
 			if (!res.ok) throw new Error(`rename failed: ${res.status}`);
+			setChats((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, title: t } : c)) : prev));
 			window.dispatchEvent(new CustomEvent("lh:chat-renamed", { detail: { id, title: t } }));
 		} catch (err) {
 			console.error("rename failed:", err);
 		}
-	}, []);
+	}, [chats]);
 
 	const onDeleted = useCallback(
 		(id: string, _mode: ChatDeleteMode, graphRevision: number) => {
@@ -1587,7 +1650,9 @@ export function SessionsSidebar({
 						<ChatFolderTree
 							folders={activeFolders}
 							chats={shown ?? []}
+							items={shown ?? []}
 							activeChatId={pathname?.startsWith("/chat/") ? pathname.replace("/chat/", "") : null}
+							activeWorkspaceId={pathname?.startsWith("/workspaces/") ? pathname.replace("/workspaces/", "").split("/")[0] : null}
 							kbdChatId={kbdIndex !== null && shown && kbdIndex < shown.length ? shown[kbdIndex]!.id : null}
 							expandedFolderIds={expandedFolderIds}
 							onToggleFolder={toggleFolder}
@@ -1595,7 +1660,12 @@ export function SessionsSidebar({
 								setKbdIndex(null);
 								router.push(`/chat/${id}`);
 							}}
+							onSelectWorkspace={(id) => {
+								setKbdIndex(null);
+								router.push(`/workspaces/${id}`);
+							}}
 							onContextMenuChat={openContext}
+							onContextMenuWorkspace={openWorkspaceContext}
 							onNewSessionInFolder={(fId) => newSession(undefined, fId)}
 							onFolderContextMenu={openFolderContext}
 							selectedFolderId={selectedFolderId}
@@ -1679,6 +1749,7 @@ export function SessionsSidebar({
 						<MenuShell
 							anchorRef={newMenuAnchorRef}
 							testid="new-unified-menu"
+							data-testid="new-unified-menu"
 							preferredSide="up"
 							align="left"
 							menuClass="flex w-64 flex-col rounded-xl border border-border bg-card text-xs shadow-2xl overflow-hidden"
@@ -1728,6 +1799,23 @@ export function SessionsSidebar({
 							</div>
 						</MenuShell>
 					)}
+				</div>
+
+				<div className="px-2 py-0.5">
+					<Hint label="Study Hub" side="right">
+						<Link
+							href="/study-hub"
+							data-testid="study-hub-nav-button"
+							aria-label="Study Hub"
+							className={cn(
+								"flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer",
+								pathname?.startsWith("/study-hub") && "bg-accent text-foreground font-semibold",
+							)}
+						>
+							<LayoutGridIcon className="size-3" />
+							<span>Study Hub</span>
+						</Link>
+					</Hint>
 				</div>
 				</PluginSidebarActions>
 
@@ -1897,6 +1985,129 @@ export function SessionsSidebar({
 					</button>
 					<div className="my-0.5 border-t border-border/60" aria-hidden="true" />
 					<CoverageMenuBlock chatId={ctxChatId} />
+				</MenuShell>
+			)}
+
+			{/* Active Workspace Context Menu */}
+			{ctxWorkspaceId !== null && (
+				<MenuShell
+					anchorRef={ctxWorkspaceAnchorRef}
+					testid="workspace-context-menu"
+					preferredSide="down"
+					menuClass="flex w-52 flex-col gap-0.5 rounded-xl border bg-card p-2 text-xs shadow-xl"
+				>
+					<button
+						type="button"
+						data-testid="ctx-open"
+						onClick={() => {
+							const id = ctxWorkspaceId;
+							closeContextMenus();
+							router.push(`/workspaces/${id}`);
+						}}
+						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+					>
+						Open
+					</button>
+					<button
+						type="button"
+						data-testid="ctx-rename"
+						onClick={() => {
+							setRenamingId(ctxWorkspaceId);
+							closeContextMenus();
+						}}
+						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+					>
+						Rename
+					</button>
+					<button
+						type="button"
+						data-testid="ctx-move"
+						onClick={() => {
+							const target = chats?.find((c) => c.id === ctxWorkspaceId);
+							if (target) {
+								setMovingTarget({
+									kind: "workspace",
+									id: target.id,
+									title: target.title,
+									parentId: target.folderId,
+								});
+							}
+							closeContextMenus();
+						}}
+						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+					>
+						Move to…
+					</button>
+					{(() => {
+						const target = chats?.find((c) => c.id === ctxWorkspaceId);
+						if (!target) return null;
+						const siblings = chats?.filter((c) => c.folderId === target.folderId) ?? [];
+						const idx = siblings.findIndex((c) => c.id === ctxWorkspaceId);
+						const canMoveUp = idx > 0;
+						const canMoveDown = idx >= 0 && idx < siblings.length - 1;
+						return (
+							<>
+								{canMoveUp && (
+									<button
+										type="button"
+										data-testid="ctx-move-up"
+										onClick={() => {
+											if (organization && chats) {
+												const action = getSiblingMoveAction("workspace", ctxWorkspaceId, "up", organization, chats);
+												if (action) void executeAction(action, { organization, chats });
+											}
+											closeContextMenus();
+										}}
+										className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+									>
+										Move up
+									</button>
+								)}
+								{canMoveDown && (
+									<button
+										type="button"
+										data-testid="ctx-move-down"
+										onClick={() => {
+											if (organization && chats) {
+												const action = getSiblingMoveAction("workspace", ctxWorkspaceId, "down", organization, chats);
+												if (action) void executeAction(action, { organization, chats });
+											}
+											closeContextMenus();
+										}}
+										className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+									>
+										Move down
+									</button>
+								)}
+							</>
+						);
+					})()}
+					<button
+						type="button"
+						data-testid="ctx-archive"
+						onClick={() => {
+							const wsId = ctxWorkspaceId;
+							closeContextMenus();
+							if (organization && chats) {
+								void executeAction({ action: "archive", kind: "workspace", id: wsId }, { organization, chats });
+							}
+						}}
+						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-foreground transition-colors hover:bg-accent cursor-pointer"
+					>
+						Archive
+					</button>
+					<button
+						type="button"
+						data-testid="ctx-delete"
+						onClick={() => {
+							const target = chats?.find((c) => c.id === ctxWorkspaceId) as WorkspaceDirectoryEntry | undefined;
+							if (target) setDeletingWorkspace(target);
+							closeContextMenus();
+						}}
+						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-destructive transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+					>
+						Delete…
+					</button>
 				</MenuShell>
 			)}
 
@@ -2121,6 +2332,17 @@ export function SessionsSidebar({
 				chat={deleting}
 				onClose={() => setDeleting(null)}
 				onDeleted={onDeleted}
+			/>
+
+			{/* Delete Workspace Dialog */}
+			<DeleteWorkspaceDialog
+				workspace={deletingWorkspace}
+				onClose={() => setDeletingWorkspace(null)}
+				onDeleted={(id) => {
+					setDeletingWorkspace(null);
+					setChats((prev) => (prev ? prev.filter((c) => c.id !== id) : prev));
+					if (pathname?.startsWith(`/workspaces/${id}`)) router.push("/");
+				}}
 			/>
 		</aside>
 	);

@@ -218,3 +218,86 @@ export function DeleteSessionBody({
 	);
 	return renderFrame ? renderFrame(frame) : frame;
 }
+
+export function DeleteWorkspaceDialog({
+	workspace,
+	onClose,
+	onDeleted,
+}: {
+	workspace: { id: string; title: string } | null;
+	onClose: () => void;
+	onDeleted: (id: string) => void;
+}) {
+	const [busy, setBusy] = useState(false);
+	const [failure, setFailure] = useState<string | null>(null);
+
+	useEffect(() => {
+		setBusy(false);
+		setFailure(null);
+	}, [workspace?.id]);
+
+	if (!workspace) return null;
+
+	const onRun = async () => {
+		if (busy) return;
+		setBusy(true);
+		setFailure(null);
+		try {
+			const res = await fetch(`/api/workspaces/${encodeURIComponent(workspace.id)}`, { method: "DELETE" });
+			if (!res.ok) {
+				const body = (await res.json().catch(() => ({}))) as { error?: string };
+				setFailure(body.error || `Failed to delete workspace (${res.status})`);
+				setBusy(false);
+				return;
+			}
+			onDeleted(workspace.id);
+			onClose();
+		} catch (error) {
+			setFailure(error instanceof Error ? error.message : "Failed to delete workspace");
+			setBusy(false);
+		}
+	};
+
+	return (
+		<HostDialog
+			open={Boolean(workspace)}
+			onClose={() => {
+				if (busy) return "blocked";
+				onClose();
+				return "closed";
+			}}
+			backdropProps={{ className: "fixed inset-0 z-50 flex items-center justify-center bg-background/80" }}
+		>
+			<div data-testid="delete-workspace-dialog" className="w-[420px] max-w-[calc(100vw-2rem)] select-none p-5 rounded-xl border bg-card shadow-2xl">
+				<h2 className="text-sm font-semibold text-destructive">Delete workspace?</h2>
+				<p className="mt-1 truncate font-mono text-sm text-muted-foreground">{workspace.title}</p>
+				<p className="mt-2 text-xs text-muted-foreground">
+					This will permanently delete this workspace and its saved state.
+				</p>
+				{failure && (
+					<div role="alert" className="mt-3 rounded border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+						{failure}
+					</div>
+				)}
+				<div className="mt-4 flex justify-end gap-2">
+					<button
+						type="button"
+						onClick={onClose}
+						disabled={busy}
+						className="rounded-sm px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40 cursor-pointer"
+					>
+						Cancel
+					</button>
+					<button
+						type="button"
+						onClick={onRun}
+						disabled={busy}
+						className="rounded-sm border border-destructive/50 bg-destructive/10 px-3 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/20 disabled:opacity-40 cursor-pointer"
+					>
+						{busy ? "Deleting…" : "Delete"}
+					</button>
+				</div>
+			</div>
+		</HostDialog>
+	);
+}
