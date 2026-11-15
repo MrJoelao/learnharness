@@ -306,48 +306,363 @@ export const ALLOWED_NAMESPACES = new Set([
 	"http://www.w3.org/2000/xmlns/",
 ]);
 
+export const CSS_PRESENTATIONAL_ATTRIBUTES = new Set([
+	"fill",
+	"stroke",
+	"filter",
+	"clip-path",
+	"clippath",
+	"mask",
+	"marker",
+	"marker-start",
+	"marker-mid",
+	"marker-end",
+	"cursor",
+]);
+
 /**
- * Validates CSS text inside <style> tags and in 'style' attributes (Fix B).
+ * Decodes CSS unicode hex escapes (\72, \000072, \66 ) and simple escapes (\:, \/, \f, etc.).
+ * Handles optional trailing whitespace consumed by hex escapes according to CSS syntax rules.
+ */
+function decodeCssEscapes(css: string): { decoded: string; problems: string[] } {
+	const problems: string[] = [];
+	let decoded = "";
+
+	for (let i = 0; i < css.length; i++) {
+		const char = css[i] ?? "";
+		if (char !== "\\") {
+			decoded += char;
+			continue;
+		}
+
+		// Backslash encountered
+		i++;
+		if (i >= css.length) {
+			problems.push("CSS contains invalid trailing backslash escape.");
+			break;
+		}
+
+		const nextChar = css[i] ?? "";
+
+		// Line continuation: \ followed by \r\n, \n, \r, or \f
+		if (nextChar === "\r") {
+			if (i + 1 < css.length && (css[i + 1] ?? "") === "\n") {
+				i++;
+			}
+			continue;
+		}
+		if (nextChar === "\n" || nextChar === "\f") {
+			continue;
+		}
+
+		// Hex escape: 1 to 6 hex digits
+		if (/[0-9a-fA-F]/.test(nextChar)) {
+			let hex = "";
+			while (i < css.length && hex.length < 6 && /[0-9a-fA-F]/.test(css[i] ?? "")) {
+				hex += css[i] ?? "";
+				i++;
+			}
+			// Hex escape in CSS optionally consumes a single trailing whitespace [ \t\r\n\f]
+			if (i < css.length) {
+				const trailing = css[i] ?? "";
+				if (trailing === "\r") {
+					if (i + 1 < css.length && (css[i + 1] ?? "") === "\n") {
+						i++;
+					}
+				} else if (trailing === " " || trailing === "\t" || trailing === "\n" || trailing === "\f") {
+					// Consumed trailing whitespace
+				} else {
+					i--; // Character is not whitespace, do not consume
+				}
+			} else {
+				i--; // End of string reached
+			}
+
+			const code = parseInt(hex, 16);
+			if (code === 0) {
+				problems.push("CSS contains disallowed null byte escape sequence.");
+			} else if ((code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff) {
+				problems.push(`CSS contains invalid Unicode code point in escape: \\${hex}`);
+			} else {
+				try {
+					decoded += String.fromCodePoint(code);
+				} catch {
+					problems.push(`CSS contains malformed escape sequence: \\${hex}`);
+				}
+			}
+			continue;
+		}
+
+		// Simple escape: any character other than hex and newline
+		decoded += nextChar;
+	}
+
+	return { decoded, problems };
+}
+
+/**
+ * Normalizes CSS text by checking unclosed comments/quotes/parens,
+ * decoding escapes, and ensuring comments do not split critical tokens.
+ */
+function normalizeAndDecodeCss(css: string): { decoded: string; problems: string[] } {
+	const problems: string[] = [];
+	if (!css) return { decoded: "", problems };
+
+	// 1. Check for unclosed comments, quotes, and unbalanced parentheses
+	let inComment = false;
+	let inSingleQuote = false;
+	let inDoubleQuote = false;
+	let parenDepth = 0;
+
+	for (let i = 0; i < css.length; i++) {
+		const char = css[i] ?? "";
+		const nextChar = i + 1 < css.length ? (css[i + 1] ?? "") : "";
+
+		if (inComment) {
+			if (char === "*" && nextChar === "/") {
+				inComment = false;
+				i++;
+			}
+			continue;
+		}
+
+		if (inSingleQuote) {
+			if (char === "\\") {
+				i++;
+			} else if (char === "'") {
+				inSingleQuote = false;
+			}
+			continue;
+		}
+
+		if (inDoubleQuote) {
+			if (char === "\\") {
+				i++;
+			} else if (char === '"') {
+				inDoubleQuote = false;
+			}
+			continue;
+		}
+
+		if (char === "/" && nextChar === "*") {
+			inComment = true;
+			i++;
+			continue;
+		}
+
+		if (char === "'") {
+			inSingleQuote = true;
+			continue;
+		}
+
+		if (char === '"') {
+			inDoubleQuote = true;
+			continue;
+		}
+
+		if (char === "(") {
+			parenDepth++;
+		} else if (char === ")") {
+			parenDepth--;
+			if (parenDepth < 0) {
+				problems.push("CSS contains unbalanced parentheses: unexpected closing ')'.");
+			}
+		}
+	}
+
+	if (inComment) {
+		problems.push("CSS contains unclosed comment.");
+	}
+	if (inSingleQuote || inDoubleQuote) {
+		problems.push("CSS contains unclosed quote.");
+	}
+	if (parenDepth !== 0 && !problems.some((p) => p.includes("unbalanced parentheses"))) {
+		problems.push("CSS contains unbalanced parentheses: missing closing ')'.");
+	}
+
+	// 2. Decode escapes on space-decommented and zero-space-decommented CSS to detect token splitting
+	const textSpace = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+	const textNoSpace = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+	const { decoded: decodedSpace, problems: escapeProblems } = decodeCssEscapes(textSpace);
+	problems.push(...escapeProblems);
+
+	if (textSpace !== textNoSpace) {
+		const { decoded: decodedNoSpace } = decodeCssEscapes(textNoSpace);
+		const criticalPatterns = [
+			/\burl\s*\(/i,
+			/@import\b/i,
+			/\bexpression\s*\(/i,
+			/\b(behavior|-moz-binding)\b/i,
+			/javascript:/i,
+			/vbscript:/i,
+			/file:/i,
+			/data:/i,
+			/https?:/i,
+			/ftp:/i,
+		];
+
+		for (const pat of criticalPatterns) {
+			const flags = pat.flags.includes("g") ? pat.flags : `${pat.flags}g`;
+			const countNoSpace = (decodedNoSpace.match(new RegExp(pat.source, flags)) || []).length;
+			const countSpace = (decodedSpace.match(new RegExp(pat.source, flags)) || []).length;
+			if (countNoSpace > countSpace) {
+				problems.push("CSS contains comment sequence splitting keyword or URL tokens.");
+				break;
+			}
+		}
+	}
+
+	return { decoded: decodedSpace, problems };
+}
+
+/**
+ * Deterministic scanner to extract and validate all url(...) function references.
+ * Strictly verifies quote balancing, paren matching, and enforces local #fragment identifiers only.
+ */
+function scanAndAuditCssUrls(css: string, contextDescription: string): string[] {
+	const problems: string[] = [];
+	const urlRegex = /\burl\s*\(/gi;
+	let match: RegExpExecArray | null;
+
+	while ((match = urlRegex.exec(css)) !== null) {
+		const openParenIdx = css.indexOf("(", match.index);
+		if (openParenIdx === -1) continue;
+
+		let i = openParenIdx + 1;
+		// Skip leading whitespace
+		while (i < css.length && /\s/.test(css[i] ?? "")) {
+			i++;
+		}
+
+		if (i >= css.length) {
+			problems.push(`${contextDescription} contains malformed url(): missing closing parenthesis.`);
+			continue;
+		}
+
+		let rawUrl = "";
+		const firstChar = css[i] ?? "";
+
+		if (firstChar === '"' || firstChar === "'") {
+			const quoteChar = firstChar;
+			i++; // move past quote
+			const urlStart = i;
+
+			while (i < css.length && (css[i] ?? "") !== quoteChar) {
+				const c = css[i] ?? "";
+				if (c === "\n" || c === "\r") {
+					break;
+				}
+				i++;
+			}
+
+			if (i >= css.length || (css[i] ?? "") !== quoteChar) {
+				problems.push(`${contextDescription} contains malformed url(): unclosed quote.`);
+				continue;
+			}
+
+			rawUrl = css.slice(urlStart, i);
+			i++; // move past closing quote
+
+			// Skip trailing whitespace after quote
+			while (i < css.length && /\s/.test(css[i] ?? "")) {
+				i++;
+			}
+
+			if (i >= css.length || (css[i] ?? "") !== ")") {
+				problems.push(`${contextDescription} contains malformed url(): unexpected content after quote or missing closing parenthesis.`);
+				continue;
+			}
+		} else {
+			// Unquoted URL
+			const urlStart = i;
+			let hasInnerQuotes = false;
+			let hasInnerParens = false;
+
+			while (i < css.length && (css[i] ?? "") !== ")" && !/\s/.test(css[i] ?? "")) {
+				const c = css[i] ?? "";
+				if (c === '"' || c === "'") {
+					hasInnerQuotes = true;
+				}
+				if (c === "(") {
+					hasInnerParens = true;
+				}
+				i++;
+			}
+
+			if (hasInnerQuotes) {
+				problems.push(`${contextDescription} contains malformed url(): unescaped quote in unquoted URL.`);
+				continue;
+			}
+
+			if (hasInnerParens) {
+				problems.push(`${contextDescription} contains malformed url(): unexpected nested parenthesis in URL.`);
+				continue;
+			}
+
+			rawUrl = css.slice(urlStart, i);
+
+			// Skip whitespace after unquoted URL
+			while (i < css.length && /\s/.test(css[i] ?? "")) {
+				i++;
+			}
+
+			if (i >= css.length || (css[i] ?? "") !== ")") {
+				problems.push(`${contextDescription} contains malformed url(): missing closing parenthesis.`);
+				continue;
+			}
+		}
+
+		const trimmedUrl = rawUrl.trim();
+		if (!trimmedUrl) {
+			problems.push(`${contextDescription} must not load empty url().`);
+			continue;
+		}
+
+		// Must strictly match local #fragment format: ^#[a-zA-Z0-9_-]+$
+		if (/^#[a-zA-Z0-9_-]+$/.test(trimmedUrl)) {
+			// Valid local fragment ID
+			continue;
+		}
+
+		problems.push(
+			`${contextDescription} must not load external URLs or non-fragment paths (http, https, file, ftp, data). Only local #fragment IDs are allowed.`,
+		);
+	}
+
+	return problems;
+}
+
+/**
+ * Validates CSS text inside <style> tags, in 'style' attributes, and in
+ * CSS-valued SVG presentation attributes (fill, stroke, filter, clip-path, mask, etc.).
  * Rejects @import, external/data URLs, dynamic behaviors, expressions, and CSS obfuscation.
  */
-export function auditCssContent(css: string): string[] {
+export function auditCssContent(css: string, contextDescription = "SVG style blocks"): string[] {
 	const problems: string[] = [];
 	if (!css || !css.trim()) return problems;
 
-	// 1. Decode CSS unicode escapes e.g. \65xpression -> expression, \75rl -> url
-	const decoded = css.replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => {
-		try {
-			const code = parseInt(hex, 16);
-			return String.fromCharCode(code);
-		} catch {
-			return "";
-		}
-	});
+	const { decoded, problems: normProblems } = normalizeAndDecodeCss(css);
+	for (const p of normProblems) {
+		problems.push(`${contextDescription}: ${p}`);
+	}
 
-	// 2. Remove CSS comments /* ... */ to prevent keyword splitting
-	const decommented = decoded.replace(/\/\*[\s\S]*?\*\//g, " ");
-
-	// 3. Normalize whitespace
-	const normalized = decommented.replace(/\s+/g, " ");
+	const normalized = decoded.replace(/\s+/g, " ");
 
 	if (/@import\b/i.test(normalized)) {
-		problems.push("SVG style blocks must not contain @import rules.");
+		problems.push(`${contextDescription} must not contain @import rules.`);
 	}
-	// Strictly allow only local #fragment IDs in url(...) references
-	// Rejects all schemes (http, https, file, ftp, data, blob, javascript, etc.) and non-fragment/external paths
-	if (/\burl\s*\(/i.test(normalized)) {
-		const totalUrlCount = (normalized.match(/\burl\s*\(/gi) || []).length;
-		const validFragmentUrlCount = (normalized.match(/\burl\s*\(\s*['"]?#[a-zA-Z0-9_-]+['"]?\s*\)/gi) || []).length;
-		if (totalUrlCount !== validFragmentUrlCount) {
-			problems.push("SVG style blocks must not load external URLs or non-fragment paths (http, https, file, ftp, data). Only local #fragment IDs are allowed.");
-		}
-	}
+
 	if (/\b(behavior|-moz-binding)\b/i.test(normalized)) {
-		problems.push("SVG style blocks must not use dynamic CSS behaviors or expressions.");
+		problems.push(`${contextDescription} must not use dynamic CSS behaviors or expressions.`);
 	}
 	if (/\bexpression\s*\(/i.test(normalized)) {
-		problems.push("SVG style blocks must not use dynamic CSS behaviors or expressions.");
+		problems.push(`${contextDescription} must not use dynamic CSS behaviors or expressions.`);
 	}
+
+	// Audit all url() references deterministically
+	const urlIssues = scanAndAuditCssUrls(decoded, contextDescription);
+	problems.push(...urlIssues);
 
 	return problems;
 }
@@ -462,12 +777,11 @@ function validateSvgSource(source: string): { problems: string[]; sanitized?: st
 				}
 			}
 
-			// Presentation or general attributes containing url(...)
-			if (attrLocal !== "style" && /\burl\s*\(/i.test(attrVal)) {
-				const totalUrlCount = (attrVal.match(/\burl\s*\(/gi) || []).length;
-				const validFragmentUrlCount = (attrVal.match(/\burl\s*\(\s*['"]?#[a-zA-Z0-9_-]+['"]?\s*\)/gi) || []).length;
-				if (totalUrlCount !== validFragmentUrlCount) {
-					problems.push(`SVG attribute '${attr.name}' must not load external URLs or non-fragment paths. Only local #fragment IDs are allowed.`);
+			// Presentation attributes CSS validation
+			if (CSS_PRESENTATIONAL_ATTRIBUTES.has(attrLocal)) {
+				const cssIssues = auditCssContent(attrVal, `SVG attribute '${attr.name}'`);
+				for (const issue of cssIssues) {
+					problems.push(issue);
 				}
 			}
 
@@ -478,9 +792,9 @@ function validateSvgSource(source: string): { problems: string[]; sanitized?: st
 
 			// Fix B: style attribute CSS validation
 			if (attrLocal === "style") {
-				const cssIssues = auditCssContent(attrVal);
+				const cssIssues = auditCssContent(attrVal, "SVG style attributes");
 				for (const issue of cssIssues) {
-					problems.push(issue.replace("SVG style blocks", "SVG style attributes"));
+					problems.push(issue);
 				}
 			}
 		}
@@ -497,7 +811,7 @@ function validateSvgSource(source: string): { problems: string[]; sanitized?: st
 		const local = tagName.includes(":") ? tagName.split(":")[1] : tagName;
 		if (local && local.toLowerCase() === "style") {
 			inStyleTag = false;
-			const cssIssues = auditCssContent(currentStyleText);
+			const cssIssues = auditCssContent(currentStyleText, "SVG style blocks");
 			for (const issue of cssIssues) {
 				problems.push(issue);
 			}

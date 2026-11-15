@@ -235,7 +235,7 @@ export function preserveCompatibleState(
  * full source text, controls, initialState, and accessibility configuration.
  */
 export function computeArtifactSignature(artifact: VisualArtifact): string {
-	return [
+	return JSON.stringify([
 		artifact.id,
 		artifact.version,
 		artifact.renderer,
@@ -243,10 +243,10 @@ export function computeArtifactSignature(artifact: VisualArtifact): string {
 		artifact.title,
 		artifact.summary ?? "",
 		artifact.source,
-		JSON.stringify(artifact.controls ?? []),
-		JSON.stringify(artifact.initialState ?? {}),
-		JSON.stringify(artifact.accessibility ?? {}),
-	].join("::");
+		artifact.controls ?? [],
+		artifact.initialState ?? {},
+		artifact.accessibility ?? {},
+	]);
 }
 
 function VisualExplanationUpdateNotice({ artifact }: { artifact: VisualArtifact }) {

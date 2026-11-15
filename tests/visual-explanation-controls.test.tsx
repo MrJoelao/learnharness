@@ -651,6 +651,88 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		assert.notEqual(sigBase, computeArtifactSignature(diffRenderer), "Signature must differ when renderer changes");
 	});
 
+	it("Phase 6.4: computeArtifactSignature uses structured serialization to eliminate delimiter collisions (Section 3.3)", () => {
+		// Old legacy concatenation logic for comparison:
+		const legacyComputeSignature = (artifact: VisualArtifact) => [
+			artifact.id,
+			artifact.version,
+			artifact.renderer,
+			artifact.presentation ?? "auto",
+			artifact.title,
+			artifact.summary ?? "",
+			artifact.source,
+			JSON.stringify(artifact.controls ?? []),
+			JSON.stringify(artifact.initialState ?? {}),
+			JSON.stringify(artifact.accessibility ?? {}),
+		].join("::");
+
+		// Artifact 1 has title with delimiter "Sim::Part2" and summary "Overview"
+		const artifact1: VisualArtifact = {
+			version: 1,
+			id: "sig-collision-test",
+			title: "Sim::Part2",
+			summary: "Overview",
+			renderer: "svg",
+			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+			presentation: "inline",
+			controls: [{ type: "button", id: "btn", label: "Go", action: "play" }],
+			initialState: { step: 0 },
+			accessibility: { description: "Accessible sim" },
+		};
+
+		// Artifact 2 has title "Sim" and summary "Part2::Overview"
+		const artifact2: VisualArtifact = {
+			...artifact1,
+			title: "Sim",
+			summary: "Part2::Overview",
+		};
+
+		// 1. Demonstrate the legacy concatenation collision flaw:
+		const legacySig1 = legacyComputeSignature(artifact1);
+		const legacySig2 = legacyComputeSignature(artifact2);
+		assert.equal(legacySig1, legacySig2, "Legacy concatenation flaw: distinct artifacts produced identical signature");
+
+		// 2. Demonstrate that the new structured serialization properly distinguishes them:
+		const newSig1 = computeArtifactSignature(artifact1);
+		const newSig2 = computeArtifactSignature(artifact2);
+		assert.notEqual(newSig1, newSig2, "New structured signature must produce distinct signatures despite delimiter overlap");
+
+		// 3. Verify identical artifacts produce identical signature:
+		const artifact1Clone: VisualArtifact = JSON.parse(JSON.stringify(artifact1));
+		assert.equal(computeArtifactSignature(artifact1), computeArtifactSignature(artifact1Clone), "Identical artifacts must produce the exact same signature");
+
+		// 4. Verify modifications to all critical fields continue to be detected:
+		assert.notEqual(
+			computeArtifactSignature(artifact1),
+			computeArtifactSignature({ ...artifact1, source: '<svg xmlns="http://www.w3.org/2000/svg"><circle/></svg>' }),
+			"Source modification must be detected",
+		);
+
+		assert.notEqual(
+			computeArtifactSignature(artifact1),
+			computeArtifactSignature({ ...artifact1, controls: [] }),
+			"Controls modification must be detected",
+		);
+
+		assert.notEqual(
+			computeArtifactSignature(artifact1),
+			computeArtifactSignature({ ...artifact1, initialState: { step: 1 } }),
+			"InitialState modification must be detected",
+		);
+
+		assert.notEqual(
+			computeArtifactSignature(artifact1),
+			computeArtifactSignature({ ...artifact1, renderer: "html" }),
+			"Renderer modification must be detected",
+		);
+
+		assert.notEqual(
+			computeArtifactSignature(artifact1),
+			computeArtifactSignature({ ...artifact1, accessibility: { description: "Updated accessible description" } }),
+			"Accessibility modification must be detected",
+		);
+	});
+
 	it("reactively updates mounted card in-place when source changes with identical length or controls change (Phase 6.3)", async () => {
 		clearVisualArtifactRegistry();
 

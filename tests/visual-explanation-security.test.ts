@@ -313,4 +313,287 @@ describe("Visual Explanation Security Validation — Adversarial Test Suite (Fix
 		assert.equal(res.valid, true, `Expected valid complex SVG to pass validation: ${res.problems.join(", ")}`);
 		assert.equal(res.problems.length, 0);
 	});
+
+	// ── Phase 6.4: CSS Escape Validation & URL Normalization Test Suite ──────────
+
+	it("Phase 6.4: rejects CSS escape in function name (u\\72l) (Section 2.1)", () => {
+		const source = '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u\\72l(file:///etc/passwd)"/></svg>';
+		const res = validateVisualArtifact({
+			version: 1,
+			id: "phase64-escape-fn",
+			title: "Escape Function Name Test",
+			renderer: "svg",
+			source,
+		});
+		assert.equal(res.valid, false, "Must reject u\\72l escape in function name");
+		assert.ok(
+			res.problems.some((p) => p.includes("external URLs") || p.includes("non-fragment")),
+			"Must report forbidden external/non-fragment URL violation",
+		);
+	});
+
+	it("Phase 6.4: rejects CSS escape in URL scheme (url(\\66ile:///...)) (Section 2.2)", () => {
+		const source = '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(\\66ile:///etc/passwd)"/></svg>';
+		const res = validateVisualArtifact({
+			version: 1,
+			id: "phase64-escape-scheme",
+			title: "Escape Scheme Test",
+			renderer: "svg",
+			source,
+		});
+		assert.equal(res.valid, false, "Must reject \\66ile escape in URL scheme");
+		assert.ok(
+			res.problems.some((p) => p.includes("external URLs") || p.includes("non-fragment")),
+			"Must report forbidden external/non-fragment URL violation",
+		);
+	});
+
+	it("Phase 6.4: accepts legitimate local fragment URL (#safe) including with normalized valid escapes (Section 2.3)", () => {
+		const validBaseSvg = `
+<svg xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="safe">
+      <stop offset="0%" stop-color="red"/>
+    </linearGradient>
+  </defs>
+  <rect fill="url(#safe)"/>
+</svg>
+`.trim();
+
+		const res = validateVisualArtifact({
+			version: 1,
+			id: "phase64-safe-url",
+			title: "Legitimate Local URL Test",
+			renderer: "svg",
+			source: validBaseSvg,
+		});
+		assert.equal(res.valid, true, `Expected safe local URL to pass validation: ${res.problems.join(", ")}`);
+		assert.equal(res.problems.length, 0);
+
+		// Also verify legitimate local fragment with normalized valid escapes
+		const validEscapedSvgs = [
+			'<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="safe"><stop offset="0%" stop-color="red"/></linearGradient></defs><rect fill="u\\72l(#safe)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="safe"><stop offset="0%" stop-color="red"/></linearGradient></defs><rect fill="url(\\23 safe)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="safe"><stop offset="0%" stop-color="red"/></linearGradient></defs><rect fill="url(\\#safe)"/></svg>',
+		];
+
+		for (const source of validEscapedSvgs) {
+			const r = validateVisualArtifact({
+				version: 1,
+				id: "phase64-safe-escaped",
+				title: "Safe Escaped Test",
+				renderer: "svg",
+				source,
+			});
+			assert.equal(r.valid, true, `Expected valid escaped local URL to pass: ${r.problems.join(", ")}`);
+		}
+	});
+
+	it("Phase 6.4: handles hexadecimal escapes with/without optional terminator and multi-digit hex (Section 2.4)", () => {
+		const escapeCases = [
+			// hex escape without space terminator
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u\\72l(file:///etc/passwd)"/></svg>',
+			// hex escape with space terminator
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u\\72 l(file:///etc/passwd)"/></svg>',
+			// hex escape with multiple digits (up to 6 digits)
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u\\000072l(file:///etc/passwd)"/></svg>',
+			// escape that changes the function name completely
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="\\75\\72\\6c(https://evil.com/leak)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="\\55\\52\\4c(https://evil.com/leak)"/></svg>',
+			// escape that changes the URL scheme
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(\\68\\74\\74\\70\\73://evil.com/leak)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(\\66ile:///etc/passwd)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(\\66 ile:///etc/passwd)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(\\000066ile:///etc/passwd)"/></svg>',
+			// simple escape changing the scheme
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(\\f\\i\\l\\e\\:\\/\\/\\/etc/passwd)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(fi\\le:///etc/passwd)"/></svg>',
+		];
+
+		for (const source of escapeCases) {
+			const res = validateVisualArtifact({
+				version: 1,
+				id: "phase64-escape-terminators",
+				title: "Escape Terminators Test",
+				renderer: "svg",
+				source,
+			});
+			assert.equal(res.valid, false, `Expected ${source} to be rejected`);
+			assert.ok(
+				res.problems.some((p) => p.includes("external URLs") || p.includes("non-fragment") || p.includes("malformed")),
+				`Must report security violation for ${source}`,
+			);
+		}
+	});
+
+	it("Phase 6.4: prevents CSS comments from bypassing or obfuscating url() checks (Section 2.5)", () => {
+		const hostileCommentCases = [
+			// comment between tokens
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="/* comment */ url(file:///etc/passwd)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(/* comment */ file:///etc/passwd)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(file:///etc/passwd) /* comment */"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url /* comment */ (file:///etc/passwd)"/></svg>',
+			// comment splitting keyword
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u/* comment */rl(file:///etc/passwd)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(fi/* comment */le:///etc/passwd)"/></svg>',
+			// combinations of comments and escapes
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u\\72l/* comment */(file:///etc/passwd)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="/* comment */ u\\72l(\\66ile:///etc/passwd)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u/*comment*/\\72l(file:///etc/passwd)"/></svg>',
+			// unclosed comment
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(#safe) /* unclosed"/></svg>',
+		];
+
+		for (const source of hostileCommentCases) {
+			const res = validateVisualArtifact({
+				version: 1,
+				id: "phase64-comments",
+				title: "CSS Comments Test",
+				renderer: "svg",
+				source,
+			});
+			assert.equal(res.valid, false, `Expected comment evasion ${source} to be rejected`);
+			assert.ok(res.problems.length > 0);
+		}
+
+		// Valid local URLs with comments should be accepted
+		const safeCommentCases = [
+			'<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="safe"><stop offset="0%" stop-color="red"/></linearGradient></defs><rect fill="/* safe comment */ url(#safe) /* safe comment */"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="safe"><stop offset="0%" stop-color="red"/></linearGradient></defs><rect fill="url( /* safe comment */ #safe /* safe comment */ )"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="safe"><stop offset="0%" stop-color="red"/></linearGradient></defs><rect fill="/* comment */ url(\\23 safe) /* comment */"/></svg>',
+		];
+
+		for (const source of safeCommentCases) {
+			const res = validateVisualArtifact({
+				version: 1,
+				id: "phase64-safe-comments",
+				title: "Safe Comments Test",
+				renderer: "svg",
+				source,
+			});
+			assert.equal(res.valid, true, `Expected safe commented SVG to pass: ${res.problems.join(", ")}`);
+		}
+	});
+
+	it("Phase 6.4: inspects multiple url() functions in a single attribute fail-closed (Section 2.6)", () => {
+		// All valid local URLs
+		const allValid = '<svg xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="c1"/><clipPath id="c2"/></defs><rect clip-path="url(#c1) url(#c2)"/></svg>';
+		const resValid = validateVisualArtifact({
+			version: 1,
+			id: "phase64-multi-valid",
+			title: "Multiple Valid URLs",
+			renderer: "svg",
+			source: allValid,
+		});
+		assert.equal(resValid.valid, true, `Expected multiple valid local URLs to pass: ${resValid.problems.join(", ")}`);
+
+		// One valid local, one external URL
+		const mixed = '<svg xmlns="http://www.w3.org/2000/svg"><defs><clipPath id="c1"/></defs><rect clip-path="url(#c1) url(https://evil.com/leak)"/></svg>';
+		const resMixed = validateVisualArtifact({
+			version: 1,
+			id: "phase64-multi-mixed",
+			title: "Multiple Mixed URLs",
+			renderer: "svg",
+			source: mixed,
+		});
+		assert.equal(resMixed.valid, false, "Must reject mixed local and external URLs");
+		assert.ok(
+			resMixed.problems.some((p) => p.includes("external URLs") || p.includes("non-fragment")),
+		);
+
+		// Multiple external URLs
+		const allExternal = '<svg xmlns="http://www.w3.org/2000/svg"><rect clip-path="url(file:///etc/passwd) url(https://evil.com/leak)"/></svg>';
+		const resAllExternal = validateVisualArtifact({
+			version: 1,
+			id: "phase64-multi-ext",
+			title: "Multiple External URLs",
+			renderer: "svg",
+			source: allExternal,
+		});
+		assert.equal(resAllExternal.valid, false, "Must reject multiple external URLs");
+	});
+
+	it("Phase 6.4: enforces CSS URL escape validation across all CSS-valued presentational attributes (Section 2.7)", () => {
+		const attributesToTest = ["fill", "stroke", "filter", "clip-path", "mask"];
+
+		for (const attr of attributesToTest) {
+			// 1. Function name escape bypass attempt
+			const fnEscapeSvg = `<svg xmlns="http://www.w3.org/2000/svg"><rect ${attr}="u\\72l(file:///etc/passwd)"/></svg>`;
+			const resFn = validateVisualArtifact({
+				version: 1,
+				id: `phase64-attr-fn-${attr}`,
+				title: `Attribute ${attr} fn escape test`,
+				renderer: "svg",
+				source: fnEscapeSvg,
+			});
+			assert.equal(resFn.valid, false, `Attribute ${attr} must reject function escape u\\72l`);
+			assert.ok(
+				resFn.problems.some((p) => p.includes("external URLs") || p.includes("non-fragment")),
+				`Attribute ${attr} must flag external URL`,
+			);
+
+			// 2. Scheme escape bypass attempt
+			const schemeEscapeSvg = `<svg xmlns="http://www.w3.org/2000/svg"><rect ${attr}="url(\\66ile:///etc/passwd)"/></svg>`;
+			const resScheme = validateVisualArtifact({
+				version: 1,
+				id: `phase64-attr-scheme-${attr}`,
+				title: `Attribute ${attr} scheme escape test`,
+				renderer: "svg",
+				source: schemeEscapeSvg,
+			});
+			assert.equal(resScheme.valid, false, `Attribute ${attr} must reject scheme escape \\66ile`);
+			assert.ok(
+				resScheme.problems.some((p) => p.includes("external URLs") || p.includes("non-fragment")),
+				`Attribute ${attr} must flag external URL`,
+			);
+
+			// 3. Valid local reference must pass
+			const validAttrSvg = `<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="safe"/></defs><rect ${attr}="url(#safe)"/></svg>`;
+			const resValid = validateVisualArtifact({
+				version: 1,
+				id: `phase64-attr-valid-${attr}`,
+				title: `Attribute ${attr} valid test`,
+				renderer: "svg",
+				source: validAttrSvg,
+			});
+			assert.equal(resValid.valid, true, `Attribute ${attr} must accept valid local url(#safe): ${resValid.problems.join(", ")}`);
+		}
+	});
+
+	it("Phase 6.4: rejects malformed url() syntax, unclosed quotes, unbalanced parentheses, and invalid fragments", () => {
+		const malformedCases = [
+			// unclosed quote
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(\'file:///etc/passwd)"/></svg>',
+			// mismatched quotes
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(\'file:///etc/passwd\\")"/></svg>',
+			// missing closing paren
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(file:///etc/passwd"/></svg>',
+			// extra closing paren / unbalanced paren
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(#safe))"/></svg>',
+			// nested unquoted paren
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url((#safe))"/></svg>',
+			// empty fragment
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(#)"/></svg>',
+			// fragment with query or path parameters
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(#safe?version=1)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(#safe/path)"/></svg>',
+			// relative and external paths with fragment
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(../icon.svg#safe)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(/icon.svg#safe)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(//cdn.org/icon.svg#safe)"/></svg>',
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(data:image/svg+xml,...#safe)"/></svg>',
+		];
+
+		for (const source of malformedCases) {
+			const res = validateVisualArtifact({
+				version: 1,
+				id: "phase64-malformed-urls",
+				title: "Malformed URLs Test",
+				renderer: "svg",
+				source,
+			});
+			assert.equal(res.valid, false, `Expected ${source} to be rejected fail-closed`);
+			assert.ok(res.problems.length > 0);
+		}
+	});
 });
