@@ -839,7 +839,36 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 	it("CORRECTION 3: chatId propagates through ToolPartRenderer isolating updates between chats", async () => {
 		clearVisualArtifactRegistry();
 
-		const dom = parseHTML("<!doctype html><html><body><div id='root-a'></div><div id='root-b'></div></body></html>");
+		const chatA = chatStore.createChat("Integration Session Alpha");
+		const chatB = chatStore.createChat("Integration Session Beta");
+
+		const toolA = createVisualExplanationTool({ chatId: chatA.id, chatStore });
+		const toolB = createVisualExplanationTool({ chatId: chatB.id, chatStore });
+
+		// 1. Initial creation in both sessions with identical artifact ID to verify cross-chat isolation
+		const sharedId = "vis-shared-pipeline-id";
+		const artA: VisualArtifact = {
+			version: 1,
+			id: sharedId,
+			title: "Pipeline Visual Alpha",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			presentation: "inline",
+		};
+		const artB: VisualArtifact = {
+			version: 1,
+			id: sharedId,
+			title: "Pipeline Visual Beta",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			presentation: "inline",
+		};
+		chatStore.saveVisualArtifact(chatA.id, artA);
+		chatStore.saveVisualArtifact(chatB.id, artB);
+
+		const dom = parseHTML(
+			"<!doctype html><html><body><div id='root-a'></div><div id='root-a-update'></div><div id='root-b'></div></body></html>",
+		);
 		const globals = {
 			window: dom.window,
 			document: dom.document,
@@ -851,47 +880,30 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 
 		const { createRoot } = await import("react-dom/client");
 		const rootA = createRoot(dom.document.querySelector("#root-a")!);
+		const rootAUpdate = createRoot(dom.document.querySelector("#root-a-update")!);
 		const rootB = createRoot(dom.document.querySelector("#root-b")!);
 
-		const artifactA: VisualArtifact = {
-			version: 1,
-			id: "vis-shared-pipe",
-			title: "Pipeline Visual A",
-			renderer: "svg",
-			source: VALID_DECLARATIVE_JSON,
-			presentation: "inline",
-		};
-
-		const artifactB: VisualArtifact = {
-			version: 1,
-			id: "vis-shared-pipe",
-			title: "Pipeline Visual B",
-			renderer: "svg",
-			source: VALID_DECLARATIVE_JSON,
-			presentation: "inline",
-		};
-
-		// Initial render of both tool parts in their respective chats
+		// 2. Initial render of both tool outputs in their respective chats via ToolPartRenderer
 		await act(async () => {
 			rootA.render(
 				<ToolPartRenderer
-					chatId="chat-alpha"
+					chatId={chatA.id}
 					part={{
 						type: "tool-visual_explanation",
 						state: "output-available",
-						toolCallId: "call_a_1",
-						output: { ok: true, artifact: artifactA },
+						toolCallId: "call_init_a",
+						output: { ok: true, action: "create", artifact: artA },
 					}}
 				/>,
 			);
 			rootB.render(
 				<ToolPartRenderer
-					chatId="chat-beta"
+					chatId={chatB.id}
 					part={{
 						type: "tool-visual_explanation",
 						state: "output-available",
-						toolCallId: "call_b_1",
-						output: { ok: true, artifact: artifactB },
+						toolCallId: "call_init_b",
+						output: { ok: true, action: "create", artifact: artB },
 					}}
 				/>,
 			);
@@ -900,41 +912,61 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 		// Verify initial rendering
 		const elA = dom.document.querySelector("#root-a");
 		const elB = dom.document.querySelector("#root-b");
-		assert.ok(elA?.textContent?.includes("Pipeline Visual A"));
-		assert.ok(elB?.textContent?.includes("Pipeline Visual B"));
+		assert.ok(elA?.textContent?.includes("Pipeline Visual Alpha"), "Chat A initial title rendered");
+		assert.ok(elB?.textContent?.includes("Pipeline Visual Beta"), "Chat B initial title rendered");
 
-		// Simulate follow-up tool execution updating artifact in chat-alpha:
-		// Emitting updated artifact via registerVisualArtifact into chat-alpha
-		const updatedArtifactA: VisualArtifact = {
-			...artifactA,
-			title: "Pipeline Visual A — In-Place Updated!",
-		};
+		// 3. Execute normal tool update in chat A
+		const updateResultA = await toolA.execute("call_update_a", {
+			action: "update",
+			id: sharedId,
+			title: "Pipeline Visual Alpha — Fully Integrated In-Place Update!",
+		});
+		assert.equal(updateResultA.isError, undefined, "Tool update execution must succeed");
+		assert.ok(updateResultA.details, "Tool execution must return details payload");
 
+		// 4. Render update output through ToolPartRenderer in Chat A (simulating normal conversation stream)
 		await act(async () => {
-			registerVisualArtifact(updatedArtifactA, "chat-alpha");
+			rootAUpdate.render(
+				<ToolPartRenderer
+					chatId={chatA.id}
+					part={{
+						type: "tool-visual_explanation",
+						state: "output-available",
+						toolCallId: "call_update_a",
+						output: updateResultA.details,
+					}}
+				/>,
+			);
 		});
 
-		// Check: Chat A component updated in-place via subscription scoped to chat-alpha
+		// Verify update notice was rendered in Chat A
+		const elAUpdate = dom.document.querySelector("#root-a-update");
+		assert.ok(elAUpdate?.querySelector('[data-testid="visual-explanation-update-notice"]'), "Update notice rendered");
+
+		// 5. Verify that Chat A's initial card received the update via subscription and updated in-place
 		assert.ok(
-			elA?.textContent?.includes("Pipeline Visual A — In-Place Updated!"),
-			"Chat A card must update in-place",
+			elA?.textContent?.includes("Pipeline Visual Alpha — Fully Integrated In-Place Update!"),
+			"Chat A card must update in-place through tool execution -> ToolPartRenderer -> subscription",
 		);
 
-		// Check: Chat B component with the same artifact ID remains completely unaffected
+		// 6. Verify that Chat B card remains completely isolated and untouched
 		assert.ok(
-			elB?.textContent?.includes("Pipeline Visual B"),
+			elB?.textContent?.includes("Pipeline Visual Beta"),
 			"Chat B card must remain untouched",
 		);
 		assert.ok(
-			!elB?.textContent?.includes("In-Place Updated!"),
+			!elB?.textContent?.includes("Fully Integrated In-Place Update!"),
 			"Chat B card must not receive updates from Chat A",
 		);
 
 		await act(async () => {
 			rootA.unmount();
+			rootAUpdate.unmount();
 			rootB.unmount();
 		});
 		clearVisualArtifactRegistry();
+		chatStore.deleteChat(chatA.id);
+		chatStore.deleteChat(chatB.id);
 	});
 });
 
