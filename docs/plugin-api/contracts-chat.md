@@ -159,6 +159,7 @@ export interface ChatRecord {
     updatedAt: string;
     messages: LhMessage[];
     imageSnapshots?: Record<string, ImageSnapshot>;
+    visualArtifacts?: Record<string, VisualArtifact>;
     kind?: ChatKind;
     notes?: string;
     references?: SessionReference[];
@@ -172,7 +173,7 @@ export interface ChatRecord {
 }
 ```
 
-**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [ExtractionRunUsage](contracts-chat.md#extractionrunusage), [ImageSnapshot](contracts-chat.md#imagesnapshot), [LhMessage](native-messages.md#lhmessage), [PlanTree](contracts-plan.md#plantree), [SessionReference](contracts-chat.md#sessionreference), [SideChatThread](contracts-chat.md#sidechatthread), [SourceDocumentRef](contracts-chat.md#sourcedocumentref), [TurnUsage](contracts-chat.md#turnusage).
+**Related types:** [ChatKind](contracts-chat.md#chatkind), [ChatSettings](contracts-chat.md#chatsettings), [ExtractionRunUsage](contracts-chat.md#extractionrunusage), [ImageSnapshot](contracts-chat.md#imagesnapshot), [LhMessage](native-messages.md#lhmessage), [PlanTree](contracts-plan.md#plantree), [SessionReference](contracts-chat.md#sessionreference), [SideChatThread](contracts-chat.md#sidechatthread), [SourceDocumentRef](contracts-chat.md#sourcedocumentref), [TurnUsage](contracts-chat.md#turnusage), [VisualArtifact](contracts-visual-explanation.md#visualartifact).
 
 **Member index** (including nested object members; inherited members are defined in the linked base types):
 
@@ -182,6 +183,7 @@ export interface ChatRecord {
 - [updatedAt](#chatrecord-updatedat)
 - [messages](#chatrecord-messages)
 - [imageSnapshots](#chatrecord-imagesnapshots)
+- [visualArtifacts](#chatrecord-visualartifacts)
 - [kind](#chatrecord-kind)
 - [notes](#chatrecord-notes)
 - [references](#chatrecord-references)
@@ -229,6 +231,14 @@ Session-local processed pictures; artifact records carry references only.
 
 ```ts
 imageSnapshots?: Record<string, ImageSnapshot>;
+```
+
+### ChatRecord visualArtifacts
+
+Visual explanation artifacts produced by the teaching agent (Phase 6).
+
+```ts
+visualArtifacts?: Record<string, VisualArtifact>;
 ```
 
 ### ChatRecord kind

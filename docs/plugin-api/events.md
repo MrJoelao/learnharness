@@ -52,6 +52,7 @@ export interface ServerEvents {
     "chats-changed": Record<string, never>;
     "chat-organization-changed": Record<string, never>;
     "sources-changed": Record<string, never>;
+    "topics-changed": Record<string, never>;
     "subscriptions-changed": Record<string, never>;
     "record-changed": {
         chatId: string;
@@ -64,6 +65,7 @@ export interface ServerEvents {
         chatId: string;
     };
     "plugins-changed": Record<string, never>;
+    "workspaces-changed": Record<string, never>;
     "plugin-message": {
         pluginId: string;
         topic: string;
@@ -84,6 +86,7 @@ export interface ServerEvents {
 - ["chats-changed"](#serverevents-chats-changed)
 - ["chat-organization-changed"](#serverevents-chat-organization-changed)
 - ["sources-changed"](#serverevents-sources-changed)
+- ["topics-changed"](#serverevents-topics-changed)
 - ["subscriptions-changed"](#serverevents-subscriptions-changed)
 - ["record-changed"](#serverevents-record-changed)
 - ["record-changed".chatId](#serverevents-record-changedchatid)
@@ -93,6 +96,7 @@ export interface ServerEvents {
 - ["side-chats-changed"](#serverevents-side-chats-changed)
 - ["side-chats-changed".chatId](#serverevents-side-chats-changedchatid)
 - ["plugins-changed"](#serverevents-plugins-changed)
+- ["workspaces-changed"](#serverevents-workspaces-changed)
 - ["plugin-message"](#serverevents-plugin-message)
 - ["plugin-message".pluginId](#serverevents-plugin-messagepluginid)
 - ["plugin-message".topic](#serverevents-plugin-messagetopic)
@@ -181,6 +185,14 @@ Source inventory, display names, or organizational folders changed.
 "sources-changed": Record<string, never>;
 ```
 
+### ServerEvents "topics-changed"
+
+Semantic topic groupings or assignments changed.
+
+```ts
+"topics-changed": Record<string, never>;
+```
+
 ### ServerEvents "subscriptions-changed"
 
 Web subscription state changed. No account or credential data on the bus.
@@ -255,6 +267,14 @@ Plugin availability/lifecycle changed; refetch installed packages.
 
 ```ts
 "plugins-changed": Record<string, never>;
+```
+
+### ServerEvents "workspaces-changed"
+
+Host workspaces changed (create, rename, delete, recover).
+
+```ts
+"workspaces-changed": Record<string, never>;
 ```
 
 ### ServerEvents "plugin-message"

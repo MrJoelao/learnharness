@@ -1,0 +1,36 @@
+{
+	"version": 1,
+	"id": "visual_binary_search_demo",
+	"title": "Binary Search: Searching for 42",
+	"summary": "Educational step-by-step visual trace of the binary search algorithm over a sorted array.",
+	"renderer": "svg",
+	"presentation": "auto",
+	"initialState": {
+		"step": 0
+	},
+	"controls": [
+		{
+			"id": "step_back",
+			"type": "button",
+			"label": "Previous Step",
+			"action": "step-backward"
+		},
+		{
+			"id": "step_forward",
+			"type": "button",
+			"label": "Next Step",
+			"action": "step-forward"
+		},
+		{
+			"id": "reset_steps",
+			"type": "button",
+			"label": "Reset",
+			"action": "reset"
+		}
+	],
+	"accessibility": {
+		"description": "Visual diagram demonstrating binary search finding key 42 in sorted array [10, 23, 35, 42, 58, 67, 81, 94].",
+		"reducedMotionFallback": true
+	},
+	"source": "{\"schema\":\"learnharness.visual.svg.v1\",\"viewBox\":{\"x\":0,\"y\":0,\"width\":640,\"height\":260},\"steps\":[{\"id\":\"step-1\",\"label\":\"Initial Bounds & Midpoint\",\"description\":\"Step 1: Initial search space spans full array indices 0 to 7. Left pointer is at 0, Right pointer is at 7. Midpoint calculated as index 3 (value 42).\",\"elements\":[{\"type\":\"rect\",\"x\":20,\"y\":20,\"width\":600,\"height\":220,\"fill\":\"#f8fafc\",\"stroke\":\"#cbd5e1\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":40,\"y\":50,\"text\":\"Binary Search: Target = 42\",\"fontSize\":16,\"fontWeight\":\"600\",\"fill\":\"#0f172a\"},{\"type\":\"text\",\"x\":40,\"y\":75,\"text\":\"Step 1 of 2: L=0, R=7, Mid=(0+7)/2=3\",\"fontSize\":13,\"fill\":\"#475569\"},{\"type\":\"rect\",\"x\":40,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#e2e8f0\",\"stroke\":\"#94a3b8\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":70,\"y\":136,\"text\":\"10\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#1e293b\"},{\"type\":\"text\",\"x\":70,\"y\":180,\"text\":\"0 (L)\",\"fontSize\":12,\"textAnchor\":\"middle\",\"fill\":\"#2563eb\"},{\"type\":\"rect\",\"x\":110,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#e2e8f0\",\"stroke\":\"#94a3b8\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":140,\"y\":136,\"text\":\"23\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#1e293b\"},{\"type\":\"rect\",\"x\":180,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#e2e8f0\",\"stroke\":\"#94a3b8\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":210,\"y\":136,\"text\":\"35\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#1e293b\"},{\"type\":\"rect\",\"x\":250,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#dbeafe\",\"stroke\":\"#2563eb\",\"strokeWidth\":2},{\"type\":\"text\",\"x\":280,\"y\":136,\"text\":\"42\",\"fontSize\":16,\"fontWeight\":\"bold\",\"textAnchor\":\"middle\",\"fill\":\"#1d4ed8\"},{\"type\":\"text\",\"x\":280,\"y\":180,\"text\":\"3 (Mid)\",\"fontSize\":12,\"fontWeight\":\"bold\",\"textAnchor\":\"middle\",\"fill\":\"#1d4ed8\"},{\"type\":\"rect\",\"x\":320,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#e2e8f0\",\"stroke\":\"#94a3b8\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":350,\"y\":136,\"text\":\"58\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#1e293b\"},{\"type\":\"rect\",\"x\":390,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#e2e8f0\",\"stroke\":\"#94a3b8\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":420,\"y\":136,\"text\":\"67\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#1e293b\"},{\"type\":\"rect\",\"x\":460,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#e2e8f0\",\"stroke\":\"#94a3b8\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":490,\"y\":136,\"text\":\"81\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#1e293b\"},{\"type\":\"rect\",\"x\":530,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#e2e8f0\",\"stroke\":\"#94a3b8\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":560,\"y\":136,\"text\":\"94\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#1e293b\"},{\"type\":\"text\",\"x\":560,\"y\":180,\"text\":\"7 (R)\",\"fontSize\":12,\"textAnchor\":\"middle\",\"fill\":\"#2563eb\"},{\"type\":\"text\",\"x\":40,\"y\":220,\"text\":\"Evaluating array[3] == 42. Proceed to next step to check match.\",\"fontSize\":13,\"fill\":\"#334155\"}]},{\"id\":\"step-2\",\"label\":\"Target Match Found\",\"description\":\"Step 2: Match confirmed at index 3. array[3] is exactly equal to target 42. Search terminates successfully in O(log n).\",\"elements\":[{\"type\":\"rect\",\"x\":20,\"y\":20,\"width\":600,\"height\":220,\"fill\":\"#f0fdf4\",\"stroke\":\"#86efac\",\"strokeWidth\":1},{\"type\":\"text\",\"x\":40,\"y\":50,\"text\":\"Binary Search: Target = 42 Found!\",\"fontSize\":16,\"fontWeight\":\"600\",\"fill\":\"#15803d\"},{\"type\":\"text\",\"x\":40,\"y\":75,\"text\":\"Step 2 of 2: array[3] == 42 -> Match found in 1 comparison!\",\"fontSize\":13,\"fill\":\"#166534\"},{\"type\":\"rect\",\"x\":40,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#f1f5f9\",\"stroke\":\"#cbd5e1\",\"strokeWidth\":1,\"opacity\":0.5},{\"type\":\"text\",\"x\":70,\"y\":136,\"text\":\"10\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#94a3b8\"},{\"type\":\"rect\",\"x\":110,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#f1f5f9\",\"stroke\":\"#cbd5e1\",\"strokeWidth\":1,\"opacity\":0.5},{\"type\":\"text\",\"x\":140,\"y\":136,\"text\":\"23\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#94a3b8\"},{\"type\":\"rect\",\"x\":180,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#f1f5f9\",\"stroke\":\"#cbd5e1\",\"strokeWidth\":1,\"opacity\":0.5},{\"type\":\"text\",\"x\":210,\"y\":136,\"text\":\"35\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#94a3b8\"},{\"type\":\"rect\",\"x\":250,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#dcfce7\",\"stroke\":\"#16a34a\",\"strokeWidth\":3},{\"type\":\"text\",\"x\":280,\"y\":136,\"text\":\"42\",\"fontSize\":18,\"fontWeight\":\"bold\",\"textAnchor\":\"middle\",\"fill\":\"#15803d\"},{\"type\":\"text\",\"x\":280,\"y\":180,\"text\":\"Found at Index 3\",\"fontSize\":12,\"fontWeight\":\"bold\",\"textAnchor\":\"middle\",\"fill\":\"#15803d\"},{\"type\":\"rect\",\"x\":320,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#f1f5f9\",\"stroke\":\"#cbd5e1\",\"strokeWidth\":1,\"opacity\":0.5},{\"type\":\"text\",\"x\":350,\"y\":136,\"text\":\"58\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#94a3b8\"},{\"type\":\"rect\",\"x\":390,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#f1f5f9\",\"stroke\":\"#cbd5e1\",\"strokeWidth\":1,\"opacity\":0.5},{\"type\":\"text\",\"x\":420,\"y\":136,\"text\":\"67\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#94a3b8\"},{\"type\":\"rect\",\"x\":460,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#f1f5f9\",\"stroke\":\"#cbd5e1\",\"strokeWidth\":1,\"opacity\":0.5},{\"type\":\"text\",\"x\":490,\"y\":136,\"text\":\"81\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#94a3b8\"},{\"type\":\"rect\",\"x\":530,\"y\":100,\"width\":60,\"height\":60,\"fill\":\"#f1f5f9\",\"stroke\":\"#cbd5e1\",\"strokeWidth\":1,\"opacity\":0.5},{\"type\":\"text\",\"x\":560,\"y\":136,\"text\":\"94\",\"fontSize\":16,\"textAnchor\":\"middle\",\"fill\":\"#94a3b8\"},{\"type\":\"text\",\"x\":40,\"y\":220,\"text\":\"Search concluded successfully. Time complexity: O(1) best case, O(log n) worst case.\",\"fontSize\":13,\"fill\":\"#166534\"}]}]}"
+}

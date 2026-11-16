@@ -47,9 +47,19 @@ enabled or run automatically.
 ## Multi Mode Example
 
 The [multi-mode example](../examples/plugins/multi-mode/README.md) declares two
-catalog definitions from one backend and registers a renderer for each in the browser.
-It demonstrates separate metadata/initialization and presentation lifecycles, plus
-state isolation by workspace ID.
+catalog definitions from one backend (`recall-lab` and `tree-lab`) and registers an
+interactive renderer for each in the browser. It demonstrates separate metadata/initialization
+and presentation lifecycles, user-driven state mutation with immediate UI updates,
+workspace storage persistence, and strict state isolation across multiple instances of the same mode.
+
+## Visual Explanation Artifact Example
+
+The declarative visual explanation example `examples/visual-explanation/binary-search.json`
+demonstrates the `learnharness.visual.svg.v1` schema. It features step-by-step educational
+visualizations using allowlisted SVG primitives (`rect`, `circle`, `ellipse`, `line`, `polyline`,
+`polygon`, `text`), button-driven step controls (`step-backward`, `step-forward`, `reset`),
+accessible descriptions for screen readers, and `prefers-reduced-motion` compliance without
+arbitrary code execution.
 
 ## Source layout and prerequisites
 
