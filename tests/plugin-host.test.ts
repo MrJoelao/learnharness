@@ -570,14 +570,15 @@ test("fixed dist loads only built code and keeps data and source outside the pac
 	await f.host.initialize(); await f.host.setEnabled("example", true);
 	const ctx = await f.host.call("example", "context") as PluginBackendContext;
 	assert.equal(ctx.directory, code);
-	assert.equal(ctx.dataDirectory, path.join(root, "data"));
+	assert.equal(ctx.dataDirectory, path.join(path.dirname(f.directory), "plugin-data", "example"));
+	assert.equal(fs.existsSync(path.join(root, "data")), false, "legacy writable data is moved out of the removable package directory");
 	assert.equal(servicePaths?.directory, code);
 	assert.equal(servicePaths?.dataDirectory, ctx.dataDirectory);
 	assert.equal(fs.readFileSync(path.join(ctx.dataDirectory, "records.json"), "utf8"), '{"progress":42}');
 	const revision = f.host.list()[0]!.revision;
 	fs.writeFileSync(path.join(root, "src", "private.js"), "edited source");
 	fs.writeFileSync(path.join(root, "package.json"), '{"scripts":{"build":"changed"}}');
-	fs.writeFileSync(path.join(root, "data", "records.json"), '{"progress":43}');
+	fs.writeFileSync(path.join(ctx.dataDirectory, "records.json"), '{"progress":43}');
 	await f.host.refresh();
 	assert.equal(f.host.list()[0]!.revision, revision, "only dist contributes to the code revision");
 	assert.equal(f.host.list()[0]!.error, undefined);
@@ -615,7 +616,7 @@ test("an unbuilt project is discovered on its first build without a restart or r
 	assert.equal(f.host.list()[0]!.error, undefined);
 	await f.host.setEnabled("example", true);
 	assert.ok(await f.host.call("example", "context"));
-	assert.equal(fs.existsSync(path.join(root, "data")), true);
+	assert.equal(fs.existsSync(path.join(path.dirname(f.directory), "plugin-data", "example")), true);
 	assert.equal(fs.existsSync(path.join(root, "dist", "data")), false);
 });
 

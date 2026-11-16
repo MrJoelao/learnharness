@@ -103,6 +103,8 @@ Assertions:
 
 ## 8. Manual end-to-end acceptance scenario
 
+The automated component and service suites cover individual interactions, but they do not launch Electron or prove the complete navigation flow in a running application. Treat the numbered scenario below as a manual Electron acceptance check; do not report it as automated end-to-end coverage unless it is run in that environment.
+
 1. Enable a sample plugin that registers two modes.
 2. Open Study Hub.
 3. Launch Mode A twice.

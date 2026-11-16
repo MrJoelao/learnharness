@@ -43,7 +43,7 @@ test("core activation uses separate writable data, pinned assets, and persisted 
 	const ctx = await f.host.call("official", "context") as PluginBackendContext;
 	assert.equal(ctx.directory, code); assert.equal(ctx.dataDirectory, path.join(f.core.dataDirectory, "official"));
 	const community = await f.host.call("community", "context") as PluginBackendContext;
-	assert.equal(community.dataDirectory, path.join(f.directory, "community", "data"));
+	assert.equal(community.dataDirectory, path.join(path.dirname(f.directory), "plugin-data", "community"));
 	fs.writeFileSync(path.join(ctx.dataDirectory, "private.json"), "private");
 	assert.throws(() => f.host.asset("official", ["data", "private.json"]));
 	assert.throws(() => f.host.asset("official", ["backend.cjs"]));

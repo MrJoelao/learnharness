@@ -270,11 +270,11 @@ it("visual artifact example: conforms strictly to learnharness.visual.svg.v1 dec
 	assert.equal(doc.steps.length, 2);
 
 	// Step 1 check
-	assert.match(doc.steps[0]!.description, /Step 1/i);
+	assert.match(doc.steps[0]!.description ?? "", /Step 1/i);
 	assert.ok(doc.steps[0]!.elements.length >= 5);
 	assert.ok(doc.steps[0]!.elements.every(e => ["rect", "circle", "ellipse", "line", "polyline", "polygon", "text"].includes(e.type)));
 
 	// Step 2 check
-	assert.match(doc.steps[1]!.description, /Step 2/i);
+	assert.match(doc.steps[1]!.description ?? "", /Step 2/i);
 	assert.ok(doc.steps[1]!.elements.length >= 5);
 });

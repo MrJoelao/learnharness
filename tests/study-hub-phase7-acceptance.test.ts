@@ -3,6 +3,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, it } from "node:test";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 
 import {
 	applyOrganizationAction,
@@ -24,6 +26,7 @@ import { createWorkspaceService } from "../src/server/workspaces.ts";
 import { createDirectoryService } from "../src/server/directory.ts";
 import { createVisualExplanationTool } from "../src/agent/tools/visual-explanation.ts";
 import { chatStore } from "../src/store/chats.ts";
+import { VisualExplanationCard, registerVisualArtifact } from "../components/artifacts/visual-explanation-card.tsx";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-phase7-acceptance-"));
 after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -122,7 +125,7 @@ it("end-to-end acceptance: executes complete 23-step acceptance scenario from sp
 	assert.ok(wsList.some(w => w.id === ws2.id), "Step 5: Second workspace listed");
 
 	// ─── Step 6: Modify state of both workspaces
-	const pluginDataDir = path.join(pluginsDir, "acceptance-plugin", "data");
+	const pluginDataDir = path.join(path.dirname(pluginsDir), "plugin-data", "acceptance-plugin");
 	const state1 = stateStore.open(pluginDataDir, ws1.id);
 	const state2 = stateStore.open(pluginDataDir, ws2.id);
 
@@ -270,11 +273,22 @@ it("end-to-end acceptance: executes complete 23-step acceptance scenario from sp
 	const artifactId = createDetails.artifact.id;
 	assert.ok(artifactId, "Step 20: Host-generated artifact ID exists");
 
-	// ─── Step 21: Expand artifact to panel
+	// ─── Step 21: Expand artifact to panel through the real component UI
 	const fullChat = chatStore.getChat(chatId)!;
 	const createdArtifact = fullChat.visualArtifacts?.[artifactId];
 	assert.ok(createdArtifact, "Step 21: Artifact persisted in chat record");
-	assert.equal(createdArtifact.presentation, "auto", "Step 21: Original presentation mode preserved");
+	const dom = (await import("linkedom")).parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
+	const savedGlobals = Object.fromEntries(["window", "document", "HTMLElement", "HTMLButtonElement", "HTMLIFrameElement", "IS_REACT_ACT_ENVIRONMENT"].map(key => [key, (globalThis as any)[key]]));
+	Object.assign(globalThis, { window: dom.window, document: dom.document, HTMLElement: dom.window.HTMLElement, HTMLButtonElement: dom.window.HTMLButtonElement, HTMLIFrameElement: dom.window.HTMLIFrameElement, IS_REACT_ACT_ENVIRONMENT: true, React });
+	const uiRoot = createRoot(dom.document.querySelector("#root") as unknown as HTMLElement);
+	await act(async () => uiRoot.render(React.createElement(VisualExplanationCard, {
+		chatId,
+		part: { type: "tool-visual_explanation", state: "output-available", toolCallId: "call-create-1", output: { ok: true, action: "create", artifact: createdArtifact } } as any,
+	})));
+	assert.ok(dom.document.querySelector('[data-testid="visual-explanation-card"]'), "Step 21: Real artifact card is mounted");
+	await act(async () => (dom.document.querySelector('[data-testid="visual-expand-button"]') as HTMLButtonElement).click());
+	assert.ok(dom.document.querySelector('[data-testid="visual-explanation-panel"]'), "Step 21: Expand action opens the real panel");
+	assert.ok(dom.document.querySelector('[data-testid="visual-inline-expanded-placeholder"]'), "Step 21: Inline view changes to expanded placeholder");
 
 	// ─── Step 22: Execute follow-up update
 	const updateResult = await visualTool.execute("call-update-1", {
@@ -302,6 +316,14 @@ it("end-to-end acceptance: executes complete 23-step acceptance scenario from sp
 	assert.equal(artifactKeys.length, 1, "Step 23: Exactly one artifact remains (no duplicate created)");
 	assert.equal(artifactKeys[0], artifactId, "Step 23: ID is preserved");
 	assert.equal(updatedChat.visualArtifacts?.[artifactId]?.title, "Algorithm Flow (Updated)", "Step 23: In-place update verified");
+	await act(async () => registerVisualArtifact(updatedChat.visualArtifacts![artifactId]!, chatId));
+	assert.equal(dom.document.querySelector('[data-testid="visual-explanation-panel"] h3')?.textContent, "Algorithm Flow (Updated)", "Step 23: Mounted panel receives follow-up content");
+	assert.equal(dom.document.querySelector('[data-testid="visual-explanation-card"]')?.getAttribute("data-artifact-id"), artifactId, "Step 23: Mounted UI preserves artifact identity");
+	await act(async () => uiRoot.unmount());
+	for (const [key, value] of Object.entries(savedGlobals)) {
+		if (value === undefined) delete (globalThis as any)[key];
+		else (globalThis as any)[key] = value;
+	}
 
 	// Clean up chat
 	chatStore.deleteChat(chatId);

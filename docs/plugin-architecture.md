@@ -61,7 +61,12 @@ Code/data locations are explicit:
 | Core code, app-owned/read-only | App `core-plugins/<id>/manifest.json` and flat built assets |
 | Core writable records | `<learning data>/core-plugin-data/<id>/` |
 | Community code | `<learning data>/plugins/<id>/dist/manifest.json` and built assets |
-| Community writable records | `<learning data>/plugins/<id>/data/` |
+| Community writable records | `<learning data>/plugin-data/<id>/` |
+
+Community data is kept outside the removable package directory. Existing
+`plugins/<id>/data/` records move to `plugin-data/<id>/` the first time the
+plugin is activated after this change; uninstalling the package then preserves
+those records for a compatible reinstall.
 
 `core-plugins.json` selects Flashcards, Coding Questions, Drawing Pad and Rich Code Blocks.
 `plugins:build-core` builds/stages those packages, assets and licenses before supported

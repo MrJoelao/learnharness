@@ -47,12 +47,12 @@ it("restart recovery: persisted workspace metadata and plugin state survive comp
 	{
 		const store1 = createWorkspaceStore(workspacesDir);
 		const service1 = createWorkspaceService({ store: store1 });
-		const stateStore1 = createPluginWorkspaceStateStore(pluginsDir);
+		const stateStore1 = createPluginWorkspaceStateStore();
 
 		const record = makeWsRecord(wsId, { title: "Persistent Recall Lab" });
 		store1.create(record);
 
-		const pluginDataDir = path.join(pluginsDir, "multi-mode", "data");
+		const pluginDataDir = path.join(path.dirname(pluginsDir), "plugin-data", "multi-mode");
 		const pluginState = stateStore1.open(pluginDataDir, wsId);
 		pluginState.set("example", {
 			createdFor: wsId,
@@ -81,7 +81,7 @@ it("restart recovery: persisted workspace metadata and plugin state survive comp
 		assert.equal(recoveredWs.modeId, "recall-lab");
 
 		// Read back plugin state
-		const pluginDataDir = path.join(pluginsDir, "multi-mode", "data");
+		const pluginDataDir = path.join(path.dirname(pluginsDir), "plugin-data", "multi-mode");
 		const pluginState2 = stateStore2.open(pluginDataDir, wsId);
 		const recoveredData = pluginState2.get("example") as any;
 
@@ -104,7 +104,7 @@ it("multiple instances: distinct IDs and storage namespaces remain isolated acro
 	const idB = parseWorkspaceId("workspace_bbbbbbbb-bbbb-4000-8000-bbbbbbbbbbbb");
 
 	// Step 1: Create both instances and write distinct state
-	const pluginDataDir = path.join(pluginsDir, "multi-mode", "data");
+	const pluginDataDir = path.join(path.dirname(pluginsDir), "plugin-data", "multi-mode");
 	{
 		const store = createWorkspaceStore(workspacesDir);
 		const stateStore = createPluginWorkspaceStateStore();

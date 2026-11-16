@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 import { parseHTML } from "linkedom";
 import React from "react";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ServerEventsProvider } from "../components/server-events.tsx";
@@ -9,6 +11,7 @@ import { StudyHubCatalog } from "../components/study-hub-catalog.tsx";
 import { WorkspaceRow } from "../components/workspace-row.tsx";
 import { WorkspaceScreen } from "../components/workspace-screen.tsx";
 import { DeclarativeSvgRenderer } from "../components/artifacts/declarative-svg-renderer.tsx";
+import { VisualExplanationCard } from "../components/artifacts/visual-explanation-card.tsx";
 import { parseWorkspaceId, parseWorkspaceRecord, type WorkspaceRecord } from "../src/core/workspaces.ts";
 
 // ─── 1. Accessibility Checks ─────────────────────────────────────────────────
@@ -168,11 +171,15 @@ it("performance: sidebar WorkspaceRow renders lightweight metadata without mount
 	let pluginMounted = false;
 
 	const entry = {
+		kind: "workspace" as const,
 		id: parseWorkspaceId("workspace_12345678-1234-4000-8000-123456789abc"),
 		title: "Lightweight Row Test",
 		pluginId: "heavy-plugin",
 		modeId: "heavy-mode",
+		createdAt: new Date().toISOString(),
 		updatedAt: new Date().toISOString(),
+		folderId: null,
+		archivedAt: null,
 		availability: "available" as const,
 	};
 
@@ -194,26 +201,67 @@ it("performance: sidebar WorkspaceRow renders lightweight metadata without mount
 	assert.equal(document.querySelectorAll("script, iframe").length, 0, "No scripts or iframes in sidebar row");
 });
 
-it("performance: unmounting cleans up listeners, DOM nodes, and avoids leaks", () => {
-	const { document } = parseHTML("<!DOCTYPE html><html><body><div id='root'></div></body></html>");
-	const container = document.getElementById("root")!;
-
-	let listenerCount = 0;
-	const dummyTarget = {
-		addEventListener() { listenerCount++; },
-		removeEventListener() { listenerCount--; },
+it("performance: real Visual Explanation mount releases browser listeners, observer, animation timer and DOM on unmount", async () => {
+	const dom = parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
+	const container = dom.document.getElementById("root")!;
+	const original = Object.fromEntries(["window", "document", "HTMLElement", "HTMLButtonElement", "HTMLIFrameElement", "IntersectionObserver", "IS_REACT_ACT_ENVIRONMENT", "setInterval", "clearInterval"].map(key => [key, (globalThis as any)[key]]));
+	const listeners = new Map<string, Set<EventListener>>();
+	const baseAdd = dom.document.addEventListener.bind(dom.document);
+	const baseRemove = dom.document.removeEventListener.bind(dom.document);
+	dom.document.addEventListener = ((type: string, listener: EventListener, options?: any) => {
+		if (type === "visibilitychange") { const set = listeners.get(type) ?? new Set(); set.add(listener); listeners.set(type, set); }
+		return baseAdd(type, listener, options);
+	}) as any;
+	dom.document.removeEventListener = ((type: string, listener: EventListener, options?: any) => {
+		if (type === "visibilitychange") listeners.get(type)?.delete(listener);
+		return baseRemove(type, listener, options);
+	}) as any;
+	let mediaChange: EventListener | undefined;
+	let mediaRemoved = false;
+	(dom.window as any).matchMedia = () => ({ matches: false, addEventListener: (_type: string, listener: EventListener) => { mediaChange = listener; }, removeEventListener: (_type: string, listener: EventListener) => { if (listener === mediaChange) mediaRemoved = true; } });
+	let observerCallback: IntersectionObserverCallback | undefined;
+	let observerDisconnected = false;
+	class ObserverMock {
+		constructor(callback: IntersectionObserverCallback) { observerCallback = callback; }
+		observe(target: Element) { observerCallback?.([{ isIntersecting: true, target } as IntersectionObserverEntry], this as unknown as IntersectionObserver); }
+		disconnect() { observerDisconnected = true; }
+		unobserve() {}
+		takeRecords() { return []; }
+	}
+	const intervalCallbacks: (() => void)[] = [];
+	let intervalCleared = false;
+	Object.assign(globalThis, {
+		window: dom.window, document: dom.document, HTMLElement: dom.window.HTMLElement,
+		HTMLButtonElement: dom.window.HTMLButtonElement, HTMLIFrameElement: dom.window.HTMLIFrameElement,
+		IntersectionObserver: ObserverMock, IS_REACT_ACT_ENVIRONMENT: true,
+		setInterval: (callback: () => void) => { intervalCallbacks.push(callback); return 123; },
+		clearInterval: () => { intervalCleared = true; },
+	});
+	const artifact = {
+		version: 1 as const, id: "phase7-cleanup-artifact", title: "Cleanup Visual", renderer: "svg" as const,
+		source: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g data-step="0"><rect width="10" height="10" /></g><g data-step="1"><circle r="5" /></g></svg>',
+		presentation: "inline" as const,
+		controls: [{ type: "button" as const, id: "play", label: "Play", action: "play" as const }],
 	};
-
-	// Simulate mount
-	dummyTarget.addEventListener();
-	container.innerHTML = "<div>Mounted Content</div>";
-	assert.equal(listenerCount, 1);
-	assert.equal(container.children.length, 1);
-
-	// Simulate unmount
-	dummyTarget.removeEventListener();
-	container.replaceChildren();
-
-	assert.equal(listenerCount, 0, "Listener must be released on unmount");
-	assert.equal(container.children.length, 0, "Container children must be emptied");
+	const root = createRoot(container as unknown as HTMLElement);
+	try {
+		await act(async () => root.render(<VisualExplanationCard part={{ type: "tool-visual_explanation", state: "output-available", toolCallId: "cleanup", output: { ok: true, action: "create", artifact } } as any} />));
+		assert.equal(listeners.get("visibilitychange")?.size, 1, "Mount registers visibilitychange listener");
+		assert.equal(typeof mediaChange, "function", "Mount registers matchMedia change listener");
+		assert.ok(observerCallback, "Mount creates IntersectionObserver");
+		assert.ok(container.querySelector('[data-testid="visual-explanation-card"]'), "Real card DOM mounts");
+		await act(async () => (container.querySelector('[data-testid="visual-control-button-play"]') as HTMLButtonElement).click());
+		assert.equal(intervalCallbacks.length, 1, "Play starts animation interval");
+		await act(async () => root.unmount());
+		assert.equal(listeners.get("visibilitychange")?.size, 0, "Unmount removes visibilitychange listener");
+		assert.equal(mediaRemoved, true, "Unmount removes matchMedia listener");
+		assert.equal(observerDisconnected, true, "Unmount disconnects IntersectionObserver");
+		assert.equal(intervalCleared, true, "Unmount clears animation interval");
+		assert.equal(container.children.length, 0, "React unmount removes renderer DOM");
+		const visibleListeners = [...(listeners.get("visibilitychange") ?? [])];
+		await act(async () => { intervalCallbacks[0]?.(); for (const listener of visibleListeners) listener(new Event("visibilitychange")); });
+		assert.equal(container.children.length, 0, "No post-unmount callback remounts renderer DOM");
+	} finally {
+		for (const [key, value] of Object.entries(original)) { if (value === undefined) delete (globalThis as any)[key]; else (globalThis as any)[key] = value; }
+	}
 });

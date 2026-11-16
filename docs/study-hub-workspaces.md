@@ -9,7 +9,7 @@ The host stores workspace metadata under `PATHS.data/workspaces/`. Each workspac
 The workspace record owns the host metadata: its ID, plugin ID, mode ID, title, creation time, and update time. The record has its own schema version. A plugin owns its domain state. The host does not interpret or rewrite that state.
 
 Plugin-owned state is stored under the owning plugin's writable data directory:
-`<learning data>/plugins/<plugin-id>/data/workspaces/<workspace-id>/<key>.json`
+`<learning data>/plugin-data/<plugin-id>/workspaces/<workspace-id>/<key>.json`
 Each value is limited to 1 MiB and must be valid JSON.
 
 Workspace records never use chat IDs, chat files, or chat transcripts. Workspaces and chats are peers in the mixed sidebar organization tree (`OrganizationV2`), but their underlying storage engines remain strictly separated.

@@ -5,11 +5,7 @@ import path from "node:path";
 import { after, it } from "node:test";
 
 import {
-	parseWorkspaceId,
-	parseWorkspaceRecord,
 	resolveWorkspaceAvailability,
-	type WorkspaceId,
-	type WorkspaceRecord,
 	type WorkspacePluginSnapshot,
 } from "../src/core/workspaces.ts";
 import { createWorkspaceStore } from "../src/store/workspaces.ts";
@@ -120,7 +116,7 @@ it("lifecycle: plugin disable hides modes, preserves workspaces and state, and r
 		title: "Beta Instance",
 	});
 
-	const pluginDataDir = path.join(env.pluginsDir, "sample-plugin", "data");
+	const pluginDataDir = path.join(path.dirname(env.pluginsDir), "plugin-data", "sample-plugin");
 	const state1 = env.stateStore.open(pluginDataDir, ws1.id);
 	const state2 = env.stateStore.open(pluginDataDir, ws2.id);
 
@@ -175,39 +171,45 @@ it("lifecycle: plugin disable hides modes, preserves workspaces and state, and r
 
 // ─── 2. Missing / Uninstalled Plugin Preservation ────────────────────────────
 
-it("lifecycle: uninstalled/missing plugin retains workspace metadata and plugin data as recoverable", () => {
+it("lifecycle: actual package removal preserves workspace metadata and external plugin data for reinstall recovery", async () => {
 	const env = createTestEnvironment("missing-plugin-test");
+	const pluginRoot = path.join(env.pluginsDir, "recoverable-plugin");
+	const pluginDist = path.join(pluginRoot, "dist");
+	const pluginDataDir = path.join(path.dirname(env.pluginsDir), "plugin-data", "recoverable-plugin");
+	const writePackage = () => {
+		fs.mkdirSync(pluginDist, { recursive: true });
+		fs.writeFileSync(path.join(pluginDist, "manifest.json"), JSON.stringify({ apiVersion: 1, id: "recoverable-plugin", name: "Recoverable Plugin", version: "1.0.0", minAppVersion: "0.7.0", backend: "backend.cjs" }));
+		fs.writeFileSync(path.join(pluginDist, "backend.cjs"), `exports.activate = ctx => ctx.registerMode({ id: "special-mode", name: "Special Mode", description: "", category: "Practice", initializeWorkspace() {} });`);
+	};
+	writePackage();
+	await env.host.initialize();
+	await env.host.setEnabled("recoverable-plugin", true);
+	const workspace = await env.host.createWorkspace({ pluginId: "recoverable-plugin", modeId: "special-mode", title: "Orphaned Workspace" });
+	const saved = { score: 95, attempts: ["missed", "solved"], note: "nontrivial plugin-owned state" };
+	env.stateStore.open(pluginDataDir, workspace.id).set("saved-progress", saved);
+	await env.host.dispose();
 
-	const missingId = parseWorkspaceId("workspace_98765432-1234-4000-8000-123456789abc");
-	const record = parseWorkspaceRecord({
-		version: 1,
-		id: missingId,
-		pluginId: "nonexistent-plugin",
-		modeId: "special-mode",
-		title: "Orphaned Workspace",
-		createdAt: new Date().toISOString(),
-		updatedAt: new Date().toISOString(),
-	});
+	// The installed community package directory is the real code removal boundary.
+	fs.rmSync(pluginRoot, { recursive: true, force: true });
+	assert.equal(fs.existsSync(pluginDataDir), true, "Plugin-owned data is outside the removable package directory");
+	const missingHost = createPluginHost({ directory: env.pluginsDir, appVersion: "0.7.0", workspaces: env.service, workspaceStateStore: env.stateStore, createServices: () => ({} as any) });
+	await missingHost.initialize();
+	assert.equal(missingHost.list().some(plugin => plugin.id === "recoverable-plugin"), false, "Removed package is no longer installed");
+	const retained = env.service.read(workspace.id)!;
+	assert.ok(retained, "Uninstall must retain workspace record");
+	assert.equal(retained.pluginId, "recoverable-plugin");
+	assert.equal(retained.modeId, "special-mode");
+	assert.equal(missingHost.workspaceAvailability(retained), "plugin-missing");
+	assert.deepEqual(env.stateStore.open(pluginDataDir, workspace.id).get("saved-progress"), saved);
+	await missingHost.dispose();
 
-	env.store.create(record);
-
-	// Save plugin data in the expected directory
-	const pluginDataDir = path.join(env.pluginsDir, "nonexistent-plugin", "data");
-	env.stateStore.open(pluginDataDir, missingId).set("saved-progress", { score: 95 });
-
-	// Availability resolution with empty snapshots
-	const availability = resolveWorkspaceAvailability(record, []);
-	assert.equal(availability, "plugin-missing");
-
-	// Verify workspace is NOT deleted or automatically remapped to another mode
-	const listed = env.service.list().workspaces;
-	assert.equal(listed.length, 1);
-	assert.equal(listed[0]!.id, missingId);
-	assert.equal(listed[0]!.pluginId, "nonexistent-plugin");
-	assert.equal(listed[0]!.modeId, "special-mode");
-
-	// Data is intact
-	assert.equal((env.stateStore.open(pluginDataDir, missingId).get("saved-progress") as any)?.score, 95);
+	writePackage();
+	const reinstalledHost = createPluginHost({ directory: env.pluginsDir, appVersion: "0.7.0", workspaces: env.service, workspaceStateStore: env.stateStore, createServices: () => ({} as any) });
+	await reinstalledHost.initialize();
+	await reinstalledHost.setEnabled("recoverable-plugin", true);
+	assert.equal(reinstalledHost.workspaceAvailability(retained), "available", "Compatible reinstall restores workspace availability");
+	assert.deepEqual(env.stateStore.open(pluginDataDir, workspace.id).get("saved-progress"), saved);
+	await reinstalledHost.dispose();
 });
 
 // ─── 3. Async Lifecycle Safety ───────────────────────────────────────────────
