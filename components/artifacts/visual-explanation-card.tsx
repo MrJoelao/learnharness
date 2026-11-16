@@ -539,19 +539,6 @@ export function VisualExplanationInstance({
 				case "step-backward":
 					handleStepBackward();
 					break;
-				case "custom": {
-					// Safe deterministic state transition without arbitrary code execution
-					setStateValues((s) => {
-						const currentVal = s[ctrl.id];
-						const nextVal = typeof currentVal === "boolean" ? !currentVal : typeof currentVal === "number" ? currentVal + 1 : 1;
-						return {
-							...s,
-							[ctrl.id]: nextVal,
-							lastAction: ctrl.id,
-						};
-					});
-					break;
-				}
 			}
 		},
 		[reducedMotion, handleReset, handleStepForward, handleStepBackward],

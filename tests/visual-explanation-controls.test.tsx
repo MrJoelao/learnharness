@@ -65,7 +65,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		assert.ok(enhancedSvg.includes('[data-step="1"] { opacity: 1;'), "Must highlight active step");
 	});
 
-	it("renders all button actions (play, pause, reset, step-forward, step-backward, custom)", async () => {
+	it("renders all supported button actions (play, pause, reset, step-forward, step-backward)", async () => {
 		const artifact: VisualArtifact = {
 			version: 1,
 			id: "btn-actions-test",
@@ -80,7 +80,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 				{ type: "button", id: "btn-reset", label: "Reset", action: "reset" },
 				{ type: "button", id: "btn-fwd", label: "Next", action: "step-forward" },
 				{ type: "button", id: "btn-back", label: "Prev", action: "step-backward" },
-				{ type: "button", id: "btn-custom", label: "Trigger", action: "custom" },
 			],
 		};
 
@@ -121,10 +120,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		const backBtn = dom.document.querySelector('[data-testid="visual-control-button-btn-back"]');
 		assert.ok(backBtn, "Step backward button must be rendered");
 		assert.equal(backBtn.getAttribute("data-action"), "step-backward");
-
-		const customBtn = dom.document.querySelector('[data-testid="visual-control-button-btn-custom"]');
-		assert.ok(customBtn, "Custom button must be rendered");
-		assert.equal(customBtn.getAttribute("data-action"), "custom");
 	});
 
 	it("preserves compatible user state across artifact updates without resetting learner input (Fix B)", () => {
@@ -318,7 +313,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 				volume: 20,
 				grid: false,
 				mode: "compact",
-				customCount: 0,
 			},
 			controls: [
 				{ type: "slider", id: "volume", label: "Volume", min: 0, max: 100, value: 20 },
@@ -333,7 +327,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 						{ value: "detailed", label: "Detailed" },
 					],
 				},
-				{ type: "button", id: "btn-custom", label: "Counter", action: "custom" },
+				{ type: "button", id: "btn-reset", label: "Reset", action: "reset" },
 			],
 		};
 
@@ -424,13 +418,14 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
 		assert.ok(indicator?.textContent?.includes("Step 0 / 1"), "Step must decrement to 0");
 
-		// Click custom button: increments custom counter safely and deterministically
-		const customBtn = dom.document.querySelector<HTMLButtonElement>('[data-testid="visual-control-button-btn-custom"]');
-		assert.ok(customBtn);
+		// Click reset button
+		const resetBtn = dom.document.querySelector<HTMLButtonElement>('[data-testid="visual-control-button-btn-reset"]');
+		assert.ok(resetBtn);
 		await act(async () => {
-			customBtn.click();
+			resetBtn.click();
 		});
-		assert.ok(getSvgContent().includes("--ctrl-btn-custom: 1;"), "Custom button action must update state deterministically");
+		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
+		assert.ok(indicator?.textContent?.includes("Step 0 / 1"), "Step must reset to 0");
 	});
 
 	it("manages registry lifecycle, Strict Mode, and unmount cleanup without leaks (Fix C)", async () => {

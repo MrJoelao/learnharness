@@ -379,6 +379,7 @@ export interface ShowImageDetails {
  * artifact (iframe / svg) when output-available.
  */
 export interface ArtifactPartProps {
+	chatId?: string;
 	part: {
 		type: string;
 		state: string;

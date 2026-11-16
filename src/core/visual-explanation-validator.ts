@@ -34,7 +34,7 @@ export interface ValidationResult {
 
 const ALLOWED_RENDERERS: readonly VisualRenderer[] = ["svg", "html"];
 const ALLOWED_PRESENTATIONS: readonly VisualPresentation[] = ["auto", "inline", "panel"];
-const ALLOWED_BUTTON_ACTIONS = ["play", "pause", "reset", "step-forward", "step-backward", "custom"] as const;
+const ALLOWED_BUTTON_ACTIONS = ["play", "pause", "reset", "step-forward", "step-backward"] as const;
 
 const ID_REGEX = /^[a-zA-Z0-9_-]{1,64}$/;
 

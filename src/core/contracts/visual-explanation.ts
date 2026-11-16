@@ -13,8 +13,7 @@ export type VisualButtonAction =
 	| "pause"
 	| "reset"
 	| "step-forward"
-	| "step-backward"
-	| "custom";
+	| "step-backward";
 
 export interface VisualButtonControl {
 	type: "button";

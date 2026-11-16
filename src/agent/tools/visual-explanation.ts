@@ -31,7 +31,6 @@ const visualButtonActionSchema = Type.Union([
 	Type.Literal("reset"),
 	Type.Literal("step-forward"),
 	Type.Literal("step-backward"),
-	Type.Literal("custom"),
 ]);
 
 const visualControlSchema = Type.Object({

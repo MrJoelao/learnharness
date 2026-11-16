@@ -2,12 +2,13 @@
  * Tests for Visual Explanation Engine — Declarative SVG Schema, Validator & React Renderer (Phase 6)
  */
 
-import React from "react";
+import React, { act } from "react";
 (globalThis as Record<string, unknown>).React = React;
 
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { parseHTML } from "linkedom";
 import {
 	validateVisualArtifact,
 	validateDeclarativeVisualArtifact,
@@ -29,6 +30,7 @@ import {
 	clearVisualArtifactRegistry,
 	subscribeVisualArtifact,
 } from "../components/artifacts/visual-explanation-card.tsx";
+import { ToolPartRenderer } from "../components/plugin-renderers.tsx";
 import { createVisualExplanationTool } from "../src/agent/tools/visual-explanation.ts";
 import { chatStore } from "../src/store/chats.ts";
 
@@ -724,4 +726,215 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 		// Clamped negative step is 0 -> indicator shows "Step 0 / 1"
 		assert.ok(instanceHtmlNeg.includes("Step 0 / 1"), "Must clamp negative step to 0 in instance");
 	});
+
+	it("CORRECTION 1: validator strictly rejects button controls with action 'custom'", () => {
+		const artifactWithCustom: VisualArtifact = {
+			version: 1,
+			id: "vis-custom-test",
+			title: "Custom Action Test",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			controls: [
+				// @ts-expect-error - testing invalid action 'custom'
+				{ type: "button", id: "btn-custom", label: "Custom", action: "custom" },
+			],
+		};
+		const res = validateDeclarativeVisualArtifact(artifactWithCustom);
+		assert.equal(res.valid, false);
+		assert.ok(
+			res.problems.some((p) => p.includes("invalid action 'custom'")),
+			"Must reject button control with action 'custom'",
+		);
+	});
+
+	it("CORRECTION 2: prefers-reduced-motion real component test with dynamic matchMedia and unmount cleanup", async () => {
+		let currentMatches = false;
+		const listeners = new Set<(e: { matches: boolean }) => void>();
+
+		const mockMatchMedia = (query: string) => ({
+			matches: currentMatches,
+			media: query,
+			onchange: null,
+			addListener: () => {},
+			removeListener: () => {},
+			addEventListener: (event: string, listener: (e: { matches: boolean }) => void) => {
+				if (event === "change") listeners.add(listener);
+			},
+			removeEventListener: (event: string, listener: (e: { matches: boolean }) => void) => {
+				if (event === "change") listeners.delete(listener);
+			},
+			dispatchEvent: () => true,
+		});
+
+		const dom = parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
+		const globals = {
+			window: {
+				...dom.window,
+				matchMedia: mockMatchMedia,
+			},
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			HTMLButtonElement: dom.window.HTMLButtonElement,
+			IS_REACT_ACT_ENVIRONMENT: true,
+		};
+		Object.assign(globalThis, globals);
+
+		const { createRoot } = await import("react-dom/client");
+		const rootElement = dom.document.querySelector("#root")!;
+		const root = createRoot(rootElement);
+
+		const artifact: VisualArtifact = {
+			version: 1,
+			id: "vis-motion-test",
+			title: "Motion Test",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			presentation: "inline",
+		};
+
+		// 1. Initial render with OS reducedMotion = false -> autoplay allowed (play button enabled)
+		await act(async () => {
+			root.render(<VisualExplanationInstance artifact={artifact} />);
+		});
+
+		const playBtn = dom.document.querySelector('[data-testid="visual-control-play-pause"]') as HTMLButtonElement | null;
+		assert.ok(playBtn, "Play button must exist");
+		assert.equal(playBtn.hasAttribute("disabled"), false, "Step 1: Autoplay allowed when OS reducedMotion is false");
+		assert.equal(listeners.size, 1, "Must register matchMedia change listener");
+
+		// Click play button to start animation
+		await act(async () => {
+			playBtn.click();
+		});
+		assert.equal(playBtn.getAttribute("aria-label"), "Pause animation", "Animation playing");
+
+		// 2. Change OS preference to reduced-motion = true -> autoplay disabled
+		currentMatches = true;
+		await act(async () => {
+			for (const listener of listeners) {
+				listener({ matches: true });
+			}
+		});
+
+		assert.equal(playBtn.hasAttribute("disabled"), true, "Step 2: Play button disabled when OS reducedMotion is true");
+
+		// 3. Change OS preference back to reduced-motion = false -> autoplay re-allowed
+		currentMatches = false;
+		await act(async () => {
+			for (const listener of listeners) {
+				listener({ matches: false });
+			}
+		});
+
+		assert.equal(playBtn.hasAttribute("disabled"), false, "Step 3: Play button re-enabled when OS reducedMotion is false again");
+
+		// 4. Component unmount -> verify listener cleanup
+		await act(async () => {
+			root.unmount();
+		});
+
+		assert.equal(listeners.size, 0, "Step 4: Event listener must be cleaned up on unmount");
+	});
+
+	it("CORRECTION 3: chatId propagates through ToolPartRenderer isolating updates between chats", async () => {
+		clearVisualArtifactRegistry();
+
+		const dom = parseHTML("<!doctype html><html><body><div id='root-a'></div><div id='root-b'></div></body></html>");
+		const globals = {
+			window: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			HTMLButtonElement: dom.window.HTMLButtonElement,
+			IS_REACT_ACT_ENVIRONMENT: true,
+		};
+		Object.assign(globalThis, globals);
+
+		const { createRoot } = await import("react-dom/client");
+		const rootA = createRoot(dom.document.querySelector("#root-a")!);
+		const rootB = createRoot(dom.document.querySelector("#root-b")!);
+
+		const artifactA: VisualArtifact = {
+			version: 1,
+			id: "vis-shared-pipe",
+			title: "Pipeline Visual A",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			presentation: "inline",
+		};
+
+		const artifactB: VisualArtifact = {
+			version: 1,
+			id: "vis-shared-pipe",
+			title: "Pipeline Visual B",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			presentation: "inline",
+		};
+
+		// Initial render of both tool parts in their respective chats
+		await act(async () => {
+			rootA.render(
+				<ToolPartRenderer
+					chatId="chat-alpha"
+					part={{
+						type: "tool-visual_explanation",
+						state: "output-available",
+						toolCallId: "call_a_1",
+						output: { ok: true, artifact: artifactA },
+					}}
+				/>,
+			);
+			rootB.render(
+				<ToolPartRenderer
+					chatId="chat-beta"
+					part={{
+						type: "tool-visual_explanation",
+						state: "output-available",
+						toolCallId: "call_b_1",
+						output: { ok: true, artifact: artifactB },
+					}}
+				/>,
+			);
+		});
+
+		// Verify initial rendering
+		const elA = dom.document.querySelector("#root-a");
+		const elB = dom.document.querySelector("#root-b");
+		assert.ok(elA?.textContent?.includes("Pipeline Visual A"));
+		assert.ok(elB?.textContent?.includes("Pipeline Visual B"));
+
+		// Simulate follow-up tool execution updating artifact in chat-alpha:
+		// Emitting updated artifact via registerVisualArtifact into chat-alpha
+		const updatedArtifactA: VisualArtifact = {
+			...artifactA,
+			title: "Pipeline Visual A — In-Place Updated!",
+		};
+
+		await act(async () => {
+			registerVisualArtifact(updatedArtifactA, "chat-alpha");
+		});
+
+		// Check: Chat A component updated in-place via subscription scoped to chat-alpha
+		assert.ok(
+			elA?.textContent?.includes("Pipeline Visual A — In-Place Updated!"),
+			"Chat A card must update in-place",
+		);
+
+		// Check: Chat B component with the same artifact ID remains completely unaffected
+		assert.ok(
+			elB?.textContent?.includes("Pipeline Visual B"),
+			"Chat B card must remain untouched",
+		);
+		assert.ok(
+			!elB?.textContent?.includes("In-Place Updated!"),
+			"Chat B card must not receive updates from Chat A",
+		);
+
+		await act(async () => {
+			rootA.unmount();
+			rootB.unmount();
+		});
+		clearVisualArtifactRegistry();
+	});
 });
+

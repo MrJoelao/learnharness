@@ -2026,7 +2026,7 @@ export function Chat({
 													default: {
 														// Built-in presentation stays authoritative; plugin renderers
 														// extend only the generic native-tool fallback slot.
-														if (part.type.startsWith("tool-")) return <ToolPartRenderer key={pi} part={part} />;
+														if (part.type.startsWith("tool-")) return <ToolPartRenderer key={pi} part={part} chatId={chatId} />;
 														return null;
 													}
 												}
