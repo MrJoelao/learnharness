@@ -365,3 +365,177 @@ it("PluginFrontendManager.reload() prunes mode renderers and unmounts workspace 
 	else (globalThis as Record<string, unknown>).document = previousDocument;
 });
 
+it("PluginFrontendManager.reload() preserves mode renderers and workspaces when /api/plugins/modes returns empty object {}", async () => {
+	const dom = parseHTML("<html><body><div id='mount-malformed-empty'></div></body></html>");
+	const previousDocument = (globalThis as Record<string, unknown>).document;
+	(globalThis as Record<string, unknown>).document = dom.document;
+
+	let modesResponse: unknown = { modes: [mode] };
+	let unmounted = false;
+	let signalAborted = false;
+
+	const frontend: PluginFrontendModule = {
+		activate(context) {
+			context.registerModeRenderer("modes", "lab", {
+				mount(_container, wsContext) {
+					wsContext.signal.addEventListener("abort", () => {
+						signalAborted = true;
+					});
+					return () => {
+						unmounted = true;
+					};
+				},
+			});
+		},
+	};
+
+	const manager = new PluginFrontendManager({
+		fetch: async (input) => {
+			const url = String(input);
+			if (url.endsWith("/api/plugins/modes")) {
+				return Response.json(modesResponse);
+			}
+			if (url.endsWith("/api/plugins")) {
+				return Response.json({ plugins: [info], directory: "/plugins" });
+			}
+			return Response.json({});
+		},
+		importModule: async () => frontend,
+		pathname: () => "/",
+		navigate() {},
+	});
+
+	// 1. Initial valid reload
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	assert.ok(manager.getModeRenderer("modes", "lab"));
+	assert.equal(manager.getSnapshot().modeRenderers?.length, 1);
+	assert.equal(manager.getSnapshot().modes?.length, 1);
+	assert.equal(manager.getSnapshot().error, undefined);
+
+	// 2. Mount workspace
+	const workspace = {
+		version: 1 as const,
+		id: parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000050"),
+		pluginId: "modes",
+		modeId: "lab",
+		title: "Lab Test",
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+	};
+	const container = dom.document.getElementById("mount-malformed-empty") as unknown as HTMLElement;
+	const closeMount = manager.mountWorkspace(workspace, container, () => {});
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	assert.equal(unmounted, false);
+	assert.equal(signalAborted, false);
+
+	// 3. Backend returns malformed payload: {}
+	modesResponse = {};
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	// 4. Verify renderer and workspace remain active, snapshot retains modes, error published
+	assert.ok(manager.getModeRenderer("modes", "lab"), "Mode renderer remains active when modes payload is {}");
+	assert.equal(manager.getSnapshot().modeRenderers?.length, 1);
+	assert.equal(manager.getSnapshot().modes?.length, 1, "Snapshot retains last valid modes");
+	assert.ok(manager.getSnapshot().error, "Error must be published to snapshot");
+	assert.ok(manager.getSnapshot().error?.includes("modes array"), "Error indicates invalid modes response");
+	assert.equal(unmounted, false, "Mounted workspace must not be unmounted");
+	assert.equal(signalAborted, false, "Signal must not be aborted");
+
+	closeMount();
+	await manager.dispose();
+
+	if (previousDocument === undefined) delete (globalThis as Record<string, unknown>).document;
+	else (globalThis as Record<string, unknown>).document = previousDocument;
+});
+
+it("PluginFrontendManager.reload() preserves mode renderers and workspaces when /api/plugins/modes returns invalid elements { modes: [{}] }", async () => {
+	const dom = parseHTML("<html><body><div id='mount-malformed-items'></div></body></html>");
+	const previousDocument = (globalThis as Record<string, unknown>).document;
+	(globalThis as Record<string, unknown>).document = dom.document;
+
+	let modesResponse: unknown = { modes: [mode] };
+	let unmounted = false;
+	let signalAborted = false;
+
+	const frontend: PluginFrontendModule = {
+		activate(context) {
+			context.registerModeRenderer("modes", "lab", {
+				mount(_container, wsContext) {
+					wsContext.signal.addEventListener("abort", () => {
+						signalAborted = true;
+					});
+					return () => {
+						unmounted = true;
+					};
+				},
+			});
+		},
+	};
+
+	const manager = new PluginFrontendManager({
+		fetch: async (input) => {
+			const url = String(input);
+			if (url.endsWith("/api/plugins/modes")) {
+				return Response.json(modesResponse);
+			}
+			if (url.endsWith("/api/plugins")) {
+				return Response.json({ plugins: [info], directory: "/plugins" });
+			}
+			return Response.json({});
+		},
+		importModule: async () => frontend,
+		pathname: () => "/",
+		navigate() {},
+	});
+
+	// 1. Initial valid reload
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	assert.ok(manager.getModeRenderer("modes", "lab"));
+	assert.equal(manager.getSnapshot().modeRenderers?.length, 1);
+	assert.equal(manager.getSnapshot().modes?.length, 1);
+
+	// 2. Mount workspace
+	const workspace = {
+		version: 1 as const,
+		id: parseWorkspaceId("workspace_00000000-0000-4000-8000-000000000051"),
+		pluginId: "modes",
+		modeId: "lab",
+		title: "Lab Test",
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
+	};
+	const container = dom.document.getElementById("mount-malformed-items") as unknown as HTMLElement;
+	const closeMount = manager.mountWorkspace(workspace, container, () => {});
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	assert.equal(unmounted, false);
+	assert.equal(signalAborted, false);
+
+	// 3. Backend returns malformed element payload: { modes: [{}] }
+	modesResponse = { modes: [{}] };
+	await manager.reload();
+	for (let i = 0; i < 8; i++) await Promise.resolve();
+
+	// 4. Verify renderer and workspace remain active, snapshot retains modes, error published
+	assert.ok(manager.getModeRenderer("modes", "lab"), "Mode renderer remains active when modes payload is { modes: [{}] }");
+	assert.equal(manager.getSnapshot().modeRenderers?.length, 1);
+	assert.equal(manager.getSnapshot().modes?.length, 1, "Snapshot retains last valid modes");
+	assert.ok(manager.getSnapshot().error, "Error must be published to snapshot");
+	assert.ok(manager.getSnapshot().error?.includes("Invalid mode definition"), "Error indicates invalid mode definition");
+	assert.equal(unmounted, false, "Mounted workspace must not be unmounted");
+	assert.equal(signalAborted, false, "Signal must not be aborted");
+
+	closeMount();
+	await manager.dispose();
+
+	if (previousDocument === undefined) delete (globalThis as Record<string, unknown>).document;
+	else (globalThis as Record<string, unknown>).document = previousDocument;
+});
+
+

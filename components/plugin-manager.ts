@@ -243,17 +243,31 @@ export class PluginFrontendManager {
 			if (this.disposed || generation !== this.requestGeneration) return;
 			let modesError: string | undefined;
 			try {
-				const modeBody = await this.json("/api/plugins/modes") as { modes?: PluginModeMetadata[] };
-				if (modeBody && Array.isArray(modeBody.modes)) {
-					this.backendModes = modeBody.modes.filter(mode => mode && typeof mode.pluginId === "string" && typeof mode.id === "string");
-					this.pruneUnavailableModeRenderers();
+				const modeBody = await this.json("/api/plugins/modes") as { modes?: unknown };
+				if (!modeBody || typeof modeBody !== "object" || !Array.isArray(modeBody.modes)) {
+					throw new Error("Invalid modes response: expected modes array");
 				}
+				for (const item of modeBody.modes) {
+					if (
+						!item ||
+						typeof item !== "object" ||
+						typeof (item as { pluginId?: unknown }).pluginId !== "string" ||
+						!(item as { pluginId: string }).pluginId.trim() ||
+						typeof (item as { id?: unknown }).id !== "string" ||
+						!(item as { id: string }).id.trim()
+					) {
+						throw new Error("Invalid mode definition in modes response");
+					}
+				}
+				this.backendModes = modeBody.modes as PluginModeMetadata[];
+				this.pruneUnavailableModeRenderers();
 			} catch (err) {
 				modesError = message(err);
 			}
 			if (this.disposed || generation !== this.requestGeneration) return;
 			this.reconcile(body.plugins);
-			const nextError = modesError ?? (clearError ? undefined : this.snapshot.error);
+			const managementError = clearError ? undefined : this.snapshot.error;
+			const nextError = managementError ?? modesError;
 			this.publish({ directory: body.directory, conflicts: body.conflicts ?? [], modes: Object.freeze([...this.backendModes]), loading: false, error: nextError });
 		} catch (error) {
 			if (generation === this.requestGeneration) this.publish({ loading: false, error: message(error) });

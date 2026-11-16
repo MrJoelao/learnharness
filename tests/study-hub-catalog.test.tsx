@@ -954,6 +954,10 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		assert.equal(refreshAttempts, 1);
+		// Error notice must be visible with message
+		const errorNotice = dom.document.querySelector('[data-testid="study-hub-error"]');
+		assert.ok(errorNotice, "Error banner rendered on retry failure");
+		assert.ok(errorNotice.textContent?.includes("Network timeout during catalog refresh"), "Error message displayed to user");
 		// Interface is NOT stuck and button is usable again
 		assert.equal(refreshBtn.disabled, false, "Refresh button re-enabled after failure");
 
@@ -963,6 +967,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		assert.equal(refreshAttempts, 2);
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-error"]'), "Error banner cleared after successful retry");
 		assert.equal(refreshBtn.disabled, false, "Refresh button re-enabled after success");
 	}));
 
@@ -1021,4 +1026,51 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-network-tools:tcp-simulator"]'));
 		assert.ok(dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:tree-viz"]'));
 	}));
+
+	it("22. Custom propOnRetry failure renders error alert and allows recovery via alert retry button", withDom(async (dom) => {
+		const root = createRoot(dom.document.getElementById("root")!);
+		let attempts = 0;
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={sampleModes}
+					modeRenderers={sampleRenderers}
+					plugins={samplePlugins}
+					isLoading={false}
+					onRetry={async () => {
+						attempts++;
+						if (attempts === 1) {
+							throw new Error("Custom refresh handler failed");
+						}
+					}}
+				/>,
+			);
+		});
+
+		const refreshBtn = dom.document.querySelector('[data-testid="study-hub-refresh-button"]') as HTMLButtonElement;
+		assert.ok(refreshBtn);
+
+		await act(async () => {
+			refreshBtn.click();
+		});
+
+		assert.equal(attempts, 1);
+		const errorAlert = dom.document.querySelector('[data-testid="study-hub-error"]');
+		assert.ok(errorAlert, "Error alert rendered on propOnRetry failure");
+		assert.ok(errorAlert.textContent?.includes("Custom refresh handler failed"), "Error text rendered in alert");
+		assert.equal(refreshBtn.disabled, false, "Header refresh button remains usable");
+
+		const bannerRetryBtn = dom.document.querySelector('[data-testid="study-hub-retry-button"]') as HTMLButtonElement;
+		assert.ok(bannerRetryBtn, "Banner retry button rendered");
+
+		await act(async () => {
+			bannerRetryBtn.click();
+		});
+
+		assert.equal(attempts, 2);
+		assert.ok(!dom.document.querySelector('[data-testid="study-hub-error"]'), "Error cleared on successful recovery");
+		assert.equal(refreshBtn.disabled, false, "Refresh button still usable");
+	}));
 });
+

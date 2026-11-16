@@ -127,6 +127,7 @@ export function StudyHubCatalog({
 	const [selectedDifficulty, setSelectedDifficulty] = useState<string>("all");
 	const [launchingModeKeys, setLaunchingModeKeys] = useState<Set<string>>(() => new Set());
 	const [launchError, setLaunchError] = useState<{ modeKey: string; message: string } | null>(null);
+	const [retryError, setRetryError] = useState<string | null>(null);
 	const [isRetrying, startRetryTransition] = useTransition();
 
 	// Modes resolution
@@ -134,7 +135,7 @@ export function StudyHubCatalog({
 	const activeModesRef = useRef(activeModes);
 	activeModesRef.current = activeModes;
 	const isLoading = propIsLoading ?? snapshot?.loading ?? false;
-	const errorMessage = propError ?? snapshot?.error;
+	const errorMessage = retryError ?? propError ?? snapshot?.error;
 
 	// Registered mode renderers in the browser
 	const activeModeRenderers = propModeRenderers ?? snapshot?.modeRenderers ?? [];
@@ -196,6 +197,7 @@ export function StudyHubCatalog({
 
 	const handleRetry = () => {
 		setLaunchError(null);
+		setRetryError(null);
 		startRetryTransition(async () => {
 			try {
 				if (propOnRetry) {
@@ -203,8 +205,8 @@ export function StudyHubCatalog({
 				} else if (activeManager?.reload) {
 					await activeManager.reload();
 				}
-			} catch {
-				// Prevent unhandled rejection and keep interface responsive
+			} catch (err) {
+				setRetryError(err instanceof Error ? err.message : "Failed to refresh study modes");
 			}
 		});
 	};
