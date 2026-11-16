@@ -635,8 +635,9 @@ export function activate(ctx) {
 
 export async function verifyPluginServer(url, home, headers = {}) {
 	const directory = path.join(home, "data", "plugins", "native-smoke");
-	const activated = path.join(directory, "data", "activated.txt");
-	const disabled = path.join(directory, "data", "disabled.txt");
+	const dataDirectory = path.join(home, "data", "plugin-data", "native-smoke");
+	const activated = path.join(dataDirectory, "activated.txt");
+	const disabled = path.join(dataDirectory, "disabled.txt");
 	const jsonRequest = async (route, method, body, expected = 200) => {
 		const response = await fetch(url + route, { method, headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body) });
 		const payload = await response.json();
@@ -649,7 +650,7 @@ export async function verifyPluginServer(url, home, headers = {}) {
 	if (fs.existsSync(activated)) throw new Error("Disabled plugin backend was evaluated");
 	await jsonRequest("/api/plugins/native-smoke", "PUT", { enabled: true });
 	const proof = await jsonRequest("/api/plugins/native-smoke/call", "POST", { operation: "proof", input: "packaged-runtime" });
-	if (proof.result?.answer !== "packaged-runtime" || !proof.result.node || proof.result.data !== path.join(directory, "data") || proof.result.learning !== path.join(home, "data")) throw new Error("Native backend/context/bridge proof failed");
+	if (proof.result?.answer !== "packaged-runtime" || !proof.result.node || proof.result.data !== dataDirectory || proof.result.learning !== path.join(home, "data")) throw new Error("Native backend/context/bridge proof failed");
 	if (!fs.existsSync(activated)) throw new Error("Native backend did not activate");
 	const admission = await jsonRequest("/api/plugins/native-smoke/call", "POST", { operation: "admission-status" });
 	if (admission.result?.tasks?.length !== 0 || admission.result?.counts?.requests !== 0 || admission.result?.counts?.active !== 0) throw new Error("Plugin activation must not automatically start worker/model requests");
@@ -668,7 +669,7 @@ export async function verifyPluginServer(url, home, headers = {}) {
 		if (response.ok) throw new Error(`Private package file exposed as asset: ${asset}`);
 	}
 	await jsonRequest("/api/plugins/native-smoke", "PUT", { enabled: false });
-	if (!fs.existsSync(disabled) || !fs.existsSync(path.join(directory, "data", "private.json"))) throw new Error("Disable failed cleanup or deleted plugin data");
+	if (!fs.existsSync(disabled) || !fs.existsSync(path.join(dataDirectory, "private.json"))) throw new Error("Disable failed cleanup or deleted plugin data");
 	// Do not configure this activation's URL: browser enable creates a fresh
 	// ephemeral listener. Disable must await closure of the retained handle.
 	let mockStillListening = false;

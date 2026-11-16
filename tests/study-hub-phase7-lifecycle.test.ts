@@ -27,12 +27,17 @@ function createTestEnvironment(testName: string) {
 	const service = createWorkspaceService({ store });
 	const stateStore = createPluginWorkspaceStateStore();
 
+	const createDefaultServices = () => ({
+		agents: { dispose: () => {} },
+		workers: { dispose: () => {} },
+	} as any);
+
 	const host = createPluginHost({
 		directory: pluginsDir,
 		appVersion: "0.7.0",
 		workspaces: service,
 		workspaceStateStore: stateStore,
-		createServices: () => ({} as any),
+		createServices: createDefaultServices,
 	});
 
 	return { dir, pluginsDir, workspacesDir, store, service, stateStore, host };
@@ -176,10 +181,14 @@ it("lifecycle: actual package removal preserves workspace metadata and external 
 	const pluginRoot = path.join(env.pluginsDir, "recoverable-plugin");
 	const pluginDist = path.join(pluginRoot, "dist");
 	const pluginDataDir = path.join(path.dirname(env.pluginsDir), "plugin-data", "recoverable-plugin");
+	const createDefaultServices = () => ({
+		agents: { dispose: () => {} },
+		workers: { dispose: () => {} },
+	} as any);
 	const writePackage = () => {
 		fs.mkdirSync(pluginDist, { recursive: true });
 		fs.writeFileSync(path.join(pluginDist, "manifest.json"), JSON.stringify({ apiVersion: 1, id: "recoverable-plugin", name: "Recoverable Plugin", version: "1.0.0", minAppVersion: "0.7.0", backend: "backend.cjs" }));
-		fs.writeFileSync(path.join(pluginDist, "backend.cjs"), `exports.activate = ctx => ctx.registerMode({ id: "special-mode", name: "Special Mode", description: "", category: "Practice", initializeWorkspace() {} });`);
+		fs.writeFileSync(path.join(pluginDist, "backend.cjs"), `exports.activate = ctx => ctx.registerMode({ id: "special-mode", name: "Special Mode", description: "Special Mode Description", category: "Practice", initializeWorkspace() {} });`);
 	};
 	writePackage();
 	await env.host.initialize();
@@ -192,7 +201,7 @@ it("lifecycle: actual package removal preserves workspace metadata and external 
 	// The installed community package directory is the real code removal boundary.
 	fs.rmSync(pluginRoot, { recursive: true, force: true });
 	assert.equal(fs.existsSync(pluginDataDir), true, "Plugin-owned data is outside the removable package directory");
-	const missingHost = createPluginHost({ directory: env.pluginsDir, appVersion: "0.7.0", workspaces: env.service, workspaceStateStore: env.stateStore, createServices: () => ({} as any) });
+	const missingHost = createPluginHost({ directory: env.pluginsDir, appVersion: "0.7.0", workspaces: env.service, workspaceStateStore: env.stateStore, createServices: createDefaultServices });
 	await missingHost.initialize();
 	assert.equal(missingHost.list().some(plugin => plugin.id === "recoverable-plugin"), false, "Removed package is no longer installed");
 	const retained = env.service.read(workspace.id)!;
@@ -204,7 +213,7 @@ it("lifecycle: actual package removal preserves workspace metadata and external 
 	await missingHost.dispose();
 
 	writePackage();
-	const reinstalledHost = createPluginHost({ directory: env.pluginsDir, appVersion: "0.7.0", workspaces: env.service, workspaceStateStore: env.stateStore, createServices: () => ({} as any) });
+	const reinstalledHost = createPluginHost({ directory: env.pluginsDir, appVersion: "0.7.0", workspaces: env.service, workspaceStateStore: env.stateStore, createServices: createDefaultServices });
 	await reinstalledHost.initialize();
 	await reinstalledHost.setEnabled("recoverable-plugin", true);
 	assert.equal(reinstalledHost.workspaceAvailability(retained), "available", "Compatible reinstall restores workspace availability");
