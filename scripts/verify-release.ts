@@ -38,10 +38,11 @@
  * Draft selection is FAIL-CLOSED and replicates the existing matching used
  * by the workflow's draft job and electron-builder's GitHub publisher:
  * tag_name equals the tag ("v0.2.0") OR the bare version ("0.2.0"). Zero
- * matches, 2+ matches, or a published match → fail. A draft matched only
- * via the bare unprefixed form is a reported hazard: electron-builder
- * matches both spellings, so a later run could create a SECOND draft under
- * the v-tag and split the assets across two releases.
+ * matches or 2+ matches → fail. A published match proceeds with a warning
+ * to allow safe read-only verification of existing release assets.
+ * A draft matched only via the bare unprefixed form is a reported hazard:
+ * electron-builder matches both spellings, so a later run could create
+ * a SECOND draft under the v-tag and split the assets across two releases.
  *
  * CLI (cwd = the checked-out tag revision):
  *   tsx scripts/verify-release.ts select <releases.json> --tag <tag>
@@ -232,13 +233,12 @@ export function selectDraft(releases: ReleaseRecord[], tag: string, version: str
 	}
 	const [match] = matches;
 	if (!match) return { ok: false, errors: ["internal: empty match"] };
-	if (!match.draft) {
-		return {
-			ok: false,
-			errors: [`release #${match.id} (${match.tag_name}) is already published — the workflow never modifies a published release`],
-		};
-	}
 	const warnings: string[] = [];
+	if (!match.draft) {
+		warnings.push(
+			`release #${match.id} (${match.tag_name}) is already published — verifying published release assets`,
+		);
+	}
 	if (match.tag_name !== tag) {
 		warnings.push(
 			`draft #${match.id} carries the unprefixed tag "${match.tag_name}" instead of "${tag}": electron-builder matches both spellings, ` +
@@ -585,7 +585,7 @@ function main(argv: string[]): number {
 	if (!assumptions.ok) errors.push(...assumptions.errors);
 	const selection = selectDraft(start.releases, start.tag, start.version);
 	if (!selection.ok) return fail([...errors, ...selection.errors]);
-	console.log(`draft release #${selection.release.id} — tag "${selection.release.tag_name}"`);
+	console.log(`${selection.release.draft ? "draft release" : "release"} #${selection.release.id} — tag "${selection.release.tag_name}"`);
 	for (const warning of selection.warnings) console.log(`WARNING: ${warning}`);
 	const assets = verifyAssets(selection.release, expected);
 	if (!assets.ok) errors.push(...assets.errors);
@@ -603,7 +603,7 @@ function main(argv: string[]): number {
 	const present = expected.files.filter((name) => selection.release.assets.some((asset) => asset.name === name));
 	console.log(`assets: ${present.length}/${expected.files.length} expected files present, non-zero size, and "uploaded"`);
 	console.log(`feeds: ${expected.mac.feed}, ${expected.win.feed}, ${expected.linux.feed} parse, carry version ${start.version}, and reference only uploaded assets by exact name`);
-	console.log(`OK: draft for ${start.tag} is complete and consistent — ready for the owner to review and publish.`);
+	console.log(`OK: ${selection.release.draft ? "draft" : "release"} for ${start.tag} is complete and consistent — ready for the owner to review and publish.`);
 	return 0;
 }
 

@@ -60,7 +60,7 @@ npx electron-builder --linux --x64 --publish never # Linux
 
 ### Draft verification
 
-[`scripts/verify-release.ts`](../scripts/verify-release.ts) runs after all packaging jobs. It requires one draft matched by `v<version>` or bare `<version>`, refusing zero/two matches or a published match. Bare-version matches warn because later runs could split assets across tags.
+[`scripts/verify-release.ts`](../scripts/verify-release.ts) runs after all packaging jobs. It requires one release matched by `v<version>` or bare `<version>`, refusing zero or multiple matches. If the release is already published, it proceeds with verification and reports a warning. Bare-version matches warn because later runs could split assets across tags.
 
 The draft must contain **exactly 11 uploaded, nonempty assets**:
 

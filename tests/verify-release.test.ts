@@ -133,11 +133,11 @@ describe("release gate — draft selection (fail-closed, existing tag matching)"
 		assert.match(selection.errors.join("\n"), /no release matches/);
 	});
 
-	it("fails when the match is already published — never modifies it", () => {
+	it("accepts a published release with a warning", () => {
 		const published = { ...healthyRelease(VERSION), draft: false };
 		const selection = selectDraft([published], TAG, VERSION);
-		assert.ok(!selection.ok);
-		assert.match(selection.errors.join("\n"), /already published/);
+		assert.ok(selection.ok);
+		assert.match(selection.warnings.join("\n"), /already published/);
 	});
 
 	it("fails on ambiguous v-tag + bare-version drafts", () => {
