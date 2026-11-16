@@ -31,6 +31,7 @@ import { downloadFile, slugFilename } from "@/components/artifacts/download";
 
 interface VisualExplanationCardProps extends ArtifactPartProps {
 	className?: string;
+	chatId?: string;
 }
 
 // ── Shared Visual Artifact Registry & State Store (Fix B & C) ───────────────
@@ -42,14 +43,19 @@ type RegistryEntry = {
 
 const artifactRegistry = new Map<string, RegistryEntry>();
 
-export function getRegisteredVisualArtifact(id: string): VisualArtifact | undefined {
-	return artifactRegistry.get(id)?.artifact;
+export function scopedArtifactKey(id: string, chatId?: string): string {
+	return chatId && chatId.trim().length > 0 ? `${chatId}:${id}` : id;
 }
 
-export function registerVisualArtifact(artifact: VisualArtifact): void {
-	const entry = artifactRegistry.get(artifact.id);
+export function getRegisteredVisualArtifact(id: string, chatId?: string): VisualArtifact | undefined {
+	return artifactRegistry.get(scopedArtifactKey(id, chatId))?.artifact;
+}
+
+export function registerVisualArtifact(artifact: VisualArtifact, chatId?: string): void {
+	const key = scopedArtifactKey(artifact.id, chatId);
+	const entry = artifactRegistry.get(key);
 	if (!entry) {
-		artifactRegistry.set(artifact.id, {
+		artifactRegistry.set(key, {
 			artifact,
 			listeners: new Set(),
 		});
@@ -61,22 +67,27 @@ export function registerVisualArtifact(artifact: VisualArtifact): void {
 	}
 }
 
-export function subscribeVisualArtifact(id: string, listener: (art: VisualArtifact) => void): () => void {
-	let entry = artifactRegistry.get(id);
+export function subscribeVisualArtifact(
+	id: string,
+	listener: (art: VisualArtifact) => void,
+	chatId?: string,
+): () => void {
+	const key = scopedArtifactKey(id, chatId);
+	let entry = artifactRegistry.get(key);
 	if (!entry) {
 		entry = {
 			artifact: undefined as unknown as VisualArtifact,
 			listeners: new Set(),
 		};
-		artifactRegistry.set(id, entry);
+		artifactRegistry.set(key, entry);
 	}
 	entry.listeners.add(listener);
 	return () => {
-		const current = artifactRegistry.get(id);
+		const current = artifactRegistry.get(key);
 		if (current) {
 			current.listeners.delete(listener);
 			if (current.listeners.size === 0) {
-				artifactRegistry.delete(id);
+				artifactRegistry.delete(key);
 			}
 		}
 	};
@@ -252,16 +263,22 @@ export function computeArtifactSignature(artifact: VisualArtifact): string {
 	]);
 }
 
-function VisualExplanationUpdateNotice({ artifact }: { artifact: VisualArtifact }) {
+function VisualExplanationUpdateNotice({
+	artifact,
+	chatId,
+}: {
+	artifact: VisualArtifact;
+	chatId?: string;
+}) {
 	const notifiedSignatureRef = useRef<string | null>(null);
 
 	useEffect(() => {
 		const sig = computeArtifactSignature(artifact);
 		if (notifiedSignatureRef.current !== sig) {
 			notifiedSignatureRef.current = sig;
-			registerVisualArtifact(artifact);
+			registerVisualArtifact(artifact, chatId);
 		}
-	}, [artifact]);
+	}, [artifact, chatId]);
 
 	return (
 		<div
@@ -279,14 +296,22 @@ function VisualExplanationUpdateNotice({ artifact }: { artifact: VisualArtifact 
 	);
 }
 
-export function VisualExplanationCard({ part, className = "" }: VisualExplanationCardProps) {
+export function VisualExplanationCard({
+	part,
+	className = "",
+	chatId: explicitChatId,
+}: VisualExplanationCardProps) {
 	const rawOutput = (part.output as { artifact?: unknown })?.artifact ?? part.output ?? part.input;
 	const rawAction =
 		(part.output as { action?: string } | undefined)?.action ??
 		(part.input as { action?: string } | undefined)?.action ??
 		"create";
+	const chatId =
+		explicitChatId ??
+		(part.output as { chatId?: string })?.chatId ??
+		(part.input as { chatId?: string })?.chatId;
 
-	const validation = useMemo(() => validateVisualArtifact(rawOutput), [rawOutput]);
+	const validation = useMemo(() => validateVisualArtifact(rawOutput, { allowLegacy: true }), [rawOutput]);
 	const validatedArtifact = validation.sanitized;
 
 	// Invariant: Failed artifact or failed update renders error alert without crashing
@@ -309,12 +334,13 @@ export function VisualExplanationCard({ part, className = "" }: VisualExplanatio
 
 	// Update action (Fix B & C): Publishes update to existing visual instance via useEffect
 	if (rawAction === "update") {
-		return <VisualExplanationUpdateNotice artifact={validatedArtifact} />;
+		return <VisualExplanationUpdateNotice artifact={validatedArtifact} chatId={chatId} />;
 	}
 
 	return (
 		<VisualExplanationInstance
 			artifact={validatedArtifact}
+			chatId={chatId}
 			className={className}
 			initialExpanded={validatedArtifact.presentation === "panel"}
 		/>
@@ -323,16 +349,18 @@ export function VisualExplanationCard({ part, className = "" }: VisualExplanatio
 
 export function VisualExplanationInstance({
 	artifact: initialArtifact,
+	chatId,
 	className = "",
 	initialExpanded = false,
 }: {
 	artifact: VisualArtifact;
+	chatId?: string;
 	className?: string;
 	initialExpanded?: boolean;
 }) {
 	// Active artifact (updated reactively when an update action arrives for this ID — Fix B)
 	const [artifact, setArtifact] = useState<VisualArtifact>(() => {
-		const registered = getRegisteredVisualArtifact(initialArtifact.id);
+		const registered = getRegisteredVisualArtifact(initialArtifact.id, chatId);
 		return registered ?? initialArtifact;
 	});
 
@@ -342,9 +370,9 @@ export function VisualExplanationInstance({
 		const sig = computeArtifactSignature(initialArtifact);
 		if (lastRegisteredSignatureRef.current !== sig) {
 			lastRegisteredSignatureRef.current = sig;
-			registerVisualArtifact(initialArtifact);
+			registerVisualArtifact(initialArtifact, chatId);
 		}
-	}, [initialArtifact]);
+	}, [initialArtifact, chatId]);
 
 	const containerRef = useRef<HTMLDivElement>(null);
 	const dialogRef = useRef<HTMLDivElement>(null);
@@ -358,14 +386,6 @@ export function VisualExplanationInstance({
 	const [isPageVisible, setIsPageVisible] = useState(() => (typeof document !== "undefined" ? !document.hidden : true));
 	const [isIntersecting, setIsIntersecting] = useState(true);
 	const [reducedMotion, setReducedMotion] = useState(false);
-
-	// State dictionary initialized from initialState
-	const initialStep = typeof artifact.initialState?.step === "number" ? (artifact.initialState.step as number) : 0;
-	const [currentStep, setCurrentStep] = useState(initialStep);
-	const [stateValues, setStateValues] = useState<Record<string, unknown>>(() => ({
-		step: initialStep,
-		...(artifact.initialState ?? {}),
-	}));
 
 	// Parse declarative SVG document if schema is learnharness.visual.svg.v1
 	const declarativeDoc = useMemo(() => {
@@ -382,42 +402,54 @@ export function VisualExplanationInstance({
 		return 3;
 	}, [artifact, declarativeDoc, detectedSvgSteps]);
 
+	// State dictionary initialized from initialState, with step strictly clamped to [0, maxSteps]
+	const rawInitialStep =
+		typeof artifact.initialState?.step === "number" ? Math.floor(artifact.initialState.step as number) : 0;
+	const initialStep = Math.max(0, Math.min(rawInitialStep, maxSteps));
+	const [currentStep, setCurrentStep] = useState(initialStep);
+	const [stateValues, setStateValues] = useState<Record<string, unknown>>(() => ({
+		step: initialStep,
+		...(artifact.initialState ?? {}),
+	}));
+
 	// Listen for artifact updates targeting this ID (Fix B: In-place update & state preservation)
 	useEffect(() => {
-		const unsubscribe = subscribeVisualArtifact(artifact.id, (updated) => {
-			setArtifact(updated);
-			const updatedDecl = updated.renderer === "svg" ? parseDeclarativeSvg(updated.source) : null;
-			const newDetectedSteps = updated.renderer === "svg" ? countSvgSteps(updated.source) : 0;
-			const newMax = updatedDecl
-				? Math.max(0, updatedDecl.steps.length - 1)
-				: typeof updated.initialState?.maxSteps === "number"
-					? (updated.initialState.maxSteps as number)
-					: newDetectedSteps > 0
-						? newDetectedSteps
-						: 3;
-			setStateValues((prev) => preserveCompatibleState(prev, updated, newMax));
-			setCurrentStep((prev) => Math.min(prev, newMax));
-		});
+		const unsubscribe = subscribeVisualArtifact(
+			artifact.id,
+			(updated) => {
+				setArtifact(updated);
+				const updatedDecl = updated.renderer === "svg" ? parseDeclarativeSvg(updated.source) : null;
+				const newDetectedSteps = updated.renderer === "svg" ? countSvgSteps(updated.source) : 0;
+				const newMax = updatedDecl
+					? Math.max(0, updatedDecl.steps.length - 1)
+					: typeof updated.initialState?.maxSteps === "number"
+						? (updated.initialState.maxSteps as number)
+						: newDetectedSteps > 0
+							? newDetectedSteps
+							: 3;
+				setStateValues((prev) => preserveCompatibleState(prev, updated, newMax));
+				setCurrentStep((prev) => Math.min(prev, newMax));
+			},
+			chatId,
+		);
 		return unsubscribe;
-	}, [artifact.id]);
+	}, [artifact.id, chatId]);
 
-	// Accessibility: Reduced motion check
+	// Accessibility: Reduced motion check (prefers-reduced-motion is the sole source of truth)
 	useEffect(() => {
 		if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-			if (artifact.accessibility?.reducedMotionFallback) {
-				setReducedMotion(true);
-			}
+			setReducedMotion(false);
 			return;
 		}
 		const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-		setReducedMotion(mediaQuery.matches || Boolean(artifact.accessibility?.reducedMotionFallback));
+		setReducedMotion(Boolean(mediaQuery.matches));
 
 		const handler = (e: MediaQueryListEvent) => {
-			setReducedMotion(e.matches || Boolean(artifact.accessibility?.reducedMotionFallback));
+			setReducedMotion(Boolean(e.matches));
 		};
 		mediaQuery.addEventListener?.("change", handler);
 		return () => mediaQuery.removeEventListener?.("change", handler);
-	}, [artifact]);
+	}, []);
 
 	// Visibility observer (Fix F: Pauses when hidden/offscreen, resumes cleanly when returning)
 	useEffect(() => {
@@ -808,6 +840,10 @@ export function VisualExplanationInstance({
 
 					{/* Declarative controls from artifact descriptor (Fix A) */}
 					{artifact.controls?.map((ctrl) => {
+						if (declarativeDoc && ctrl.type !== "button") {
+							// Declarative SVG only supports deterministic button controls (step navigation / simulation)
+							return null;
+						}
 						switch (ctrl.type) {
 							case "button":
 								return (

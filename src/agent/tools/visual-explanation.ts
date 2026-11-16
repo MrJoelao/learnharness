@@ -10,14 +10,15 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { nanoid } from "nanoid";
 import { invalidInputResult, serverExecute } from "../tool-execute.ts";
 import type { ChatStore } from "../../core/ports.ts";
-import type {
-	VisualArtifact,
-	VisualButtonAction,
-	VisualControlDescriptor,
-	VisualPresentation,
-	VisualRenderer,
+import {
+	type VisualArtifact,
+	type VisualButtonAction,
+	type VisualControlDescriptor,
+	type VisualPresentation,
+	type VisualRenderer,
+	VISUAL_ARTIFACT_LIMITS,
 } from "../../core/contracts/visual-explanation.ts";
-import { validateVisualArtifact } from "../../core/visual-explanation-validator.ts";
+import { validateDeclarativeVisualArtifact } from "../../core/visual-explanation-validator.ts";
 
 export interface VisualExplanationToolContext {
 	chatId: string;
@@ -33,43 +34,13 @@ const visualButtonActionSchema = Type.Union([
 	Type.Literal("custom"),
 ]);
 
-const visualControlSchema = Type.Union([
-	Type.Object({
-		type: Type.Literal("button"),
-		id: Type.String({ minLength: 1, maxLength: 64 }),
-		label: Type.String({ minLength: 1, maxLength: 64 }),
-		action: visualButtonActionSchema,
-		disabled: Type.Optional(Type.Boolean()),
-	}),
-	Type.Object({
-		type: Type.Literal("slider"),
-		id: Type.String({ minLength: 1, maxLength: 64 }),
-		label: Type.String({ minLength: 1, maxLength: 64 }),
-		min: Type.Number(),
-		max: Type.Number(),
-		step: Type.Optional(Type.Number()),
-		value: Type.Number(),
-	}),
-	Type.Object({
-		type: Type.Literal("toggle"),
-		id: Type.String({ minLength: 1, maxLength: 64 }),
-		label: Type.String({ minLength: 1, maxLength: 64 }),
-		value: Type.Boolean(),
-	}),
-	Type.Object({
-		type: Type.Literal("select"),
-		id: Type.String({ minLength: 1, maxLength: 64 }),
-		label: Type.String({ minLength: 1, maxLength: 64 }),
-		options: Type.Array(
-			Type.Object({
-				label: Type.String(),
-				value: Type.String(),
-			}),
-			{ minItems: 1, maxItems: 12 },
-		),
-		value: Type.String(),
-	}),
-]);
+const visualControlSchema = Type.Object({
+	type: Type.Literal("button"),
+	id: Type.String({ minLength: 1, maxLength: 64 }),
+	label: Type.String({ minLength: 1, maxLength: 64 }),
+	action: visualButtonActionSchema,
+	disabled: Type.Optional(Type.Boolean()),
+});
 
 export const visualExplanationInputSchema = Type.Object({
 	action: Type.Union([Type.Literal("create"), Type.Literal("update")], {
@@ -80,17 +51,17 @@ export const visualExplanationInputSchema = Type.Object({
 			minLength: 1,
 			maxLength: 64,
 			description:
-				"Stable artifact ID. Required when action is 'update'. Optional when action is 'create' (host generates ID if omitted).",
+				"Stable artifact ID. Required when action is 'update'. Disallowed/ignored when action is 'create' (host always generates ID).",
 		}),
 	),
 	title: Type.Optional(Type.String({ maxLength: 128, description: "Title of the visual explanation." })),
 	summary: Type.Optional(Type.String({ maxLength: 1024, description: "Brief summary of what this visualization explains." })),
 	renderer: Type.Optional(
-		Type.Union([Type.Literal("svg"), Type.Literal("html")], {
-			description: "Renderer type: 'svg' (default, declarative vector graphics) or 'html' (sandboxed HTML document).",
+		Type.Literal("svg", {
+			description: "Renderer type: 'svg' (declarative vector graphics). HTML renderer is not permitted.",
 		}),
 	),
-	source: Type.Optional(Type.String({ description: "Visual markup (SVG tags or HTML content). Must be self-contained." })),
+	source: Type.Optional(Type.String({ description: "Declarative SVG JSON markup conforming to 'learnharness.visual.svg.v1'." })),
 	presentation: Type.Optional(
 		Type.Union([Type.Literal("auto"), Type.Literal("inline"), Type.Literal("panel")], {
 			description: "Presentation mode: 'inline' in transcript, 'panel' in expanded view, or 'auto'.",
@@ -103,15 +74,15 @@ export const visualExplanationInputSchema = Type.Object({
 	),
 	controls: Type.Optional(
 		Type.Array(visualControlSchema, {
-			maxItems: 10,
-			description: "Declarative UI controls for learner interaction (step buttons, reset, parameter sliders).",
+			maxItems: VISUAL_ARTIFACT_LIMITS.MAX_CONTROLS,
+			description: "Declarative button controls for learner interaction (step buttons, play/pause, reset).",
 		}),
 	),
 	accessibility: Type.Optional(
 		Type.Object({
 			description: Type.Optional(Type.String({ description: "Accessible text description for learners and screen readers." })),
 			reducedMotionFallback: Type.Optional(
-				Type.Boolean({ description: "If true, animations are disabled when prefers-reduced-motion is active." }),
+				Type.Boolean({ description: "If true, accessibility fallback is declared." }),
 			),
 		}),
 	),
@@ -136,21 +107,24 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 			const { chatId, chatStore } = ctx;
 			const { action } = input;
 
-			if (action === "create") {
-				const id = input.id && input.id.trim().length > 0 ? input.id.trim() : `vis-${nanoid(8)}`;
-				const existing = chatStore.getVisualArtifact(chatId, id);
-				if (existing) {
-					return invalidInputResult("visual_explanation", [
-						`Artifact with ID '${id}' already exists in this session. Use action: 'update' to update it, or choose a new unique ID.`,
-					]);
-				}
+			if ((input as { renderer?: string }).renderer && (input as { renderer?: string }).renderer !== "svg") {
+				return invalidInputResult("visual_explanation", [
+					"Renderer must be 'svg'. 'html' renderer is not permitted for visual explanation artifacts.",
+				]);
+			}
 
+			if (action === "create") {
+				// Host ALWAYS generates the ID for new artifacts; model-supplied ID is ignored
+				let id = `vis-${nanoid(8)}`;
+				while (chatStore.getVisualArtifact(chatId, id)) {
+					id = `vis-${nanoid(8)}`;
+				}
 				const candidate: VisualArtifact = {
 					version: 1,
 					id,
-					title: input.title ?? id,
+					title: input.title && input.title.trim().length > 0 ? input.title.trim() : id,
 					...(input.summary ? { summary: input.summary } : {}),
-					renderer: input.renderer ?? "svg",
+					renderer: "svg",
 					source: input.source ?? "",
 					presentation: input.presentation ?? "auto",
 					...(input.initialState ? { initialState: input.initialState } : {}),
@@ -158,7 +132,7 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 					...(input.accessibility ? { accessibility: input.accessibility } : {}),
 				};
 
-				const validation = validateVisualArtifact(candidate);
+				const validation = validateDeclarativeVisualArtifact(candidate);
 				if (!validation.valid || !validation.sanitized) {
 					return invalidInputResult("visual_explanation", validation.problems);
 				}
@@ -177,6 +151,7 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 					details: {
 						ok: true,
 						action: "create",
+						chatId,
 						artifact: validation.sanitized,
 					},
 				};
@@ -192,7 +167,7 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 				const existing = chatStore.getVisualArtifact(chatId, id);
 				if (!existing) {
 					return invalidInputResult("visual_explanation", [
-						`Artifact with ID '${id}' was not found in this session. Cannot update a non-existent artifact. Check existing artifact IDs or use action: 'create'.`,
+						`Artifact with ID '${id}' was not found in chat '${chatId}'. Cannot update a non-existent artifact. Check existing artifact IDs or use action: 'create'.`,
 					]);
 				}
 
@@ -202,7 +177,7 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 					id: existing.id,
 					title: input.title ?? existing.title,
 					summary: input.summary !== undefined ? input.summary : existing.summary,
-					renderer: input.renderer ?? existing.renderer,
+					renderer: "svg",
 					source: input.source ?? existing.source,
 					presentation: input.presentation ?? existing.presentation,
 					initialState: input.initialState
@@ -212,7 +187,7 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 					accessibility: input.accessibility ?? existing.accessibility,
 				};
 
-				const validation = validateVisualArtifact(merged);
+				const validation = validateDeclarativeVisualArtifact(merged);
 				if (!validation.valid || !validation.sanitized) {
 					// Invariant: Failed update preserves last known good artifact
 					return invalidInputResult("visual_explanation", [
@@ -235,6 +210,7 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 					details: {
 						ok: true,
 						action: "update",
+						chatId,
 						artifact: validation.sanitized,
 					},
 				};

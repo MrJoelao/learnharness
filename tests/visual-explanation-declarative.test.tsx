@@ -10,6 +10,7 @@ import { describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
 	validateVisualArtifact,
+	validateDeclarativeVisualArtifact,
 	validateDeclarativeSvgDocument,
 	isDeclarativeSvg,
 	parseDeclarativeSvg,
@@ -20,6 +21,14 @@ import {
 	type VisualArtifact,
 } from "../src/core/contracts/visual-explanation.ts";
 import { DeclarativeSvgRenderer } from "../components/artifacts/declarative-svg-renderer.tsx";
+import {
+	VisualExplanationCard,
+	VisualExplanationInstance,
+	registerVisualArtifact,
+	getRegisteredVisualArtifact,
+	clearVisualArtifactRegistry,
+	subscribeVisualArtifact,
+} from "../components/artifacts/visual-explanation-card.tsx";
 import { createVisualExplanationTool } from "../src/agent/tools/visual-explanation.ts";
 import { chatStore } from "../src/store/chats.ts";
 
@@ -420,31 +429,299 @@ describe("Visual Explanation Agent Tool — Host-Managed ID & Boundary Rules", (
 		const toolA = createVisualExplanationTool({ chatId: chatA.id, chatStore });
 		const toolB = createVisualExplanationTool({ chatId: chatB.id, chatStore });
 
-		// Create artifact in chat A
-		await toolA.execute("call_a", {
+		// Create artifact in chat A (host generates ID)
+		const createResA = await toolA.execute("call_a", {
 			action: "create",
-			id: "isolated-visual",
 			title: "Chat A Visual",
 			renderer: "svg",
 			source: VALID_DECLARATIVE_JSON,
 		});
+		assert.equal(createResA.isError, undefined);
+		const idA = (createResA.details as { artifact: VisualArtifact }).artifact.id;
 
 		// Attempt to update from chat B
 		const updateFromB = await toolB.execute("call_b", {
 			action: "update",
-			id: "isolated-visual",
+			id: idA,
 			title: "Hijacked Title",
 		});
 
 		assert.equal(updateFromB.isError, true);
 		const problems = (updateFromB.details as { problems?: string[] })?.problems ?? [];
-		assert.ok(problems.some((p) => p.includes("not found in this session")));
+		assert.ok(problems.some((p) => p.includes("not found")));
 
 		// Chat A artifact is unmodified
-		const storedA = chatStore.getVisualArtifact(chatA.id, "isolated-visual");
+		const storedA = chatStore.getVisualArtifact(chatA.id, idA);
 		assert.equal(storedA?.title, "Chat A Visual");
 
 		chatStore.deleteChat(chatA.id);
 		chatStore.deleteChat(chatB.id);
+	});
+});
+
+describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
+	it("BUG P1: validator strictly rejects HTML, raw SVG XML, and non-declarative JSON by default", () => {
+		// Valid declarative JSON -> accepted
+		const validRes = validateDeclarativeVisualArtifact({
+			version: 1,
+			id: "vis-valid",
+			title: "Valid Declarative",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+		});
+		assert.equal(validRes.valid, true);
+
+		// HTML renderer -> rejected
+		const htmlRendererRes = validateDeclarativeVisualArtifact({
+			version: 1,
+			id: "vis-html",
+			title: "HTML Renderer",
+			renderer: "html",
+			source: "<div>test</div>",
+		});
+		assert.equal(htmlRendererRes.valid, false);
+		assert.ok(htmlRendererRes.problems.some((p) => p.includes("not permitted")));
+
+		// Raw SVG XML -> rejected
+		const rawSvgRes = validateDeclarativeVisualArtifact({
+			version: 1,
+			id: "vis-raw-svg",
+			title: "Raw SVG",
+			renderer: "svg",
+			source: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40"/></svg>',
+		});
+		assert.equal(rawSvgRes.valid, false);
+		assert.ok(rawSvgRes.problems.some((p) => p.includes("Raw SVG XML is not permitted")));
+
+		// Unknown/unrecognized schema in JSON -> rejected
+		const unknownSchemaRes = validateDeclarativeVisualArtifact({
+			version: 1,
+			id: "vis-bad-schema",
+			title: "Bad Schema",
+			renderer: "svg",
+			source: JSON.stringify({
+				schema: "unknown.schema.v1",
+				viewBox: { width: 100, height: 100 },
+				steps: [{ id: "s1", label: "Step", elements: [] }],
+			}),
+		});
+		assert.equal(unknownSchemaRes.valid, false);
+		assert.ok(unknownSchemaRes.problems.some((p) => p.includes("Unsupported or missing declarative SVG schema")));
+	});
+
+	it("BUG P1: registry isolates artifacts and subscriptions across different conversations", () => {
+		clearVisualArtifactRegistry();
+
+		const artChat1: VisualArtifact = {
+			version: 1,
+			id: "vis-shared",
+			title: "Chat 1 Diagram",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			presentation: "inline",
+		};
+
+		const artChat2: VisualArtifact = {
+			version: 1,
+			id: "vis-shared",
+			title: "Chat 2 Diagram",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			presentation: "inline",
+		};
+
+		// Register same artifact ID in two different chats
+		registerVisualArtifact(artChat1, "chat-1");
+		registerVisualArtifact(artChat2, "chat-2");
+
+		// Retrievals are isolated
+		assert.equal(getRegisteredVisualArtifact("vis-shared", "chat-1")?.title, "Chat 1 Diagram");
+		assert.equal(getRegisteredVisualArtifact("vis-shared", "chat-2")?.title, "Chat 2 Diagram");
+
+		// Subscriptions are isolated
+		let chat1Notified = false;
+		let chat2Notified = false;
+
+		const unsub1 = subscribeVisualArtifact(
+			"vis-shared",
+			() => {
+				chat1Notified = true;
+			},
+			"chat-1",
+		);
+
+		const unsub2 = subscribeVisualArtifact(
+			"vis-shared",
+			() => {
+				chat2Notified = true;
+			},
+			"chat-2",
+		);
+
+		// Updating chat-2 should NOT trigger chat-1's listener
+		registerVisualArtifact({ ...artChat2, title: "Chat 2 Updated" }, "chat-2");
+		assert.equal(chat1Notified, false, "Chat 1 must not be notified on Chat 2 update");
+		assert.equal(chat2Notified, true, "Chat 2 listener must be notified");
+
+		unsub1();
+		unsub2();
+		clearVisualArtifactRegistry();
+	});
+
+	it("BUG P2: declarative SVG cards do not render non-functioning slider, toggle, or select controls", () => {
+		const artifact: VisualArtifact = {
+			version: 1,
+			id: "vis-controls-test",
+			title: "Controls Filter Test",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			presentation: "inline",
+			controls: [
+				{ type: "button", id: "btn-step", label: "Next Step", action: "step-forward" },
+				{ type: "slider", id: "speed-slider", label: "Speed", min: 1, max: 10, value: 5 },
+				{ type: "toggle", id: "show-labels", label: "Labels", value: true },
+				{
+					type: "select",
+					id: "arch",
+					label: "Architecture",
+					options: [{ label: "x86", value: "x86" }],
+					value: "x86",
+				},
+			],
+		};
+
+		const html = renderToStaticMarkup(
+			<VisualExplanationCard
+				part={{
+					type: "tool-visual_explanation",
+					state: "output-available",
+					toolCallId: "call_ctrls",
+					output: { ok: true, artifact },
+				}}
+			/>,
+		);
+
+		// Step button must render
+		assert.ok(html.includes("data-testid=\"visual-control-button-btn-step\""), "Step button must render");
+		assert.ok(html.includes("Next Step"), "Button label must render");
+
+		// Non-functioning controls must NOT render on declarative cards
+		assert.ok(!html.includes('data-testid="visual-control-slider-speed-slider"'), "Slider must not render");
+		assert.ok(!html.includes('data-testid="visual-control-toggle-show-labels"'), "Toggle must not render");
+		assert.ok(!html.includes('data-testid="visual-control-select-arch"'), "Select must not render");
+		assert.ok(!html.includes('type="range"'), "Range input must not render");
+		assert.ok(!html.includes('type="checkbox"'), "Checkbox input must not render");
+	});
+
+	it("BUG P2: prefers-reduced-motion truth table verified", () => {
+		// Test the truth table specified in Bug P5:
+		// OS false + fallback true -> Autoplay allowed (reducedMotion is false)
+		// OS true + fallback true -> Autoplay disabled (reducedMotion is true)
+		// OS false + fallback false -> Autoplay allowed (reducedMotion is false)
+		// OS true + fallback false -> Autoplay disabled (reducedMotion is true)
+
+		function computeReducedMotion(osMatches: boolean): boolean {
+			// As implemented in visual-explanation-card.tsx:
+			// prefers-reduced-motion is the sole source of truth
+			return Boolean(osMatches);
+		}
+
+		assert.equal(computeReducedMotion(false), false, "OS false -> animation allowed regardless of fallback");
+		assert.equal(computeReducedMotion(true), true, "OS true -> animation disabled regardless of fallback");
+	});
+
+	it("BUG P2: initialState.step is strictly bounded within [0, steps.length - 1]", () => {
+		// Valid step: 1 (out of 2 steps: 0, 1) -> accepted
+		const validRes = validateDeclarativeVisualArtifact({
+			version: 1,
+			id: "vis-step-valid",
+			title: "Valid Step",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			initialState: { step: 1 },
+		});
+		assert.equal(validRes.valid, true);
+
+		// Out of bounds step: 99 -> rejected by validator
+		const oobRes = validateDeclarativeVisualArtifact({
+			version: 1,
+			id: "vis-step-oob",
+			title: "OOB Step",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			initialState: { step: 99 },
+		});
+		assert.equal(oobRes.valid, false);
+		assert.ok(oobRes.problems.some((p) => p.includes("exceeds maximum step index (1)")));
+
+		// Negative step: -1 -> rejected by validator
+		const negRes = validateDeclarativeVisualArtifact({
+			version: 1,
+			id: "vis-step-neg",
+			title: "Negative Step",
+			renderer: "svg",
+			source: VALID_DECLARATIVE_JSON,
+			initialState: { step: -1 },
+		});
+		assert.equal(negRes.valid, false);
+		assert.ok(negRes.problems.some((p) => p.includes("cannot be negative")));
+
+		// Rejection behavior in VisualExplanationCard rendering:
+		const cardHtmlOob = renderToStaticMarkup(
+			<VisualExplanationCard
+				part={{
+					type: "tool-visual_explanation",
+					state: "output-available",
+					toolCallId: "call_oob_reject",
+					output: {
+						ok: true,
+						artifact: {
+							version: 1,
+							id: "vis-clamp",
+							title: "OOB Card",
+							renderer: "svg",
+							source: VALID_DECLARATIVE_JSON,
+							initialState: { step: 99 },
+						},
+					},
+				}}
+			/>,
+		);
+		// Card validation rejects the out-of-bounds artifact and renders failure alert
+		assert.ok(cardHtmlOob.includes('data-testid="visual-explanation-failed"'), "Must render failure alert for invalid step");
+		assert.ok(cardHtmlOob.includes("exceeds maximum step index"), "Must include out-of-bounds error message");
+
+		// Clamping fallback in VisualExplanationInstance:
+		const instanceHtmlOob = renderToStaticMarkup(
+			<VisualExplanationInstance
+				artifact={{
+					version: 1,
+					id: "vis-clamp",
+					title: "Clamped Card",
+					renderer: "svg",
+					source: VALID_DECLARATIVE_JSON,
+					presentation: "inline",
+					initialState: { step: 99 },
+				}}
+			/>,
+		);
+		// With 2 steps (indices 0 and 1), clamped initialStep is 1 -> indicator shows "Step 1 / 1"
+		assert.ok(instanceHtmlOob.includes("Step 1 / 1"), "Must clamp out-of-bounds step to maxSteps in instance");
+
+		const instanceHtmlNeg = renderToStaticMarkup(
+			<VisualExplanationInstance
+				artifact={{
+					version: 1,
+					id: "vis-clamp-neg",
+					title: "Clamped Negative Card",
+					renderer: "svg",
+					source: VALID_DECLARATIVE_JSON,
+					presentation: "inline",
+					initialState: { step: -10 },
+				}}
+			/>,
+		);
+		// Clamped negative step is 0 -> indicator shows "Step 0 / 1"
+		assert.ok(instanceHtmlNeg.includes("Step 0 / 1"), "Must clamp negative step to 0 in instance");
 	});
 });

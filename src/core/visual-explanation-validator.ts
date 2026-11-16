@@ -66,7 +66,15 @@ const FORBIDDEN_PROPERTY_NAMES = [
 	"spawn",
 ];
 
-export function validateVisualArtifact(input: unknown): ValidationResult {
+export function validateDeclarativeVisualArtifact(input: unknown): ValidationResult {
+	return validateVisualArtifact(input, { strictDeclarative: true });
+}
+
+export function validateVisualArtifact(
+	input: unknown,
+	options?: { strictDeclarative?: boolean; allowLegacy?: boolean },
+): ValidationResult {
+	const strictDeclarative = options?.strictDeclarative === true;
 	const problems: string[] = [];
 
 	if (typeof input !== "object" || input === null) {
@@ -119,7 +127,9 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 
 	// 5. Renderer
 	const renderer = record.renderer as VisualRenderer;
-	if (!ALLOWED_RENDERERS.includes(renderer)) {
+	if (strictDeclarative && renderer === "html") {
+		problems.push("Renderer 'html' is not permitted for visual artifacts. Only 'svg' declarative diagrams are supported.");
+	} else if (!ALLOWED_RENDERERS.includes(renderer)) {
 		problems.push(`Unsupported renderer '${String(record.renderer)}'. Allowed: ${ALLOWED_RENDERERS.join(", ")}.`);
 	}
 
@@ -135,6 +145,7 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 
 	// 7. Source
 	let source = "";
+	let parsedDeclarativeDoc: DeclarativeSvgDocument | undefined;
 	if (typeof record.source !== "string" || record.source.trim().length === 0) {
 		problems.push("Artifact source must be a non-empty string.");
 	} else {
@@ -154,11 +165,16 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 					const declValidation = validateDeclarativeSvgDocument(parsed);
 					problems.push(...declValidation.problems);
 					if (declValidation.document) {
+						parsedDeclarativeDoc = declValidation.document;
 						source = JSON.stringify(declValidation.document);
 					}
 				} catch (err) {
 					problems.push(`Declarative SVG source contains invalid JSON: ${(err as Error).message || String(err)}`);
 				}
+			} else if (strictDeclarative) {
+				problems.push(
+					"Raw SVG XML is not permitted. Artifact source must be a declarative JSON document matching schema 'learnharness.visual.svg.v1'.",
+				);
 			} else {
 				const svgValidation = validateSvgSource(source);
 				problems.push(...svgValidation.problems);
@@ -167,8 +183,12 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 				}
 			}
 		} else if (renderer === "html") {
-			const htmlValidation = validateHtmlSource(source);
-			problems.push(...htmlValidation.problems);
+			if (strictDeclarative) {
+				problems.push("HTML source is not permitted. Visual explanations must use declarative SVG JSON.");
+			} else {
+				const htmlValidation = validateHtmlSource(source);
+				problems.push(...htmlValidation.problems);
+			}
 		}
 	}
 
@@ -191,6 +211,23 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 		}
 	}
 
+	// Validate initialState.step against declarative steps count
+	if (initialState !== undefined && initialState.step !== undefined) {
+		const rawStep = initialState.step;
+		if (typeof rawStep !== "number" || !Number.isInteger(rawStep)) {
+			problems.push("initialState.step must be an integer.");
+		} else if (rawStep < 0) {
+			problems.push(`initialState.step (${rawStep}) cannot be negative.`);
+		} else if (parsedDeclarativeDoc) {
+			const maxValidStep = parsedDeclarativeDoc.steps.length - 1;
+			if (rawStep > maxValidStep) {
+				problems.push(
+					`initialState.step (${rawStep}) exceeds maximum step index (${maxValidStep}) for declarative SVG document.`,
+				);
+			}
+		}
+	}
+
 	// 9. Controls (optional)
 	let controls: VisualControlDescriptor[] | undefined;
 	if (record.controls !== undefined) {
@@ -203,6 +240,12 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 			const seenControlIds = new Set<string>();
 			for (let i = 0; i < record.controls.length; i++) {
 				const ctrl = record.controls[i];
+				if (strictDeclarative && typeof ctrl === "object" && ctrl !== null && (ctrl as Record<string, unknown>).type !== "button") {
+					problems.push(
+						`Control '${String((ctrl as Record<string, unknown>).id ?? i)}' has unsupported type '${String((ctrl as Record<string, unknown>).type)}'. Declarative SVG only supports button controls that affect step navigation or simulation.`,
+					);
+					continue;
+				}
 				const ctrlValidation = validateControlDescriptor(ctrl, i, seenControlIds);
 				problems.push(...ctrlValidation.problems);
 				if (ctrlValidation.control) {
