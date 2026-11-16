@@ -11,6 +11,17 @@ import {
 	type VisualControlDescriptor,
 	type VisualRenderer,
 	type VisualPresentation,
+	type DeclarativeSvgDocument,
+	type DeclarativeSvgStep,
+	type DeclarativeSvgElement,
+	type DeclarativeSvgRectElement,
+	type DeclarativeSvgCircleElement,
+	type DeclarativeSvgEllipseElement,
+	type DeclarativeSvgLineElement,
+	type DeclarativeSvgPolylineElement,
+	type DeclarativeSvgPolygonElement,
+	type DeclarativeSvgTextElement,
+	DECLARATIVE_SVG_SCHEMA,
 	VISUAL_ARTIFACT_LIMITS,
 } from "./contracts/visual-explanation.ts";
 import sax from "sax";
@@ -136,10 +147,24 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 		}
 
 		if (renderer === "svg") {
-			const svgValidation = validateSvgSource(source);
-			problems.push(...svgValidation.problems);
-			if (svgValidation.sanitized) {
-				source = svgValidation.sanitized;
+			const trimmedSource = source.trim();
+			if (trimmedSource.startsWith("{")) {
+				try {
+					const parsed = JSON.parse(trimmedSource);
+					const declValidation = validateDeclarativeSvgDocument(parsed);
+					problems.push(...declValidation.problems);
+					if (declValidation.document) {
+						source = JSON.stringify(declValidation.document);
+					}
+				} catch (err) {
+					problems.push(`Declarative SVG source contains invalid JSON: ${(err as Error).message || String(err)}`);
+				}
+			} else {
+				const svgValidation = validateSvgSource(source);
+				problems.push(...svgValidation.problems);
+				if (svgValidation.sanitized) {
+					source = svgValidation.sanitized;
+				}
 			}
 		} else if (renderer === "html") {
 			const htmlValidation = validateHtmlSource(source);
@@ -271,6 +296,527 @@ export function validateVisualArtifact(input: unknown): ValidationResult {
 	};
 
 	return { valid: true, problems: [], sanitized };
+}
+
+export const ALLOWED_DECLARATIVE_ELEMENT_TYPES = new Set([
+	"rect",
+	"circle",
+	"ellipse",
+	"line",
+	"polyline",
+	"polygon",
+	"text",
+]);
+
+const COLOR_REGEX =
+	/^(none|transparent|currentColor|#[0-9a-fA-F]{3,4}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}|rgba?\(\s*\d+\s*,\s*\d+\s*,\s*\d+(\s*,\s*(?:0|1|0?\.\d+))?\s*\)|hsla?\(\s*\d+\s*,\s*\d+%\s*,\s*\d+%(?:,\s*(?:0|1|0?\.\d+))?\s*\)|[a-zA-Z]{3,20})$/;
+
+export function isSafeColor(color: unknown): boolean {
+	if (typeof color !== "string") return false;
+	const trimmed = color.trim();
+	if (!COLOR_REGEX.test(trimmed)) return false;
+	if (/\b(url|expression|javascript|behavior|data)\b/i.test(trimmed)) return false;
+	if (/[;{}()<>"'/\\*]/.test(trimmed.replace(/^rgba?\(.*?\)$/, "").replace(/^hsla?\(.*?\)$/, ""))) return false;
+	return true;
+}
+
+function isFiniteCoord(val: unknown): val is number {
+	return (
+		typeof val === "number" &&
+		Number.isFinite(val) &&
+		val >= VISUAL_ARTIFACT_LIMITS.MIN_COORDINATE &&
+		val <= VISUAL_ARTIFACT_LIMITS.MAX_COORDINATE
+	);
+}
+
+function validateDeclarativeSvgElement(
+	rawEl: unknown,
+	stepIdx: number,
+	elIdx: number,
+): { problems: string[]; element?: DeclarativeSvgElement } {
+	const problems: string[] = [];
+
+	if (typeof rawEl !== "object" || rawEl === null || Array.isArray(rawEl)) {
+		return { problems: [`Step ${stepIdx} element ${elIdx} must be an object.`] };
+	}
+
+	const el = rawEl as Record<string, unknown>;
+
+	if (typeof el.type !== "string" || !ALLOWED_DECLARATIVE_ELEMENT_TYPES.has(el.type)) {
+		return {
+			problems: [
+				`Step ${stepIdx} element ${elIdx} has disallowed type '${String(el.type)}'. Allowed primitive types: rect, circle, ellipse, line, polyline, polygon, text.`,
+			],
+		};
+	}
+
+	// Reject any forbidden properties or event handlers
+	for (const key of Object.keys(el)) {
+		if (
+			key.startsWith("on") ||
+			key === "href" ||
+			key === "src" ||
+			key === "xlink:href" ||
+			key === "dangerouslySetInnerHTML" ||
+			key === "innerHTML" ||
+			key === "children" ||
+			key === "script" ||
+			key === "style" ||
+			key === "className" ||
+			key === "class"
+		) {
+			problems.push(`Step ${stepIdx} element ${elIdx} contains disallowed attribute '${key}'.`);
+		}
+	}
+
+	// Validate common presentation attributes: fill, stroke, strokeWidth, opacity
+	let fill: string | undefined;
+	if (el.fill !== undefined) {
+		if (!isSafeColor(el.fill)) {
+			problems.push(`Step ${stepIdx} element ${elIdx} has invalid or unsafe fill color: '${String(el.fill)}'.`);
+		} else {
+			fill = (el.fill as string).trim();
+		}
+	}
+
+	let stroke: string | undefined;
+	if (el.stroke !== undefined) {
+		if (!isSafeColor(el.stroke)) {
+			problems.push(`Step ${stepIdx} element ${elIdx} has invalid or unsafe stroke color: '${String(el.stroke)}'.`);
+		} else {
+			stroke = (el.stroke as string).trim();
+		}
+	}
+
+	let strokeWidth: number | undefined;
+	if (el.strokeWidth !== undefined) {
+		if (typeof el.strokeWidth !== "number" || !Number.isFinite(el.strokeWidth) || el.strokeWidth < 0 || el.strokeWidth > 100) {
+			problems.push(`Step ${stepIdx} element ${elIdx} strokeWidth must be a finite number between 0 and 100.`);
+		} else {
+			strokeWidth = el.strokeWidth;
+		}
+	}
+
+	let opacity: number | undefined;
+	if (el.opacity !== undefined) {
+		if (typeof el.opacity !== "number" || !Number.isFinite(el.opacity) || el.opacity < 0 || el.opacity > 1) {
+			problems.push(`Step ${stepIdx} element ${elIdx} opacity must be a finite number between 0 and 1.`);
+		} else {
+			opacity = el.opacity;
+		}
+	}
+
+	switch (el.type) {
+		case "rect": {
+			if (!isFiniteCoord(el.x)) problems.push(`Step ${stepIdx} rect ${elIdx} x must be a finite coordinate.`);
+			if (!isFiniteCoord(el.y)) problems.push(`Step ${stepIdx} rect ${elIdx} y must be a finite coordinate.`);
+			if (typeof el.width !== "number" || !Number.isFinite(el.width) || el.width < 0 || el.width > VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION) {
+				problems.push(`Step ${stepIdx} rect ${elIdx} width must be a finite number >= 0 and <= ${VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION}.`);
+			}
+			if (typeof el.height !== "number" || !Number.isFinite(el.height) || el.height < 0 || el.height > VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION) {
+				problems.push(`Step ${stepIdx} rect ${elIdx} height must be a finite number >= 0 and <= ${VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION}.`);
+			}
+			let rx: number | undefined;
+			if (el.rx !== undefined) {
+				if (typeof el.rx !== "number" || !Number.isFinite(el.rx) || el.rx < 0) {
+					problems.push(`Step ${stepIdx} rect ${elIdx} rx must be a finite number >= 0.`);
+				} else {
+					rx = el.rx;
+				}
+			}
+			let ry: number | undefined;
+			if (el.ry !== undefined) {
+				if (typeof el.ry !== "number" || !Number.isFinite(el.ry) || el.ry < 0) {
+					problems.push(`Step ${stepIdx} rect ${elIdx} ry must be a finite number >= 0.`);
+				} else {
+					ry = el.ry;
+				}
+			}
+
+			if (problems.length > 0) return { problems };
+			const rectEl: DeclarativeSvgRectElement = {
+				type: "rect",
+				x: el.x as number,
+				y: el.y as number,
+				width: el.width as number,
+				height: el.height as number,
+				...(rx !== undefined ? { rx } : {}),
+				...(ry !== undefined ? { ry } : {}),
+				...(fill !== undefined ? { fill } : {}),
+				...(stroke !== undefined ? { stroke } : {}),
+				...(strokeWidth !== undefined ? { strokeWidth } : {}),
+				...(opacity !== undefined ? { opacity } : {}),
+			};
+			return { problems: [], element: rectEl };
+		}
+		case "circle": {
+			if (!isFiniteCoord(el.cx)) problems.push(`Step ${stepIdx} circle ${elIdx} cx must be a finite coordinate.`);
+			if (!isFiniteCoord(el.cy)) problems.push(`Step ${stepIdx} circle ${elIdx} cy must be a finite coordinate.`);
+			if (typeof el.r !== "number" || !Number.isFinite(el.r) || el.r < 0 || el.r > VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION) {
+				problems.push(`Step ${stepIdx} circle ${elIdx} r must be a finite number >= 0 and <= ${VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION}.`);
+			}
+			if (problems.length > 0) return { problems };
+			const circleEl: DeclarativeSvgCircleElement = {
+				type: "circle",
+				cx: el.cx as number,
+				cy: el.cy as number,
+				r: el.r as number,
+				...(fill !== undefined ? { fill } : {}),
+				...(stroke !== undefined ? { stroke } : {}),
+				...(strokeWidth !== undefined ? { strokeWidth } : {}),
+				...(opacity !== undefined ? { opacity } : {}),
+			};
+			return { problems: [], element: circleEl };
+		}
+		case "ellipse": {
+			if (!isFiniteCoord(el.cx)) problems.push(`Step ${stepIdx} ellipse ${elIdx} cx must be a finite coordinate.`);
+			if (!isFiniteCoord(el.cy)) problems.push(`Step ${stepIdx} ellipse ${elIdx} cy must be a finite coordinate.`);
+			if (typeof el.rx !== "number" || !Number.isFinite(el.rx) || el.rx < 0 || el.rx > VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION) {
+				problems.push(`Step ${stepIdx} ellipse ${elIdx} rx must be a finite number >= 0.`);
+			}
+			if (typeof el.ry !== "number" || !Number.isFinite(el.ry) || el.ry < 0 || el.ry > VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION) {
+				problems.push(`Step ${stepIdx} ellipse ${elIdx} ry must be a finite number >= 0.`);
+			}
+			if (problems.length > 0) return { problems };
+			const ellipseEl: DeclarativeSvgEllipseElement = {
+				type: "ellipse",
+				cx: el.cx as number,
+				cy: el.cy as number,
+				rx: el.rx as number,
+				ry: el.ry as number,
+				...(fill !== undefined ? { fill } : {}),
+				...(stroke !== undefined ? { stroke } : {}),
+				...(strokeWidth !== undefined ? { strokeWidth } : {}),
+				...(opacity !== undefined ? { opacity } : {}),
+			};
+			return { problems: [], element: ellipseEl };
+		}
+		case "line": {
+			if (!isFiniteCoord(el.x1)) problems.push(`Step ${stepIdx} line ${elIdx} x1 must be a finite coordinate.`);
+			if (!isFiniteCoord(el.y1)) problems.push(`Step ${stepIdx} line ${elIdx} y1 must be a finite coordinate.`);
+			if (!isFiniteCoord(el.x2)) problems.push(`Step ${stepIdx} line ${elIdx} x2 must be a finite coordinate.`);
+			if (!isFiniteCoord(el.y2)) problems.push(`Step ${stepIdx} line ${elIdx} y2 must be a finite coordinate.`);
+			if (problems.length > 0) return { problems };
+			const lineEl: DeclarativeSvgLineElement = {
+				type: "line",
+				x1: el.x1 as number,
+				y1: el.y1 as number,
+				x2: el.x2 as number,
+				y2: el.y2 as number,
+				...(stroke !== undefined ? { stroke } : {}),
+				...(strokeWidth !== undefined ? { strokeWidth } : {}),
+				...(opacity !== undefined ? { opacity } : {}),
+			};
+			return { problems: [], element: lineEl };
+		}
+		case "polyline":
+		case "polygon": {
+			let points: string | [number, number][] = "";
+			if (typeof el.points === "string") {
+				const trimmed = el.points.trim();
+				if (trimmed.length === 0 || trimmed.length > 2048) {
+					problems.push(`Step ${stepIdx} ${el.type} ${elIdx} points string length is invalid.`);
+				} else {
+					const parts = trimmed.split(/[\s,]+/).filter(Boolean);
+					if (parts.length < 4 || parts.length % 2 !== 0) {
+						problems.push(`Step ${stepIdx} ${el.type} ${elIdx} points must contain an even number of coordinates (at least 2 points).`);
+					} else {
+						for (const p of parts) {
+							const num = Number(p);
+							if (!Number.isFinite(num) || num < VISUAL_ARTIFACT_LIMITS.MIN_COORDINATE || num > VISUAL_ARTIFACT_LIMITS.MAX_COORDINATE) {
+								problems.push(`Step ${stepIdx} ${el.type} ${elIdx} point coordinate '${p}' is invalid or out of bounds.`);
+								break;
+							}
+						}
+						points = trimmed;
+					}
+				}
+			} else if (Array.isArray(el.points)) {
+				if (el.points.length < 2 || el.points.length > 200) {
+					problems.push(`Step ${stepIdx} ${el.type} ${elIdx} points array must contain between 2 and 200 points.`);
+				} else {
+					const pts: [number, number][] = [];
+					for (let i = 0; i < el.points.length; i++) {
+						const pt = el.points[i];
+						if (!Array.isArray(pt) || pt.length !== 2 || !isFiniteCoord(pt[0]) || !isFiniteCoord(pt[1])) {
+							problems.push(`Step ${stepIdx} ${el.type} ${elIdx} point at ${i} must be a [number, number] tuple.`);
+							break;
+						}
+						pts.push([pt[0] as number, pt[1] as number]);
+					}
+					points = pts;
+				}
+			} else {
+				problems.push(`Step ${stepIdx} ${el.type} ${elIdx} points must be a string or array of [x, y] coordinates.`);
+			}
+
+			if (problems.length > 0) return { problems };
+			const polyEl = {
+				type: el.type,
+				points,
+				...(fill !== undefined ? { fill } : {}),
+				...(stroke !== undefined ? { stroke } : {}),
+				...(strokeWidth !== undefined ? { strokeWidth } : {}),
+				...(opacity !== undefined ? { opacity } : {}),
+			} as DeclarativeSvgPolylineElement | DeclarativeSvgPolygonElement;
+			return { problems: [], element: polyEl };
+		}
+		case "text": {
+			if (!isFiniteCoord(el.x)) problems.push(`Step ${stepIdx} text ${elIdx} x must be a finite coordinate.`);
+			if (!isFiniteCoord(el.y)) problems.push(`Step ${stepIdx} text ${elIdx} y must be a finite coordinate.`);
+			if (typeof el.text !== "string" || el.text.length === 0 || el.text.length > 512) {
+				problems.push(`Step ${stepIdx} text ${elIdx} text must be a string between 1 and 512 characters.`);
+			}
+			let fontSize: number | undefined;
+			if (el.fontSize !== undefined) {
+				if (typeof el.fontSize !== "number" || !Number.isFinite(el.fontSize) || el.fontSize < 1 || el.fontSize > 200) {
+					problems.push(`Step ${stepIdx} text ${elIdx} fontSize must be a finite number between 1 and 200.`);
+				} else {
+					fontSize = el.fontSize;
+				}
+			}
+			let fontFamily: string | undefined;
+			if (el.fontFamily !== undefined) {
+				if (typeof el.fontFamily !== "string" || !/^[a-zA-Z0-9_,\s-]+$/.test(el.fontFamily) || el.fontFamily.length > 64) {
+					problems.push(`Step ${stepIdx} text ${elIdx} fontFamily contains invalid characters or exceeds 64 characters.`);
+				} else {
+					fontFamily = el.fontFamily.trim();
+				}
+			}
+			let fontWeight: string | number | undefined;
+			if (el.fontWeight !== undefined) {
+				if (
+					typeof el.fontWeight !== "string" &&
+					(typeof el.fontWeight !== "number" || !Number.isFinite(el.fontWeight))
+				) {
+					problems.push(`Step ${stepIdx} text ${elIdx} fontWeight must be a string or number.`);
+				} else {
+					fontWeight = el.fontWeight as string | number;
+				}
+			}
+			let anchor: "start" | "middle" | "end" | undefined;
+			const rawAnchor = el.textAnchor ?? el.anchor;
+			if (rawAnchor !== undefined) {
+				if (rawAnchor !== "start" && rawAnchor !== "middle" && rawAnchor !== "end") {
+					problems.push(`Step ${stepIdx} text ${elIdx} anchor must be 'start', 'middle', or 'end'.`);
+				} else {
+					anchor = rawAnchor;
+				}
+			}
+
+			if (problems.length > 0) return { problems };
+			const textEl: DeclarativeSvgTextElement = {
+				type: "text",
+				x: el.x as number,
+				y: el.y as number,
+				text: el.text as string,
+				...(fontSize !== undefined ? { fontSize } : {}),
+				...(fontFamily !== undefined ? { fontFamily } : {}),
+				...(fontWeight !== undefined ? { fontWeight } : {}),
+				...(anchor !== undefined ? { anchor, textAnchor: anchor } : {}),
+				...(fill !== undefined ? { fill } : {}),
+				...(opacity !== undefined ? { opacity } : {}),
+			};
+			return { problems: [], element: textEl };
+		}
+	}
+
+	return { problems: [`Step ${stepIdx} element ${elIdx} has unsupported type '${String(el.type)}'.`] };
+}
+
+export function validateDeclarativeSvgDocument(input: unknown): {
+	valid: boolean;
+	problems: string[];
+	document?: DeclarativeSvgDocument;
+} {
+	const problems: string[] = [];
+
+	if (typeof input !== "object" || input === null || Array.isArray(input)) {
+		return { valid: false, problems: ["Declarative SVG document must be a JSON object."] };
+	}
+
+	const doc = input as Record<string, unknown>;
+
+	if (doc.schema !== DECLARATIVE_SVG_SCHEMA) {
+		problems.push(
+			`Unsupported or missing declarative SVG schema: expected '${DECLARATIVE_SVG_SCHEMA}', got '${String(doc.schema)}'.`,
+		);
+	}
+
+	// viewBox
+	if (typeof doc.viewBox !== "object" || doc.viewBox === null || Array.isArray(doc.viewBox)) {
+		problems.push("Declarative SVG viewBox must be an object with width and height.");
+	}
+	const vb = (doc.viewBox || {}) as Record<string, unknown>;
+	const width = vb.width;
+	const height = vb.height;
+	const vx = vb.x !== undefined ? vb.x : 0;
+	const vy = vb.y !== undefined ? vb.y : 0;
+
+	if (
+		typeof width !== "number" ||
+		!Number.isFinite(width) ||
+		width <= 0 ||
+		width > VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION
+	) {
+		problems.push(
+			`viewBox width must be a finite positive number <= ${VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION}.`,
+		);
+	}
+	if (
+		typeof height !== "number" ||
+		!Number.isFinite(height) ||
+		height <= 0 ||
+		height > VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION
+	) {
+		problems.push(
+			`viewBox height must be a finite positive number <= ${VISUAL_ARTIFACT_LIMITS.MAX_VIEWBOX_DIMENSION}.`,
+		);
+	}
+	if (
+		typeof vx !== "number" ||
+		!Number.isFinite(vx) ||
+		vx < VISUAL_ARTIFACT_LIMITS.MIN_COORDINATE ||
+		vx > VISUAL_ARTIFACT_LIMITS.MAX_COORDINATE
+	) {
+		problems.push("viewBox x coordinate is invalid or out of bounds.");
+	}
+	if (
+		typeof vy !== "number" ||
+		!Number.isFinite(vy) ||
+		vy < VISUAL_ARTIFACT_LIMITS.MIN_COORDINATE ||
+		vy > VISUAL_ARTIFACT_LIMITS.MAX_COORDINATE
+	) {
+		problems.push("viewBox y coordinate is invalid or out of bounds.");
+	}
+
+	// steps
+	if (!Array.isArray(doc.steps) || doc.steps.length === 0) {
+		problems.push("Declarative SVG must contain a non-empty 'steps' array.");
+	} else if (doc.steps.length > VISUAL_ARTIFACT_LIMITS.MAX_STEPS) {
+		problems.push(
+			`Declarative SVG steps count (${doc.steps.length}) exceeds maximum limit of ${VISUAL_ARTIFACT_LIMITS.MAX_STEPS}.`,
+		);
+	}
+
+	const sanitizedSteps: DeclarativeSvgStep[] = [];
+	const seenStepIds = new Set<string>();
+
+	if (Array.isArray(doc.steps)) {
+		for (let sIdx = 0; sIdx < doc.steps.length; sIdx++) {
+			const rawStep = doc.steps[sIdx];
+			if (typeof rawStep !== "object" || rawStep === null || Array.isArray(rawStep)) {
+				problems.push(`Step at index ${sIdx} must be an object.`);
+				continue;
+			}
+			const step = rawStep as Record<string, unknown>;
+
+			if (typeof step.id !== "string" || !ID_REGEX.test(step.id)) {
+				problems.push(
+					`Step at index ${sIdx} has invalid id: must be 1-64 alphanumeric chars, dashes or underscores.`,
+				);
+			} else if (seenStepIds.has(step.id)) {
+				problems.push(`Duplicate step id '${step.id}' at index ${sIdx}.`);
+			} else {
+				seenStepIds.add(step.id);
+			}
+
+			if (
+				typeof step.label !== "string" ||
+				step.label.trim().length === 0 ||
+				step.label.length > VISUAL_ARTIFACT_LIMITS.MAX_LABEL_LENGTH
+			) {
+				problems.push(
+					`Step at index ${sIdx} must have a label between 1 and ${VISUAL_ARTIFACT_LIMITS.MAX_LABEL_LENGTH} characters.`,
+				);
+			}
+
+			let description: string | undefined;
+			if (step.description !== undefined) {
+				if (
+					typeof step.description !== "string" ||
+					step.description.length > VISUAL_ARTIFACT_LIMITS.MAX_DESCRIPTION_LENGTH
+				) {
+					problems.push(
+						`Step at index ${sIdx} description exceeds ${VISUAL_ARTIFACT_LIMITS.MAX_DESCRIPTION_LENGTH} characters.`,
+					);
+				} else {
+					description = step.description.trim();
+				}
+			}
+
+			if (!Array.isArray(step.elements)) {
+				problems.push(`Step at index ${sIdx} 'elements' must be an array.`);
+				continue;
+			}
+			if (step.elements.length > VISUAL_ARTIFACT_LIMITS.MAX_ELEMENTS_PER_STEP) {
+				problems.push(
+					`Step '${String(step.id)}' elements count (${step.elements.length}) exceeds maximum limit of ${VISUAL_ARTIFACT_LIMITS.MAX_ELEMENTS_PER_STEP}.`,
+				);
+			}
+
+			const sanitizedElements: DeclarativeSvgElement[] = [];
+			for (let eIdx = 0; eIdx < step.elements.length; eIdx++) {
+				const rawEl = step.elements[eIdx];
+				const elRes = validateDeclarativeSvgElement(rawEl, sIdx, eIdx);
+				problems.push(...elRes.problems);
+				if (elRes.element) {
+					sanitizedElements.push(elRes.element);
+				}
+			}
+
+			sanitizedSteps.push({
+				id: typeof step.id === "string" ? step.id.trim() : `step-${sIdx}`,
+				label: typeof step.label === "string" ? step.label.trim() : "",
+				...(description !== undefined ? { description } : {}),
+				elements: sanitizedElements,
+			});
+		}
+	}
+
+	if (problems.length > 0) {
+		return { valid: false, problems };
+	}
+
+	const sanitizedDoc: DeclarativeSvgDocument = {
+		schema: DECLARATIVE_SVG_SCHEMA,
+		viewBox: {
+			x: vx as number,
+			y: vy as number,
+			width: width as number,
+			height: height as number,
+		},
+		steps: sanitizedSteps,
+	};
+
+	return { valid: true, problems: [], document: sanitizedDoc };
+}
+
+export function isDeclarativeSvg(source: string): boolean {
+	const trimmed = source.trim();
+	if (!trimmed.startsWith("{")) return false;
+	try {
+		const parsed = JSON.parse(trimmed);
+		return (
+			typeof parsed === "object" &&
+			parsed !== null &&
+			parsed.schema === DECLARATIVE_SVG_SCHEMA
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function parseDeclarativeSvg(source: string): DeclarativeSvgDocument | null {
+	const trimmed = source.trim();
+	if (!trimmed.startsWith("{")) return null;
+	try {
+		const parsed = JSON.parse(trimmed);
+		const result = validateDeclarativeSvgDocument(parsed);
+		return result.valid && result.document ? result.document : null;
+	} catch {
+		return null;
+	}
 }
 
 export const ALLOWED_SVG_TAGS = new Set([

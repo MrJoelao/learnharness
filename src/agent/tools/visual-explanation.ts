@@ -7,6 +7,7 @@
 
 import { Type, type Static } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { nanoid } from "nanoid";
 import { invalidInputResult, serverExecute } from "../tool-execute.ts";
 import type { ChatStore } from "../../core/ports.ts";
 import type {
@@ -74,12 +75,14 @@ export const visualExplanationInputSchema = Type.Object({
 	action: Type.Union([Type.Literal("create"), Type.Literal("update")], {
 		description: "'create' to author a new visual artifact, or 'update' to patch/replace an existing artifact by ID.",
 	}),
-	id: Type.String({
-		minLength: 1,
-		maxLength: 64,
-		description:
-			"Stable artifact ID (e.g. 'memory-layout', 'paging-translation', 'pipeline-stages'). Reference the same ID when updating.",
-	}),
+	id: Type.Optional(
+		Type.String({
+			minLength: 1,
+			maxLength: 64,
+			description:
+				"Stable artifact ID. Required when action is 'update'. Optional when action is 'create' (host generates ID if omitted).",
+		}),
+	),
 	title: Type.Optional(Type.String({ maxLength: 128, description: "Title of the visual explanation." })),
 	summary: Type.Optional(Type.String({ maxLength: 1024, description: "Brief summary of what this visualization explains." })),
 	renderer: Type.Optional(
@@ -131,9 +134,10 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 		executionMode: "sequential",
 		execute: serverExecute("visual_explanation", visualExplanationInputSchema, async (input: VisualExplanationInput) => {
 			const { chatId, chatStore } = ctx;
-			const { action, id } = input;
+			const { action } = input;
 
 			if (action === "create") {
+				const id = input.id && input.id.trim().length > 0 ? input.id.trim() : `vis-${nanoid(8)}`;
 				const existing = chatStore.getVisualArtifact(chatId, id);
 				if (existing) {
 					return invalidInputResult("visual_explanation", [
@@ -179,6 +183,12 @@ export function createVisualExplanationTool(ctx: VisualExplanationToolContext): 
 			}
 
 			if (action === "update") {
+				if (!input.id || input.id.trim().length === 0) {
+					return invalidInputResult("visual_explanation", [
+						"Artifact ID is required when action is 'update'.",
+					]);
+				}
+				const id = input.id.trim();
 				const existing = chatStore.getVisualArtifact(chatId, id);
 				if (!existing) {
 					return invalidInputResult("visual_explanation", [

@@ -22,7 +22,10 @@ import {
 	type VisualToggleControl,
 	type VisualSelectControl,
 	validateVisualArtifact,
+	isDeclarativeSvg,
+	parseDeclarativeSvg,
 } from "@/src/core";
+import { DeclarativeSvgRenderer } from "@/components/artifacts/declarative-svg-renderer";
 import { SvgImage } from "@/components/artifacts/svg-image";
 import { downloadFile, slugFilename } from "@/components/artifacts/download";
 
@@ -364,21 +367,30 @@ export function VisualExplanationInstance({
 		...(artifact.initialState ?? {}),
 	}));
 
+	// Parse declarative SVG document if schema is learnharness.visual.svg.v1
+	const declarativeDoc = useMemo(() => {
+		if (artifact.renderer !== "svg") return null;
+		return parseDeclarativeSvg(artifact.source);
+	}, [artifact]);
+
 	// Calculate maximum steps
 	const detectedSvgSteps = useMemo(() => (artifact.renderer === "svg" ? countSvgSteps(artifact.source) : 0), [artifact]);
 	const maxSteps = useMemo(() => {
+		if (declarativeDoc) return Math.max(0, declarativeDoc.steps.length - 1);
 		if (typeof artifact.initialState?.maxSteps === "number") return artifact.initialState.maxSteps as number;
 		if (detectedSvgSteps > 0) return detectedSvgSteps;
 		return 3;
-	}, [artifact, detectedSvgSteps]);
+	}, [artifact, declarativeDoc, detectedSvgSteps]);
 
 	// Listen for artifact updates targeting this ID (Fix B: In-place update & state preservation)
 	useEffect(() => {
 		const unsubscribe = subscribeVisualArtifact(artifact.id, (updated) => {
 			setArtifact(updated);
+			const updatedDecl = updated.renderer === "svg" ? parseDeclarativeSvg(updated.source) : null;
 			const newDetectedSteps = updated.renderer === "svg" ? countSvgSteps(updated.source) : 0;
-			const newMax =
-				typeof updated.initialState?.maxSteps === "number"
+			const newMax = updatedDecl
+				? Math.max(0, updatedDecl.steps.length - 1)
+				: typeof updated.initialState?.maxSteps === "number"
 					? (updated.initialState.maxSteps as number)
 					: newDetectedSteps > 0
 						? newDetectedSteps
@@ -700,6 +712,22 @@ export function VisualExplanationInstance({
 					style={{ height: expanded ? "60vh" : "260px" }}
 					data-testid="visual-explanation-iframe"
 				/>
+			);
+		}
+
+		if (declarativeDoc) {
+			return (
+				<div
+					className="flex items-center justify-center overflow-hidden rounded-md bg-white p-2"
+					style={{ minHeight: expanded ? "340px" : "180px", maxHeight: expanded ? "70vh" : "360px" }}
+					data-testid="visual-explanation-declarative-container"
+				>
+					<DeclarativeSvgRenderer
+						document={declarativeDoc}
+						currentStep={currentStep}
+						className="block h-auto max-h-full max-w-full"
+					/>
+				</div>
 			);
 		}
 
