@@ -7,6 +7,7 @@ import { TopBar } from "@/components/top-bar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { usePlugins } from "@/components/plugins";
+import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { fuzzyScore, type PluginModeMetadata } from "@/src/core";
 import {
 	AlertCircleIcon,
@@ -117,6 +118,7 @@ export function StudyHubCatalog({
 	onRetry: propOnRetry,
 }: StudyHubCatalogProps) {
 	const { manager: contextManager, snapshot } = usePlugins();
+	const { open: openSettings } = useSettingsDialog();
 	const safeRouter = useSafeRouter();
 
 	const activeManager = propManager !== undefined ? propManager : contextManager;
@@ -561,14 +563,18 @@ export function StudyHubCatalog({
 						</div>
 						<h3 className="text-lg font-semibold text-foreground">No Learning Modes Available</h3>
 						<p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-							There are currently no learning modes registered by plugins. Enable or install plugins with interactive study modes to get started.
+							Study Hub is ready, but no installed plugins currently provide interactive learning modes. Install or enable a plugin that includes study modes to get started.
 						</p>
 						<div className="mt-6">
-							<Link href="/settings">
-								<Button variant="outline" size="sm" className="cursor-pointer">
-									Manage Plugins in Settings
-								</Button>
-							</Link>
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => openSettings("plugins")}
+								data-testid="study-hub-browse-plugins"
+								className="cursor-pointer"
+							>
+								Browse Community Plugins
+							</Button>
 						</div>
 					</div>
 				) : filteredModes.length === 0 ? (

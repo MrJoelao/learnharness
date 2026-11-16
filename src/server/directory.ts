@@ -245,6 +245,10 @@ export type DirectoryService = ReturnType<typeof createDirectoryService>;
  * initialized (src/server/plugins.ts). Until then every workspace reports
  * "plugin-missing" — a conservative fallback that keeps the item visible.
  */
+interface DirectoryGlobal {
+	__lhWorkspaceAvailabilityResolver?: WorkspaceAvailabilityResolver;
+}
+
 let availabilityResolver: WorkspaceAvailabilityResolver = () => "plugin-missing";
 
 /** Replace the availability resolver (called once after host initialization). */
@@ -252,6 +256,19 @@ export function configureDirectoryAvailabilityResolver(
 	resolver: WorkspaceAvailabilityResolver,
 ): void {
 	availabilityResolver = resolver;
+	(globalThis as typeof globalThis & DirectoryGlobal).__lhWorkspaceAvailabilityResolver = resolver;
+}
+
+function resolveCurrentAvailability(workspace: WorkspaceRecord): WorkspaceAvailability {
+	const globalResolver = (globalThis as typeof globalThis & DirectoryGlobal).__lhWorkspaceAvailabilityResolver;
+	if (globalResolver) {
+		return globalResolver(workspace);
+	}
+	const host = (globalThis as any).__lhPlugins?.host;
+	if (host && typeof host.workspaceAvailability === "function") {
+		return host.workspaceAvailability(workspace);
+	}
+	return availabilityResolver(workspace);
 }
 
 /** The singleton directory service, wired to the production stores. */
@@ -259,7 +276,7 @@ export const directoryService = createDirectoryService({
 	chatStore: stores.chatStore,
 	workspaceStore: stores.workspaceStore,
 	organizationStore: stores.organizationV2Store,
-	resolveAvailability: (workspace) => availabilityResolver(workspace),
+	resolveAvailability: (workspace) => resolveCurrentAvailability(workspace),
 });
 
 /**

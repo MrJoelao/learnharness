@@ -396,17 +396,18 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			const root = path.join(/* turbopackIgnore: true */ origin === "core" ? core!.directory : directory, id);
 			let candidate: Package;
 			try {
-				if (failed(id)) throw new Error(`Plugin startup failed: ${installationErrors[id]}`);
 				if (origin === "core") pluginRoot(core!.directory);
 				candidate = snapshot(root, id, deps.appVersion, origin);
+				if (failed(id)) candidate.contributionWarning = installationErrors[id];
 			} catch (e) {
-				candidate = { rootDirectory: root, directory: origin === "core" ? root : path.join(/* turbopackIgnore: true */ root, "dist"), files: new Map(), info: { id, origin, enabled: false, status: "error", error: errorText(e), revision: "" }, blocked: true };
+				const errorMsg = failed(id) ? `Plugin startup failed: ${installationErrors[id]}` : errorText(e);
+				candidate = { rootDirectory: root, directory: origin === "core" ? root : path.join(/* turbopackIgnore: true */ root, "dist"), files: new Map(), info: { id, origin, enabled: false, status: "error", error: errorMsg, revision: "" }, blocked: true };
 			}
 			const current = packages.get(id);
 			// An unbuilt/invalid package has never admitted executable code. Its
 			// first valid build is ordinary discovery, not a code reload.
 			if (current && !(current.blocked && !current.info.manifest)) {
-				if (failed(id)) {
+				if (failed(id) && candidate.blocked) {
 					await deactivate(current); current.blocked = true; current.info.status = "error";
 					current.info.error = candidate.info.error;
 				} else if (candidate.info.revision !== current.info.revision || candidate.info.error !== undefined) {
@@ -876,9 +877,16 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					await activate(pkg);
 				}
 				change();
+				deps.onWorkspaceChanged?.();
 			});
 		},
-		refresh: () => enqueue(async () => { assertOpen(); await initializeInternal(); await discover(readState(stateFile)); change(); }),
+		refresh: () => enqueue(async () => {
+			assertOpen();
+			await initializeInternal();
+			await discover(readState(stateFile));
+			change();
+			deps.onWorkspaceChanged?.();
+		}),
 		async call(id: string, operation: string, input?: unknown): Promise<unknown> {
 			assertOpen();
 			const pkg = get(id), activation = pkg.activation;

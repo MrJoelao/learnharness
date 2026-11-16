@@ -1,8 +1,13 @@
-import { directoryService, readDirectoryAction, DirectoryInputError } from "@/src/server";
+import { directoryService, readDirectoryAction, DirectoryInputError, initializePlugins } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+	try {
+		await initializePlugins();
+	} catch {
+		// Non-blocking: plugin host failures still allow directory to be read
+	}
 	try {
 		const url = new URL(request.url);
 		if (url.searchParams.get("archived") === "true" || url.searchParams.get("view") === "archived") {
@@ -17,6 +22,11 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+	try {
+		await initializePlugins();
+	} catch {
+		// Non-blocking
+	}
 	try {
 		const action = await readDirectoryAction(request);
 		const result = directoryService.change(action);

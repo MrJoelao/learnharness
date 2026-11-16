@@ -8,6 +8,9 @@ import { createRoot } from "react-dom/client";
 import { parseHTML } from "linkedom";
 
 import { StudyHubCatalog, getModeIcon, getModeKey } from "../components/study-hub-catalog.tsx";
+import { SettingsDialogProvider } from "../components/settings/settings-dialog.tsx";
+import { InteractionLayersProvider } from "../components/interaction-layers.tsx";
+import { installModalDom } from "./modal-dom.ts";
 import type { PluginModeMetadata } from "../src/core";
 import {
 	BookOpenIcon,
@@ -173,8 +176,9 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		assert.ok(html.includes('data-testid="study-hub-empty"'), "Empty state container rendered");
 		assert.ok(html.includes("No Learning Modes Available"), "Empty state title rendered");
-		assert.ok(html.includes("There are currently no learning modes registered"), "Empty state explanation rendered");
-		assert.ok(html.includes("href=\"/settings\""), "Links to settings to manage plugins");
+		assert.ok(html.includes("Study Hub is ready, but no installed plugins currently provide interactive learning modes. Install or enable a plugin that includes study modes to get started."), "Empty state explanation rendered");
+		assert.ok(html.includes("Browse Community Plugins"), "Browse Community Plugins button rendered");
+		assert.ok(!html.includes("href=\"/settings\""), "Does not link to dead /settings route");
 		assert.ok(!html.includes('data-testid="study-hub-grid"'), "Grid not rendered when empty");
 		assert.ok(!html.includes('data-testid="study-hub-error"'), "Error notice not rendered when catalog is cleanly empty");
 	});
@@ -1071,6 +1075,146 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.equal(attempts, 2);
 		assert.ok(!dom.document.querySelector('[data-testid="study-hub-error"]'), "Error cleared on successful recovery");
 		assert.equal(refreshBtn.disabled, false, "Refresh button still usable");
+	}));
+
+	it("23. Empty state: clicking Browse Community Plugins opens Settings Dialog on plugins section without navigation", withDom(async (dom) => {
+		const restoreModal = installModalDom(dom);
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (input) => {
+			if (String(input) === "/api/settings") {
+				return Response.json({ settings: { version: 1 } });
+			}
+			return Response.json({});
+		};
+
+		try {
+			const root = createRoot(dom.document.getElementById("root")!);
+			const pushedUrls: string[] = [];
+			const mockRouter = {
+				push: (url: string) => {
+					pushedUrls.push(url);
+				},
+				back: () => {},
+				forward: () => {},
+				replace: (url: string) => {
+					pushedUrls.push(url);
+				},
+				refresh: () => {},
+				prefetch: () => {},
+			};
+
+			await act(async () => {
+				root.render(
+					<InteractionLayersProvider>
+						<SettingsDialogProvider>
+							<StudyHubCatalog
+								modes={[]}
+								modeRenderers={[]}
+								plugins={[]}
+								router={mockRouter}
+								isLoading={false}
+							/>
+						</SettingsDialogProvider>
+					</InteractionLayersProvider>,
+				);
+			});
+
+			// 1. Empty state is shown when there are no registered modes
+			const emptyContainer = dom.document.querySelector('[data-testid="study-hub-empty"]');
+			assert.ok(emptyContainer, "Empty state container rendered when no modes are registered");
+			assert.ok(emptyContainer.textContent?.includes("No Learning Modes Available"), "Displays correct title");
+			assert.ok(
+				emptyContainer.textContent?.includes("Study Hub is ready, but no installed plugins currently provide interactive learning modes"),
+				"Displays correct description explaining Study Hub is ready but needs plugins",
+			);
+
+			// 2. Button is rendered with correct label and testid
+			const browseBtn = dom.document.querySelector('[data-testid="study-hub-browse-plugins"]') as HTMLButtonElement;
+			assert.ok(browseBtn, "Browse Community Plugins button rendered");
+			assert.equal(browseBtn.textContent?.trim(), "Browse Community Plugins");
+
+			// 3. Settings dialog is initially not in DOM
+			assert.equal(dom.document.querySelector('[data-testid="settings-dialog"]'), null, "Settings dialog initially not mounted");
+
+			// 4. Click Browse Community Plugins
+			await act(async () => {
+				browseBtn.click();
+			});
+
+			// 5. Settings dialog opens on Community plugins section
+			const settingsDialog = dom.document.querySelector('[data-testid="settings-dialog"]');
+			assert.ok(settingsDialog, "Settings dialog opens on button click");
+
+			const pluginsNav = dom.document.querySelector('[data-testid="settings-nav-plugins"]');
+			assert.ok(pluginsNav, "Community plugins navigation option exists in settings");
+			assert.equal(pluginsNav.getAttribute("aria-current"), "true", "Plugins section is active");
+
+			const pluginsSection = dom.document.querySelector('[data-testid="section-plugins"]');
+			assert.ok(pluginsSection, "Community plugins section is visible in dialog content");
+
+			// 6. Verification that click did NOT navigate towards /settings or /chat/new or create chat
+			assert.equal(pushedUrls.length, 0, "No router navigation was triggered");
+			assert.ok(!pushedUrls.includes("/settings"), "Click did not navigate to /settings");
+			assert.ok(!pushedUrls.includes("/chat/new"), "Click did not navigate to /chat/new or create a new chat");
+			assert.equal(dom.document.querySelector('a[href="/settings"]'), null, "No anchor linking to /settings exists");
+		} finally {
+			globalThis.fetch = originalFetch;
+			restoreModal();
+		}
+	}));
+
+	it("24. Empty state behavior works when modes are omitted and snapshot has no modes", withDom(async (dom) => {
+		const restoreModal = installModalDom(dom);
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (input) => {
+			if (String(input) === "/api/settings") {
+				return Response.json({ settings: { version: 1 } });
+			}
+			return Response.json({});
+		};
+
+		try {
+			const root = createRoot(dom.document.getElementById("root")!);
+			const pushedUrls: string[] = [];
+			const mockRouter = {
+				push: (url: string) => {
+					pushedUrls.push(url);
+				},
+				back: () => {},
+				replace: (url: string) => {
+					pushedUrls.push(url);
+				},
+			};
+
+			await act(async () => {
+				root.render(
+					<InteractionLayersProvider>
+						<SettingsDialogProvider>
+							<StudyHubCatalog
+								router={mockRouter}
+								isLoading={false}
+							/>
+						</SettingsDialogProvider>
+					</InteractionLayersProvider>,
+				);
+			});
+
+			// Empty state is rendered by default when no modes exist in catalog
+			assert.ok(dom.document.querySelector('[data-testid="study-hub-empty"]'), "Empty state rendered when modes omitted");
+			const browseBtn = dom.document.querySelector('[data-testid="study-hub-browse-plugins"]') as HTMLButtonElement;
+			assert.ok(browseBtn, "Browse Community Plugins button present");
+
+			await act(async () => {
+				browseBtn.click();
+			});
+
+			assert.ok(dom.document.querySelector('[data-testid="settings-dialog"]'), "Settings dialog opened");
+			assert.equal(dom.document.querySelector('[data-testid="settings-nav-plugins"]')?.getAttribute("aria-current"), "true");
+			assert.equal(pushedUrls.length, 0, "No router navigation occurred");
+		} finally {
+			globalThis.fetch = originalFetch;
+			restoreModal();
+		}
 	}));
 });
 

@@ -109,6 +109,7 @@ function runtime(): Runtime {
 		// live host (synchronous once ready; until this line every workspace
 		// reports the conservative "plugin-missing" fallback).
 		configureDirectoryAvailabilityResolver((workspace) => host.workspaceAvailability(workspace));
+		emit("workspaces-changed", {});
 	});
 	global.__lhPlugins = { host, ready };
 	return global.__lhPlugins;
