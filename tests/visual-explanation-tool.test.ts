@@ -7,7 +7,7 @@ import { after, describe, it } from "node:test";
 import { chatStore } from "../src/store/chats.ts";
 import { jobStore } from "../src/store/jobs.ts";
 import { createVisualExplanationTool } from "../src/agent/tools/visual-explanation.ts";
-import { createTeacherTools } from "../src/agent/tools.ts";
+import { createTeacherTools, createProberTools } from "../src/agent/tools.ts";
 import type { VisualArtifact } from "../src/core/contracts/visual-explanation.ts";
 
 const SAMPLE_DECLARATIVE_SVG = JSON.stringify({
@@ -397,5 +397,28 @@ describe("Visual Explanation Agent Tool", () => {
 
 		assert.ok(tools.visual_explanation);
 		assert.equal(tools.visual_explanation.name, "visual_explanation");
+	});
+
+	it("is wired into createProberTools registry and matches createTeacherTools", () => {
+		const chatId = createTestChat();
+		const proberTools = createProberTools({
+			chatId,
+			chatStore,
+			jobStore,
+			spawn: () => {},
+			deliver: () => {},
+		});
+		const teacherTools = createTeacherTools({
+			chatId,
+			chatStore,
+			jobStore,
+			spawn: () => {},
+		});
+
+		assert.ok(proberTools.visual_explanation, "createProberTools must contain visual_explanation");
+		assert.ok(teacherTools.visual_explanation, "createTeacherTools must contain visual_explanation");
+		assert.equal(proberTools.visual_explanation!.name, "visual_explanation");
+		assert.equal(proberTools.visual_explanation!.name, teacherTools.visual_explanation!.name);
+		assert.deepEqual(proberTools.visual_explanation!.parameters, teacherTools.visual_explanation!.parameters);
 	});
 });
