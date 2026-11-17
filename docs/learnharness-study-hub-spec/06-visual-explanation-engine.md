@@ -49,11 +49,11 @@ interface VisualArtifact {
   id: string;
   title: string;
   summary?: string;
-  renderer: "svg" | "html";
-  source: string;
+  renderer: "svg"; // MVP v1 is strictly "svg". Future renderers require versioned contracts.
+  source: string; // Declarative SVG JSON schema 'learnharness.visual.svg.v1' or safe static SVG XML
   presentation: "auto" | "inline" | "panel";
-  initialState?: unknown;
-  controls?: VisualControlDescriptor[];
+  initialState?: Record<string, unknown>;
+  controls?: VisualButtonControl[]; // MVP v1 active controls are deterministic buttons
   accessibility?: {
     description?: string;
     reducedMotionFallback?: boolean;
@@ -120,16 +120,14 @@ If the repository's CSP or framework makes a safe iframe impossible in the first
 
 ## 7. Interaction contract
 
-The artifact may support:
-- Play/pause.
-- Step forward/backward.
-- Reset.
-- Parameter controls.
-- Highlight/select.
-- Timeline/progress.
-- Expand to panel.
+In MVP v1, the active interaction contract supports deterministic simulation controls via `VisualButtonControl`:
+- Play/pause (`play`, `pause`).
+- Step forward/backward (`step-forward`, `step-backward`).
+- Reset (`reset`).
 
-Controls are data-driven and bounded. The host owns generic chrome; the artifact owns its internal simulation state.
+Parametric controls (slider, toggle, select) and open-ended interaction frameworks are excluded from the active v1 contract and reserved for future versioned contracts once richer declarative execution primitives are defined.
+
+Controls are data-driven, strictly bounded (maximum 5 controls per artifact), and validated fail-closed. The host owns generic chrome; the artifact owns its internal simulation state.
 
 Follow-up update flow:
 1. Agent receives artifact ID and relevant current state summary.
@@ -160,15 +158,16 @@ Do not let a follow-up update silently replace an unrelated artifact.
 
 ## 10. First-release scope
 
-Recommended MVP:
-- Versioned artifact envelope.
-- Static SVG/declarative renderer.
-- Small set of reusable primitives.
-- Inline display.
-- Expand/collapse into panel.
-- Play/step/reset for deterministic step-based artifacts.
-- Strict validation and isolation.
+Consolidated MVP v1 Scope (Run 3 Consolidation):
+- Versioned artifact envelope (`version: 1`).
+- Active renderer: exclusively declarative SVG (`renderer: "svg"`, schema `learnharness.visual.svg.v1`).
+- Active controls: deterministic buttons only (`VisualButtonControl`, actions: `play`, `pause`, `reset`, `step-forward`, `step-backward`).
+- Legacy HTML/iframe path and postMessage bridge completely removed.
+- Slider, toggle, and select controls removed from active v1 contract.
+- Small set of educational declarative SVG primitives (rect, circle, ellipse, line, polyline, polygon, text).
+- Inline display and expandable panel modal with focus trap and state preservation.
+- Strict host-side fail-closed validation and XML sanitization.
 - No Python runtime in MVP.
-- No unrestricted generated JavaScript in the trusted app context.
+- No HTML or generated JavaScript execution in the application.
 
-Add richer HTML/JS and Python only after the security and lifecycle model is proven.
+Richer interaction frameworks or additional renderers require explicit versioned contract revisions.

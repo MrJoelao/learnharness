@@ -31,19 +31,10 @@ describe("Visual Explanation Envelope Validation", () => {
 			initialState: { step: 0, maxSteps: 3 },
 			controls: [
 				{ type: "button", id: "btn-step", label: "Next Step", action: "step-forward" },
+				{ type: "button", id: "btn-prev", label: "Prev Step", action: "step-backward" },
+				{ type: "button", id: "btn-play", label: "Play", action: "play" },
+				{ type: "button", id: "btn-pause", label: "Pause", action: "pause" },
 				{ type: "button", id: "btn-reset", label: "Reset", action: "reset" },
-				{ type: "slider", id: "speed-slider", label: "Speed", min: 1, max: 10, value: 5 },
-				{ type: "toggle", id: "show-labels", label: "Labels", value: true },
-				{
-					type: "select",
-					id: "arch",
-					label: "Architecture",
-					options: [
-						{ label: "x86-64", value: "x86_64" },
-						{ label: "ARM64", value: "arm64" },
-					],
-					value: "x86_64",
-				},
 			],
 			accessibility: {
 				description: "A diagram showing stack frames growing downwards from high memory addresses.",
@@ -60,8 +51,8 @@ describe("Visual Explanation Envelope Validation", () => {
 		assert.equal(res.sanitized?.controls?.length, 5);
 	});
 
-	it("accepts a valid HTML visual artifact", () => {
-		const artifact: VisualArtifact = {
+	it("rejects an HTML visual artifact", () => {
+		const artifact = {
 			version: 1,
 			id: "page-table-walk",
 			title: "Page Table Address Translation",
@@ -71,9 +62,8 @@ describe("Visual Explanation Envelope Validation", () => {
 		};
 
 		const res = validateVisualArtifact(artifact);
-		assert.equal(res.valid, true);
-		assert.equal(res.sanitized?.renderer, "html");
-		assert.equal(res.sanitized?.presentation, "panel");
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("Renderer 'html' is not permitted")));
 	});
 
 	it("rejects non-object or null payloads", () => {
@@ -289,31 +279,59 @@ describe("Visual Explanation Envelope Validation", () => {
 		assert.equal(res.valid, false);
 		assert.ok(res.problems.some((p) => p.includes("Duplicate control id")));
 
-		// Invalid slider range (min >= max)
+		// Invalid button action
+		res = validateVisualArtifact({
+			version: 1,
+			id: "ctrl-action-test",
+			title: "Invalid Action Test",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: [
+				{ type: "button", id: "btn-inv", label: "Fly", action: "fly" },
+			],
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("invalid action 'fly'")));
+
+		// Non-boolean disabled
+		res = validateVisualArtifact({
+			version: 1,
+			id: "ctrl-disabled-test",
+			title: "Invalid Disabled Test",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: [
+				{ type: "button", id: "btn-d", label: "Disabled", action: "play", disabled: "yes" },
+			],
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("disabled must be a boolean")));
+
+		// Non-button controls rejected: slider
 		res = validateVisualArtifact({
 			version: 1,
 			id: "slider-test",
 			title: "Slider Test",
 			renderer: "svg",
 			source: VALID_SVG,
-			controls: [{ type: "slider", id: "s-1", label: "Slider", min: 10, max: 5, value: 7 }],
+			controls: [{ type: "slider", id: "s-1", label: "Slider", min: 10, max: 20, value: 15 }],
 		});
 		assert.equal(res.valid, false);
-		assert.ok(res.problems.some((p) => p.includes("must be strictly less than max")));
+		assert.ok(res.problems.some((p) => p.includes("unsupported type 'slider'")));
 
-		// Slider value out of bounds
+		// Non-button controls rejected: toggle
 		res = validateVisualArtifact({
 			version: 1,
-			id: "slider-val",
-			title: "Slider Value Test",
+			id: "toggle-test",
+			title: "Toggle Test",
 			renderer: "svg",
 			source: VALID_SVG,
-			controls: [{ type: "slider", id: "s-1", label: "Slider", min: 0, max: 10, value: 15 }],
+			controls: [{ type: "toggle", id: "t-1", label: "Toggle", value: true }],
 		});
 		assert.equal(res.valid, false);
-		assert.ok(res.problems.some((p) => p.includes("outside [min, max] range")));
+		assert.ok(res.problems.some((p) => p.includes("unsupported type 'toggle'")));
 
-		// Select value not in options
+		// Non-button controls rejected: select
 		res = validateVisualArtifact({
 			version: 1,
 			id: "sel-test",
@@ -326,12 +344,30 @@ describe("Visual Explanation Envelope Validation", () => {
 					id: "sel-1",
 					label: "Pick",
 					options: [{ label: "Opt A", value: "a" }],
-					value: "non-existent",
+					value: "a",
 				},
 			],
 		});
 		assert.equal(res.valid, false);
-		assert.ok(res.problems.some((p) => p.includes("value must match one of the available option values")));
+		assert.ok(res.problems.some((p) => p.includes("unsupported type 'select'")));
+
+		// Exceeding MAX_CONTROLS
+		const tooManyControls = Array.from({ length: 9 }, (_, i) => ({
+			type: "button" as const,
+			id: `btn-${i}`,
+			label: `Btn ${i}`,
+			action: "play" as const,
+		}));
+		res = validateVisualArtifact({
+			version: 1,
+			id: "max-ctrl-test",
+			title: "Max Controls Test",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: tooManyControls,
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("controls count exceeds limit")));
 	});
 
 	it("validates educational visual primitives", () => {
@@ -397,75 +433,39 @@ describe("Visual Explanation Envelope Validation", () => {
 		assert.equal(procVal.valid, true);
 	});
 
-	it("cross-validates initialState against control descriptors and rejects unsafe strings (Fix B)", () => {
+	it("validates initialState CSS safety and step constraints (Fix B)", () => {
 		const baseControls = [
-			{ type: "slider" as const, id: "speed", label: "Speed", min: 10, max: 100, value: 50 },
-			{ type: "toggle" as const, id: "grid", label: "Grid", value: true },
-			{
-				type: "select" as const,
-				id: "theme",
-				label: "Theme",
-				value: "dark",
-				options: [
-					{ label: "Dark", value: "dark" },
-					{ label: "Light", value: "light" },
-				],
-			},
+			{ type: "button" as const, id: "btn-play", label: "Play", action: "play" as const },
+			{ type: "button" as const, id: "btn-reset", label: "Reset", action: "reset" as const },
 		];
 
-		// 1. Slider out of range in initialState
+		// 1. Negative step rejected
 		let res = validateVisualArtifact({
 			version: 1,
-			id: "init-state-range",
-			title: "Init State Range",
+			id: "init-state-step-neg",
+			title: "Init State Negative Step",
 			renderer: "svg",
 			source: VALID_SVG,
 			controls: baseControls,
-			initialState: { speed: 150 },
+			initialState: { step: -1 },
 		});
 		assert.equal(res.valid, false);
-		assert.ok(res.problems.some((p) => p.includes("outside slider range")));
+		assert.ok(res.problems.some((p) => p.includes("cannot be negative")));
 
-		// 2. Slider NaN in initialState
+		// 2. Non-integer step rejected
 		res = validateVisualArtifact({
 			version: 1,
-			id: "init-state-nan",
-			title: "Init State NaN",
+			id: "init-state-step-float",
+			title: "Init State Float Step",
 			renderer: "svg",
 			source: VALID_SVG,
 			controls: baseControls,
-			initialState: { speed: Number.NaN },
+			initialState: { step: 1.5 },
 		});
 		assert.equal(res.valid, false);
-		assert.ok(res.problems.some((p) => p.includes("must be a finite number")));
+		assert.ok(res.problems.some((p) => p.includes("must be an integer")));
 
-		// 3. Toggle non-boolean in initialState
-		res = validateVisualArtifact({
-			version: 1,
-			id: "init-state-toggle",
-			title: "Init State Toggle",
-			renderer: "svg",
-			source: VALID_SVG,
-			controls: baseControls,
-			initialState: { grid: "yes" as unknown as boolean },
-		});
-		assert.equal(res.valid, false);
-		assert.ok(res.problems.some((p) => p.includes("must be a boolean")));
-
-		// 4. Select invalid option in initialState
-		res = validateVisualArtifact({
-			version: 1,
-			id: "init-state-select",
-			title: "Init State Select",
-			renderer: "svg",
-			source: VALID_SVG,
-			controls: baseControls,
-			initialState: { theme: "neon-pink" },
-		});
-		assert.equal(res.valid, false);
-		assert.ok(res.problems.some((p) => p.includes("must match one of the available option values")));
-
-		// 5. Unsafe CSS strings in initialState
+		// 3. Unsafe CSS strings in initialState
 		res = validateVisualArtifact({
 			version: 1,
 			id: "init-state-css",
@@ -474,6 +474,19 @@ describe("Visual Explanation Envelope Validation", () => {
 			source: VALID_SVG,
 			controls: baseControls,
 			initialState: { customPayload: "red; } body { background: black; } /*" },
+		});
+		assert.equal(res.valid, false);
+		assert.ok(res.problems.some((p) => p.includes("disallowed characters or keywords for CSS safety")));
+
+		// 4. Disallowed CSS url() expression in initialState string rejected
+		res = validateVisualArtifact({
+			version: 1,
+			id: "init-state-css-url",
+			title: "Init State CSS URL",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: baseControls,
+			initialState: { styleProp: "url(https://evil.com/bg.png)" },
 		});
 		assert.equal(res.valid, false);
 		assert.ok(res.problems.some((p) => p.includes("disallowed characters or keywords for CSS safety")));

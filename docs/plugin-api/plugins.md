@@ -318,7 +318,7 @@ readonly directory: string;
 
 ### PluginBackendContext dataDirectory
 
-Writable records: core-plugin-data/<id> or plugin-data/<id> for community plugins.
+Writable records: core-plugin-data/<id> or community plugins/<id>/data.
 
 ```ts
 readonly dataDirectory: string;

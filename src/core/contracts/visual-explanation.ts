@@ -5,7 +5,7 @@
  * by the teaching agent during a conversation.
  */
 
-export type VisualRenderer = "svg" | "html";
+export type VisualRenderer = "svg";
 export type VisualPresentation = "auto" | "inline" | "panel";
 
 export type VisualButtonAction =
@@ -23,41 +23,12 @@ export interface VisualButtonControl {
 	disabled?: boolean;
 }
 
-export interface VisualSliderControl {
-	type: "slider";
-	id: string;
-	label: string;
-	min: number;
-	max: number;
-	step?: number;
-	value: number;
-}
-
-export interface VisualToggleControl {
-	type: "toggle";
-	id: string;
-	label: string;
-	value: boolean;
-}
-
-export interface VisualSelectOption {
-	label: string;
-	value: string;
-}
-
-export interface VisualSelectControl {
-	type: "select";
-	id: string;
-	label: string;
-	options: VisualSelectOption[];
-	value: string;
-}
-
-export type VisualControlDescriptor =
-	| VisualButtonControl
-	| VisualSliderControl
-	| VisualToggleControl
-	| VisualSelectControl;
+/**
+ * Active control descriptor for Visual Explanation Engine MVP v1.
+ * Restricted strictly to deterministic step-based button controls.
+ * Parametric controls (slider, toggle, select) are not part of the MVP v1 active contract.
+ */
+export type VisualControlDescriptor = VisualButtonControl;
 
 export interface VisualArtifactAccessibility {
 	description?: string;

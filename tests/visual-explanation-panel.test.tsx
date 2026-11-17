@@ -11,21 +11,21 @@ import { parseHTML } from "linkedom";
 import { VisualExplanationInstance } from "../components/artifacts/visual-explanation-card.tsx";
 import type { VisualArtifact } from "../src/core/contracts/visual-explanation.ts";
 
-const HTML_SOURCE = `
-<div id="sim-container">
-  <h1>HTML Interactive Simulation</h1>
-  <p id="counter">0</p>
-</div>
+const SVG_SOURCE = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+  <rect width="100" height="50" fill="#2563eb"/>
+  <text x="10" y="30" fill="#ffffff">Step 0</text>
+</svg>
 `.trim();
 
 describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
-	it("ensures exactly ONE iframe is active when expanded (Fix C: No duplicate iframes)", async () => {
+	it("ensures exactly ONE visual view is active when expanded (Fix C: No duplicate views, zero iframes)", async () => {
 		const artifact: VisualArtifact = {
 			version: 1,
-			id: "html-sim-1",
-			title: "HTML Memory Simulator",
-			renderer: "html",
-			source: HTML_SOURCE,
+			id: "svg-sim-1",
+			title: "SVG Memory Simulator",
+			renderer: "svg",
+			source: SVG_SOURCE,
 			presentation: "inline",
 		};
 
@@ -47,13 +47,18 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			root.render(<VisualExplanationInstance artifact={artifact} initialExpanded={false} />);
 		});
 
-		// Initially inline: exactly 1 iframe, 0 panel dialogs, 0 placeholders
+		// Initially inline: exactly 0 iframes, 0 panel dialogs, 0 placeholders, 1 visual view
 		let iframes = dom.document.querySelectorAll("iframe");
-		assert.equal(iframes.length, 1, "Initially exactly one inline iframe rendered");
+		assert.equal(iframes.length, 0, "No iframe must ever be rendered for visual artifacts");
 		assert.equal(dom.document.querySelectorAll('[role="dialog"]').length, 0);
 		assert.equal(
 			dom.document.querySelectorAll('[data-testid="visual-inline-expanded-placeholder"]').length,
 			0,
+		);
+		assert.equal(
+			dom.document.querySelectorAll('[data-testid="visual-explanation-svg-container"]').length,
+			1,
+			"Initially exactly one inline visual view rendered",
 		);
 
 		// Click expand button to open panel
@@ -66,19 +71,20 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			expandBtn.click();
 		});
 
-		// When expanded: dialog exists, placeholder exists inline, STILL exactly 1 iframe!
+		// When expanded: dialog exists, placeholder exists inline, STILL 0 iframes and 1 visual view!
 		assert.equal(dom.document.querySelectorAll('[role="dialog"]').length, 1);
 		assert.equal(
 			dom.document.querySelectorAll('[data-testid="visual-inline-expanded-placeholder"]').length,
 			1,
-			"Inline area must display placeholder, not an active duplicate iframe",
+			"Inline area must display placeholder, not an active duplicate view",
 		);
 
 		iframes = dom.document.querySelectorAll("iframe");
+		assert.equal(iframes.length, 0, "INVARIANT: Zero iframes in DOM");
 		assert.equal(
-			iframes.length,
+			dom.document.querySelectorAll('[data-testid="visual-explanation-svg-container"]').length,
 			1,
-			"INVARIANT: Exactly one iframe must be active in DOM, never duplicate simulations",
+			"INVARIANT: Exactly one active visual view must be active in DOM, never duplicate simulations",
 		);
 
 		// Close panel via close button
@@ -91,14 +97,18 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			closeBtn.click();
 		});
 
-		// Returned to inline: dialog gone, placeholder gone, still 1 iframe
+		// Returned to inline: dialog gone, placeholder gone, still 1 visual view, 0 iframes
 		assert.equal(dom.document.querySelectorAll('[role="dialog"]').length, 0);
 		assert.equal(
 			dom.document.querySelectorAll('[data-testid="visual-inline-expanded-placeholder"]').length,
 			0,
 		);
-		iframes = dom.document.querySelectorAll("iframe");
-		assert.equal(iframes.length, 1, "Inline iframe remains active after closing panel");
+		assert.equal(
+			dom.document.querySelectorAll('[data-testid="visual-explanation-svg-container"]').length,
+			1,
+			"Inline visual view remains active after closing panel",
+		);
+		assert.equal(dom.document.querySelectorAll("iframe").length, 0);
 
 		await act(async () => {
 			root.unmount();

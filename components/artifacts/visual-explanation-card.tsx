@@ -18,9 +18,6 @@ import {
 	type VisualArtifact,
 	type VisualControlDescriptor,
 	type VisualButtonControl,
-	type VisualSliderControl,
-	type VisualToggleControl,
-	type VisualSelectControl,
 	validateVisualArtifact,
 	isDeclarativeSvg,
 	parseDeclarativeSvg,
@@ -139,8 +136,8 @@ function escapeCssAttributeValue(val: string): string {
 }
 
 /**
- * Pure helper to bind declarative controls & state variables to SVG source (Fix A & B).
- * Injects CSS variables (--ctrl-<id>, --param-<id>) and display rules for toggles/selects.
+ * Pure helper to bind step & state variables to SVG source (Fix A & B).
+ * Injects CSS variables and step highlight styles.
  */
 export function applyStateToSvg(
 	source: string,
@@ -195,7 +192,7 @@ export function applyStateToSvg(
 
 /**
  * Merges previous user state into new artifact state, preserving compatible
- * learner values (step, slider positions, toggles, select choices) without resets (Fix B).
+ * learner values (step index, button control state) without resets (Fix B).
  */
 export function preserveCompatibleState(
 	previousState: Record<string, unknown>,
@@ -211,31 +208,14 @@ export function preserveCompatibleState(
 		next.step = Math.min(Math.max(0, previousState.step), newMaxSteps);
 	}
 
-	// 2. Declarative controls preservation
+	// 2. Declarative button controls preservation
 	if (newArtifact.controls) {
 		for (const ctrl of newArtifact.controls) {
 			const prevVal = previousState[ctrl.id];
 			if (prevVal === undefined) continue;
 
-			switch (ctrl.type) {
-				case "slider":
-					if (typeof prevVal === "number" && Number.isFinite(prevVal)) {
-						next[ctrl.id] = Math.max(ctrl.min, Math.min(ctrl.max, prevVal));
-					}
-					break;
-				case "toggle":
-					if (typeof prevVal === "boolean") {
-						next[ctrl.id] = prevVal;
-					}
-					break;
-				case "select":
-					if (typeof prevVal === "string" && ctrl.options.some((o) => o.value === prevVal)) {
-						next[ctrl.id] = prevVal;
-					}
-					break;
-				case "button":
-					next[ctrl.id] = prevVal;
-					break;
+			if (ctrl.type === "button") {
+				next[ctrl.id] = prevVal;
 			}
 		}
 	}
@@ -311,7 +291,7 @@ export function VisualExplanationCard({
 		(part.output as { chatId?: string })?.chatId ??
 		(part.input as { chatId?: string })?.chatId;
 
-	const validation = useMemo(() => validateVisualArtifact(rawOutput, { allowLegacy: true }), [rawOutput]);
+	const validation = useMemo(() => validateVisualArtifact(rawOutput), [rawOutput]);
 	const validatedArtifact = validation.sanitized;
 
 	// Invariant: Failed artifact or failed update renders error alert without crashing
@@ -378,7 +358,6 @@ export function VisualExplanationInstance({
 	const dialogRef = useRef<HTMLDivElement>(null);
 	const expandButtonRef = useRef<HTMLButtonElement>(null);
 	const lastFocusedElementRef = useRef<HTMLElement | null>(null);
-	const iframeRef = useRef<HTMLIFrameElement>(null);
 
 	// Shared artifact simulation state
 	const [isExpanded, setIsExpanded] = useState(initialExpanded);
@@ -544,21 +523,6 @@ export function VisualExplanationInstance({
 		[reducedMotion, handleReset, handleStepForward, handleStepBackward],
 	);
 
-	const handleSliderChange = useCallback((ctrl: VisualSliderControl, rawVal: number) => {
-		const clamped = Math.max(ctrl.min, Math.min(ctrl.max, Number.isFinite(rawVal) ? rawVal : ctrl.value));
-		setStateValues((s) => ({ ...s, [ctrl.id]: clamped }));
-	}, []);
-
-	const handleToggleChange = useCallback((id: string, value: boolean) => {
-		setStateValues((s) => ({ ...s, [id]: value }));
-	}, []);
-
-	const handleSelectChange = useCallback((ctrl: VisualSelectControl, value: string) => {
-		const isValidOption = ctrl.options.some((o) => o.value === value);
-		const selectedVal = isValidOption ? value : ctrl.value;
-		setStateValues((s) => ({ ...s, [ctrl.id]: selectedVal }));
-	}, []);
-
 	// Panel focus management & accessibility (Fix D)
 	const handleOpenPanel = () => {
 		lastFocusedElementRef.current = (document.activeElement as HTMLElement) ?? null;
@@ -660,80 +624,13 @@ export function VisualExplanationInstance({
 		return () => document.removeEventListener("focusin", onFocusIn);
 	}, [isExpanded]);
 
-	// Send state update to HTML iframe when stateValues change
-	useEffect(() => {
-		if (artifact.renderer === "html" && iframeRef.current?.contentWindow) {
-			iframeRef.current.contentWindow.postMessage(
-				{ type: "LH_VISUAL_STATE_UPDATE", state: stateValues },
-				"*",
-			);
-		}
-	}, [artifact.renderer, stateValues]);
-
 	// Process SVG source with all bound control parameters and steps (Fix A)
 	const processedSvgSource = useMemo(() => {
-		if (artifact.renderer !== "svg") return artifact.source;
 		return applyStateToSvg(artifact.source, currentStep, stateValues);
-	}, [artifact, currentStep, stateValues]);
+	}, [artifact.source, currentStep, stateValues]);
 
-	// Render the inner visual frame (Fix C: exactly one active iframe/SVG is mounted at any time)
+	// Render the inner visual frame (Fix C: exactly one active SVG view is mounted at any time)
 	const renderVisualContent = (expanded: boolean) => {
-		if (artifact.renderer === "html") {
-			const cssVars = Object.entries(stateValues)
-				.map(([rawK, v]) => {
-					const k = sanitizeCssIdent(rawK);
-					if (!k) return "";
-					if (typeof v === "number" && Number.isFinite(v)) return `--ctrl-${k}: ${v}; --param-${k}: ${v};`;
-					if (typeof v === "boolean") return `--ctrl-${k}: ${v ? 1 : 0}; --param-${k}: ${v ? 1 : 0};`;
-					if (typeof v === "string") {
-						const safeVal = sanitizeCssValue(v);
-						return `--ctrl-${k}: ${safeVal}; --param-${k}: ${safeVal};`;
-					}
-					return "";
-				})
-				.filter(Boolean)
-				.join(" ");
-
-			const safeStateJson = JSON.stringify(stateValues).replace(/</g, "\\u003c");
-
-			const srcDoc = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-src 'none'; object-src 'none';">
-            <style>
-              :root { ${cssVars} }
-              body { margin: 0; padding: 12px; font-family: system-ui, sans-serif; box-sizing: border-box; }
-            </style>
-            <script>
-              window.__LH_STATE__ = ${safeStateJson};
-              window.addEventListener('message', function(e) {
-                if (e.data && e.data.type === 'LH_VISUAL_STATE_UPDATE') {
-                  window.__LH_STATE__ = e.data.state;
-                  window.dispatchEvent(new CustomEvent('lh-state-change', { detail: e.data.state }));
-                }
-              });
-            </script>
-          </head>
-          <body>
-            ${artifact.source}
-          </body>
-        </html>
-      `;
-			return (
-				<iframe
-					ref={iframeRef}
-					title={artifact.title}
-					sandbox="allow-scripts"
-					srcDoc={srcDoc}
-					className="w-full rounded-md border bg-white"
-					style={{ height: expanded ? "60vh" : "260px" }}
-					data-testid="visual-explanation-iframe"
-				/>
-			);
-		}
-
 		if (declarativeDoc) {
 			return (
 				<div
@@ -762,7 +659,7 @@ export function VisualExplanationInstance({
 		);
 	};
 
-	// Controls toolbar (Fix A: renders buttons, sliders, toggles, selects)
+	// Controls toolbar (Fix A: renders step controls and declarative button controls)
 	const renderControls = () => {
 		const hasStepControls = maxSteps > 0;
 
@@ -825,83 +722,24 @@ export function VisualExplanationInstance({
 						</>
 					)}
 
-					{/* Declarative controls from artifact descriptor (Fix A) */}
+					{/* Declarative button controls from artifact descriptor (Fix A) */}
 					{artifact.controls?.map((ctrl) => {
-						if (declarativeDoc && ctrl.type !== "button") {
-							// Declarative SVG only supports deterministic button controls (step navigation / simulation)
-							return null;
+						if (ctrl.type === "button") {
+							return (
+								<button
+									key={ctrl.id}
+									type="button"
+									disabled={ctrl.disabled || (ctrl.action === "play" && reducedMotion)}
+									onClick={() => handleButtonClick(ctrl)}
+									className="ml-1 rounded-md border bg-secondary/50 px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+									data-testid={`visual-control-button-${ctrl.id}`}
+									data-action={ctrl.action}
+								>
+									{ctrl.label}
+								</button>
+							);
 						}
-						switch (ctrl.type) {
-							case "button":
-								return (
-									<button
-										key={ctrl.id}
-										type="button"
-										disabled={ctrl.disabled || (ctrl.action === "play" && reducedMotion)}
-										onClick={() => handleButtonClick(ctrl)}
-										className="ml-1 rounded-md border bg-secondary/50 px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
-										data-testid={`visual-control-button-${ctrl.id}`}
-										data-action={ctrl.action}
-									>
-										{ctrl.label}
-									</button>
-								);
-							case "slider":
-								return (
-									<label key={ctrl.id} className="ml-2 flex items-center gap-1.5 text-muted-foreground">
-										<span className="font-medium text-foreground">{ctrl.label}:</span>
-										<input
-											type="range"
-											min={ctrl.min}
-											max={ctrl.max}
-											step={ctrl.step ?? 1}
-											value={(stateValues[ctrl.id] as number) ?? ctrl.value}
-											aria-label={ctrl.label}
-											onChange={(e) => handleSliderChange(ctrl, Number.parseFloat(e.target.value))}
-											className="h-1.5 w-18 cursor-pointer rounded-lg bg-secondary accent-primary"
-											data-testid={`visual-control-slider-${ctrl.id}`}
-										/>
-										<span className="font-mono text-[10px]">
-											{String((stateValues[ctrl.id] as number) ?? ctrl.value)}
-										</span>
-									</label>
-								);
-							case "toggle":
-								return (
-									<label key={ctrl.id} className="ml-2 flex cursor-pointer items-center gap-1.5 text-muted-foreground">
-										<input
-											type="checkbox"
-											checked={Boolean(stateValues[ctrl.id] ?? ctrl.value)}
-											aria-label={ctrl.label}
-											onChange={(e) => handleToggleChange(ctrl.id, e.target.checked)}
-											className="rounded border-border accent-primary"
-											data-testid={`visual-control-toggle-${ctrl.id}`}
-										/>
-										<span className="font-medium text-foreground">{ctrl.label}</span>
-									</label>
-								);
-							case "select":
-								return (
-									<label key={ctrl.id} className="ml-2 flex items-center gap-1.5 text-muted-foreground">
-										<span className="font-medium text-foreground">{ctrl.label}:</span>
-										<select
-											value={(stateValues[ctrl.id] as string) ?? ctrl.value}
-											aria-label={ctrl.label}
-											onChange={(e) => handleSelectChange(ctrl, e.target.value)}
-											className="rounded border bg-background px-1.5 py-0.5 text-xs text-foreground"
-											data-testid={`visual-control-select-${ctrl.id}`}
-										>
-											{ctrl.options.map((opt) => (
-												<option key={opt.value} value={opt.value}>
-													{opt.label}
-												</option>
-											))}
-										</select>
-									</label>
-								);
-							default:
-								return null;
-						}
+						return null;
 					})}
 				</div>
 
@@ -922,9 +760,9 @@ export function VisualExplanationInstance({
 						title="Download visual artifact"
 						onClick={() =>
 							downloadFile(
-								`${slugFilename(artifact.title)}.${artifact.renderer}`,
+								`${slugFilename(artifact.title)}.svg`,
 								artifact.source,
-								artifact.renderer === "svg" ? "image/svg+xml" : "text/html",
+								"image/svg+xml",
 							)
 						}
 						className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -980,7 +818,7 @@ export function VisualExplanationInstance({
 				</p>
 			)}
 
-			{/* Inline Visual View or Expanded Placeholder (Fix C: Single active iframe) */}
+			{/* Inline Visual View or Expanded Placeholder (Fix C: Single active view) */}
 			{isExpanded ? (
 				<div
 					className="flex h-36 w-full items-center justify-center rounded-md border border-dashed border-border/60 bg-muted/20 text-xs text-muted-foreground"

@@ -32,7 +32,7 @@ export interface ValidationResult {
 	sanitized?: VisualArtifact;
 }
 
-const ALLOWED_RENDERERS: readonly VisualRenderer[] = ["svg", "html"];
+const ALLOWED_RENDERERS: readonly VisualRenderer[] = ["svg"];
 const ALLOWED_PRESENTATIONS: readonly VisualPresentation[] = ["auto", "inline", "panel"];
 const ALLOWED_BUTTON_ACTIONS = ["play", "pause", "reset", "step-forward", "step-backward"] as const;
 
@@ -72,7 +72,7 @@ export function validateDeclarativeVisualArtifact(input: unknown): ValidationRes
 
 export function validateVisualArtifact(
 	input: unknown,
-	options?: { strictDeclarative?: boolean; allowLegacy?: boolean },
+	options?: { strictDeclarative?: boolean },
 ): ValidationResult {
 	const strictDeclarative = options?.strictDeclarative === true;
 	const problems: string[] = [];
@@ -127,7 +127,7 @@ export function validateVisualArtifact(
 
 	// 5. Renderer
 	const renderer = record.renderer as VisualRenderer;
-	if (strictDeclarative && renderer === "html") {
+	if ((renderer as unknown) === "html") {
 		problems.push("Renderer 'html' is not permitted for visual artifacts. Only 'svg' declarative diagrams are supported.");
 	} else if (!ALLOWED_RENDERERS.includes(renderer)) {
 		problems.push(`Unsupported renderer '${String(record.renderer)}'. Allowed: ${ALLOWED_RENDERERS.join(", ")}.`);
@@ -182,13 +182,8 @@ export function validateVisualArtifact(
 					source = svgValidation.sanitized;
 				}
 			}
-		} else if (renderer === "html") {
-			if (strictDeclarative) {
-				problems.push("HTML source is not permitted. Visual explanations must use declarative SVG JSON.");
-			} else {
-				const htmlValidation = validateHtmlSource(source);
-				problems.push(...htmlValidation.problems);
-			}
+		} else if ((renderer as unknown) === "html") {
+			problems.push("HTML source is not permitted. Visual explanations must use declarative SVG JSON.");
 		}
 	}
 
@@ -240,12 +235,6 @@ export function validateVisualArtifact(
 			const seenControlIds = new Set<string>();
 			for (let i = 0; i < record.controls.length; i++) {
 				const ctrl = record.controls[i];
-				if (strictDeclarative && typeof ctrl === "object" && ctrl !== null && (ctrl as Record<string, unknown>).type !== "button") {
-					problems.push(
-						`Control '${String((ctrl as Record<string, unknown>).id ?? i)}' has unsupported type '${String((ctrl as Record<string, unknown>).type)}'. Declarative SVG only supports button controls that affect step navigation or simulation.`,
-					);
-					continue;
-				}
 				const ctrlValidation = validateControlDescriptor(ctrl, i, seenControlIds);
 				problems.push(...ctrlValidation.problems);
 				if (ctrlValidation.control) {
@@ -255,37 +244,10 @@ export function validateVisualArtifact(
 		}
 	}
 
-	// Cross-validate initialState against defined controls and sanitize strings (Fix B)
+	// Cross-validate initialState strings for CSS injection safety
 	if (initialState !== undefined) {
-		const controlsMap = new Map<string, VisualControlDescriptor>(
-			(controls ?? []).map((c) => [c.id, c]),
-		);
-
 		for (const [key, val] of Object.entries(initialState)) {
-			const ctrl = controlsMap.get(key);
-			if (ctrl) {
-				switch (ctrl.type) {
-					case "slider":
-						if (typeof val !== "number" || !Number.isFinite(val)) {
-							problems.push(`initialState['${key}'] must be a finite number for slider control.`);
-						} else if (val < ctrl.min || val > ctrl.max) {
-							problems.push(`initialState['${key}'] (${val}) is outside slider range [${ctrl.min}, ${ctrl.max}].`);
-						}
-						break;
-					case "toggle":
-						if (typeof val !== "boolean") {
-							problems.push(`initialState['${key}'] must be a boolean for toggle control.`);
-						}
-						break;
-					case "select":
-						if (typeof val !== "string" || !ctrl.options.some((o) => o.value === val)) {
-							problems.push(`initialState['${key}'] must match one of the available option values for select control.`);
-						}
-						break;
-				}
-			}
-
-			// Validate string values in initialState for CSS injection safety
+			// Validate string values in initialState for CSS safety
 			if (typeof val === "string") {
 				if (/[;{}()"'\\/<>]/.test(val) || /\b(url|expression|behavior)\b/i.test(val)) {
 					problems.push(`initialState['${key}'] contains disallowed characters or keywords for CSS safety.`);
@@ -1431,37 +1393,6 @@ function validateSvgSource(source: string): { problems: string[]; sanitized?: st
 	return { problems: [], sanitized };
 }
 
-function validateHtmlSource(source: string): { problems: string[] } {
-	const problems: string[] = [];
-
-	// HTML must not access host filesystem paths, credentials, storage or application handles
-	if (/(?:\b(__dirname|__filename|process\.env|window\.parent|window\.top|document\.cookie|localStorage|sessionStorage|indexedDB)\b|\brequire\s*\(|\bimport\s*\()/.test(source)) {
-		problems.push("HTML source contains disallowed host environment expressions.");
-	}
-
-	// Reject external script references
-	if (/<script\b[^>]*src\s*=\s*["'][^"']+["']/i.test(source)) {
-		problems.push("HTML source must not load external scripts via src.");
-	}
-
-	// Reject external stylesheets
-	if (/<link\b[^>]*rel\s*=\s*["']?stylesheet["']?[^>]*href\s*=\s*["']?(https?:|\/\/)/i.test(source)) {
-		problems.push("HTML source must not load external stylesheets via link.");
-	}
-
-	// Disallow foreign embed tags
-	if (/<\s*(object|embed|applet|iframe)\b/i.test(source)) {
-		problems.push("HTML source must not contain nested <object>, <embed>, <applet>, or <iframe> elements.");
-	}
-
-	// Reject unsafe protocol execution in hrefs
-	if (/(href|src)\s*=\s*["']\s*(javascript|vbscript):/i.test(source)) {
-		problems.push("HTML source contains unsafe protocol execution (javascript:, vbscript:).");
-	}
-
-	return { problems };
-}
-
 function validateControlDescriptor(
 	ctrl: unknown,
 	index: number,
@@ -1487,128 +1418,34 @@ function validateControlDescriptor(
 		problems.push(`Control at index ${index} must have a label between 1 and 64 characters.`);
 	}
 
-	switch (c.type) {
-		case "button": {
-			const action = c.action as string;
-			if (!ALLOWED_BUTTON_ACTIONS.includes(action as (typeof ALLOWED_BUTTON_ACTIONS)[number])) {
-				problems.push(
-					`Button control '${String(c.id)}' has invalid action '${action}'. Allowed: ${ALLOWED_BUTTON_ACTIONS.join(", ")}.`,
-				);
-			}
-			if (c.disabled !== undefined && typeof c.disabled !== "boolean") {
-				problems.push(`Button control '${String(c.id)}' disabled must be a boolean.`);
-			}
-			if (problems.length === 0) {
-				return {
-					problems: [],
-					control: {
-						type: "button",
-						id: c.id as string,
-						label: (c.label as string).trim(),
-						action: action as (typeof ALLOWED_BUTTON_ACTIONS)[number],
-						...(c.disabled !== undefined ? { disabled: c.disabled as boolean } : {}),
-					},
-				};
-			}
-			break;
-		}
-		case "slider": {
-			const min = c.min;
-			const max = c.max;
-			const val = c.value;
-			if (typeof min !== "number" || !Number.isFinite(min)) {
-				problems.push(`Slider control '${String(c.id)}' min must be a finite number.`);
-			}
-			if (typeof max !== "number" || !Number.isFinite(max)) {
-				problems.push(`Slider control '${String(c.id)}' max must be a finite number.`);
-			}
-			if (typeof min === "number" && typeof max === "number" && min >= max) {
-				problems.push(`Slider control '${String(c.id)}' min (${min}) must be strictly less than max (${max}).`);
-			}
-			if (typeof val !== "number" || !Number.isFinite(val)) {
-				problems.push(`Slider control '${String(c.id)}' value must be a finite number.`);
-			} else if (typeof min === "number" && typeof max === "number" && (val < min || val > max)) {
-				problems.push(`Slider control '${String(c.id)}' value (${val}) is outside [min, max] range.`);
-			}
-			let step: number | undefined;
-			if (c.step !== undefined) {
-				if (typeof c.step !== "number" || !Number.isFinite(c.step) || c.step <= 0) {
-					problems.push(`Slider control '${String(c.id)}' step must be a positive number.`);
-				} else {
-					step = c.step;
-				}
-			}
-			if (problems.length === 0) {
-				return {
-					problems: [],
-					control: {
-						type: "slider",
-						id: c.id as string,
-						label: (c.label as string).trim(),
-						min: min as number,
-						max: max as number,
-						...(step !== undefined ? { step } : {}),
-						value: val as number,
-					},
-				};
-			}
-			break;
-		}
-		case "toggle": {
-			if (typeof c.value !== "boolean") {
-				problems.push(`Toggle control '${String(c.id)}' value must be a boolean.`);
-			}
-			if (problems.length === 0) {
-				return {
-					problems: [],
-					control: {
-						type: "toggle",
-						id: c.id as string,
-						label: (c.label as string).trim(),
-						value: c.value as boolean,
-					},
-				};
-			}
-			break;
-		}
-		case "select": {
-			if (!Array.isArray(c.options) || c.options.length === 0 || c.options.length > VISUAL_ARTIFACT_LIMITS.MAX_SELECT_OPTIONS) {
-				problems.push(
-					`Select control '${String(c.id)}' options must be an array of 1-${VISUAL_ARTIFACT_LIMITS.MAX_SELECT_OPTIONS} items.`,
-				);
-			}
-			const options: Array<{ label: string; value: string }> = [];
-			const optionValues = new Set<string>();
-			if (Array.isArray(c.options)) {
-				for (let optIdx = 0; optIdx < c.options.length; optIdx++) {
-					const opt = c.options[optIdx] as Record<string, unknown>;
-					if (typeof opt !== "object" || opt === null || typeof opt.label !== "string" || typeof opt.value !== "string") {
-						problems.push(`Select control '${String(c.id)}' option at ${optIdx} must have string label and value.`);
-					} else {
-						options.push({ label: opt.label.trim(), value: opt.value.trim() });
-						optionValues.add(opt.value.trim());
-					}
-				}
-			}
-			if (typeof c.value !== "string" || !optionValues.has(c.value.trim())) {
-				problems.push(`Select control '${String(c.id)}' value must match one of the available option values.`);
-			}
-			if (problems.length === 0) {
-				return {
-					problems: [],
-					control: {
-						type: "select",
-						id: c.id as string,
-						label: (c.label as string).trim(),
-						options,
-						value: (c.value as string).trim(),
-					},
-				};
-			}
-			break;
-		}
-		default:
-			problems.push(`Control at index ${index} has unsupported type '${String(c.type)}'. Allowed: button, slider, toggle, select.`);
+	if (c.type !== "button") {
+		problems.push(
+			`Control at index ${index} has unsupported type '${String(c.type)}'. Visual Explanation Engine MVP v1 only supports 'button' controls with deterministic simulation actions (play, pause, reset, step-forward, step-backward).`,
+		);
+		return { problems };
+	}
+
+	const action = c.action as string;
+	if (!ALLOWED_BUTTON_ACTIONS.includes(action as (typeof ALLOWED_BUTTON_ACTIONS)[number])) {
+		problems.push(
+			`Button control '${String(c.id)}' has invalid action '${action}'. Allowed: ${ALLOWED_BUTTON_ACTIONS.join(", ")}.`,
+		);
+	}
+	if (c.disabled !== undefined && typeof c.disabled !== "boolean") {
+		problems.push(`Button control '${String(c.id)}' disabled must be a boolean.`);
+	}
+
+	if (problems.length === 0) {
+		return {
+			problems: [],
+			control: {
+				type: "button",
+				id: c.id as string,
+				label: (c.label as string).trim(),
+				action: action as (typeof ALLOWED_BUTTON_ACTIONS)[number],
+				...(c.disabled !== undefined ? { disabled: c.disabled as boolean } : {}),
+			},
+		};
 	}
 
 	return { problems };

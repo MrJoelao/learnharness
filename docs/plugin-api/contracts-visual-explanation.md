@@ -11,10 +11,6 @@
 - [VisualControlDescriptor](#visualcontroldescriptor) — supporting declaration
 - [VisualPresentation](#visualpresentation) — supporting declaration
 - [VisualRenderer](#visualrenderer) — supporting declaration
-- [VisualSelectControl](#visualselectcontrol) — supporting declaration
-- [VisualSelectOption](#visualselectoption) — supporting declaration
-- [VisualSliderControl](#visualslidercontrol) — supporting declaration
-- [VisualToggleControl](#visualtogglecontrol) — supporting declaration
 
 ## VisualArtifact
 
@@ -204,11 +200,15 @@ disabled?: boolean;
 
 Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
 
+Active control descriptor for Visual Explanation Engine MVP v1.
+Restricted strictly to deterministic step-based button controls.
+Parametric controls (slider, toggle, select) are not part of the MVP v1 active contract.
+
 ```ts
-export type VisualControlDescriptor = VisualButtonControl | VisualSliderControl | VisualToggleControl | VisualSelectControl;
+export type VisualControlDescriptor = VisualButtonControl;
 ```
 
-**Related types:** [VisualButtonControl](contracts-visual-explanation.md#visualbuttoncontrol), [VisualSelectControl](contracts-visual-explanation.md#visualselectcontrol), [VisualSliderControl](contracts-visual-explanation.md#visualslidercontrol), [VisualToggleControl](contracts-visual-explanation.md#visualtogglecontrol).
+**Related types:** [VisualButtonControl](contracts-visual-explanation.md#visualbuttoncontrol).
 
 ## VisualPresentation
 
@@ -228,199 +228,5 @@ Provides a versioned, validated envelope for visual artifacts produced
 by the teaching agent during a conversation.
 
 ```ts
-export type VisualRenderer = "svg" | "html";
-```
-
-## VisualSelectControl
-
-Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
-
-```ts
-export interface VisualSelectControl {
-    type: "select";
-    id: string;
-    label: string;
-    options: VisualSelectOption[];
-    value: string;
-}
-```
-
-**Related types:** [VisualSelectOption](contracts-visual-explanation.md#visualselectoption).
-
-**Member index** (including nested object members; inherited members are defined in the linked base types):
-
-- [type](#visualselectcontrol-type)
-- [id](#visualselectcontrol-id)
-- [label](#visualselectcontrol-label)
-- [options](#visualselectcontrol-options)
-- [value](#visualselectcontrol-value)
-
-### VisualSelectControl type
-
-```ts
-type: "select";
-```
-
-### VisualSelectControl id
-
-```ts
-id: string;
-```
-
-### VisualSelectControl label
-
-```ts
-label: string;
-```
-
-### VisualSelectControl options
-
-```ts
-options: VisualSelectOption[];
-```
-
-### VisualSelectControl value
-
-```ts
-value: string;
-```
-
-## VisualSelectOption
-
-Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
-
-```ts
-export interface VisualSelectOption {
-    label: string;
-    value: string;
-}
-```
-
-**Member index** (including nested object members; inherited members are defined in the linked base types):
-
-- [label](#visualselectoption-label)
-- [value](#visualselectoption-value)
-
-### VisualSelectOption label
-
-```ts
-label: string;
-```
-
-### VisualSelectOption value
-
-```ts
-value: string;
-```
-
-## VisualSliderControl
-
-Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
-
-```ts
-export interface VisualSliderControl {
-    type: "slider";
-    id: string;
-    label: string;
-    min: number;
-    max: number;
-    step?: number;
-    value: number;
-}
-```
-
-**Member index** (including nested object members; inherited members are defined in the linked base types):
-
-- [type](#visualslidercontrol-type)
-- [id](#visualslidercontrol-id)
-- [label](#visualslidercontrol-label)
-- [min](#visualslidercontrol-min)
-- [max](#visualslidercontrol-max)
-- [step](#visualslidercontrol-step)
-- [value](#visualslidercontrol-value)
-
-### VisualSliderControl type
-
-```ts
-type: "slider";
-```
-
-### VisualSliderControl id
-
-```ts
-id: string;
-```
-
-### VisualSliderControl label
-
-```ts
-label: string;
-```
-
-### VisualSliderControl min
-
-```ts
-min: number;
-```
-
-### VisualSliderControl max
-
-```ts
-max: number;
-```
-
-### VisualSliderControl step
-
-```ts
-step?: number;
-```
-
-### VisualSliderControl value
-
-```ts
-value: number;
-```
-
-## VisualToggleControl
-
-Supporting declaration used by a public type. This is not an additional runtime API or SDK helper.
-
-```ts
-export interface VisualToggleControl {
-    type: "toggle";
-    id: string;
-    label: string;
-    value: boolean;
-}
-```
-
-**Member index** (including nested object members; inherited members are defined in the linked base types):
-
-- [type](#visualtogglecontrol-type)
-- [id](#visualtogglecontrol-id)
-- [label](#visualtogglecontrol-label)
-- [value](#visualtogglecontrol-value)
-
-### VisualToggleControl type
-
-```ts
-type: "toggle";
-```
-
-### VisualToggleControl id
-
-```ts
-id: string;
-```
-
-### VisualToggleControl label
-
-```ts
-label: string;
-```
-
-### VisualToggleControl value
-
-```ts
-value: boolean;
+export type VisualRenderer = "svg";
 ```

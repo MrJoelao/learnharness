@@ -570,8 +570,8 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 		clearVisualArtifactRegistry();
 	});
 
-	it("BUG P2: declarative SVG cards do not render non-functioning slider, toggle, or select controls", () => {
-		const artifact: VisualArtifact = {
+	it("BUG P2: declarative SVG cards reject and do not render non-button controls (slider, toggle, select)", () => {
+		const rawControlsPayload = {
 			version: 1,
 			id: "vis-controls-test",
 			title: "Controls Filter Test",
@@ -592,22 +592,26 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 			],
 		};
 
+		// 1. Validator rejects payload containing non-button controls
+		const valRes = validateDeclarativeVisualArtifact(rawControlsPayload);
+		assert.equal(valRes.valid, false, "Non-button controls must be rejected by validator");
+		assert.ok(valRes.problems.some((p) => p.includes("unsupported type 'slider'")));
+		assert.ok(valRes.problems.some((p) => p.includes("unsupported type 'toggle'")));
+		assert.ok(valRes.problems.some((p) => p.includes("unsupported type 'select'")));
+
+		// 2. Card with raw output containing non-button controls renders failure alert
 		const html = renderToStaticMarkup(
 			<VisualExplanationCard
 				part={{
 					type: "tool-visual_explanation",
 					state: "output-available",
 					toolCallId: "call_ctrls",
-					output: { ok: true, artifact },
+					output: { ok: true, artifact: rawControlsPayload as unknown as VisualArtifact },
 				}}
 			/>,
 		);
 
-		// Step button must render
-		assert.ok(html.includes("data-testid=\"visual-control-button-btn-step\""), "Step button must render");
-		assert.ok(html.includes("Next Step"), "Button label must render");
-
-		// Non-functioning controls must NOT render on declarative cards
+		assert.ok(html.includes('data-testid="visual-explanation-failed"'), "Card must fail validation");
 		assert.ok(!html.includes('data-testid="visual-control-slider-speed-slider"'), "Slider must not render");
 		assert.ok(!html.includes('data-testid="visual-control-toggle-show-labels"'), "Toggle must not render");
 		assert.ok(!html.includes('data-testid="visual-control-select-arch"'), "Select must not render");

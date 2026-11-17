@@ -127,7 +127,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			step: 2,
 			sliderParam: 45,
 			toggleParam: true,
-			selectParam: "mode-b",
 			unrelatedField: "keep-me",
 		};
 
@@ -138,20 +137,10 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			renderer: "svg",
 			source: MOCK_SVG,
 			presentation: "inline",
-			initialState: { step: 0, sliderParam: 10, newParam: "fresh" },
+			initialState: { step: 0, newParam: "fresh" },
 			controls: [
-				{ type: "slider", id: "sliderParam", label: "Slider", min: 0, max: 100, value: 10 },
-				{ type: "toggle", id: "toggleParam", label: "Toggle", value: false },
-				{
-					type: "select",
-					id: "selectParam",
-					label: "Select",
-					options: [
-						{ label: "A", value: "mode-a" },
-						{ label: "B", value: "mode-b" },
-					],
-					value: "mode-a",
-				},
+				{ type: "button", id: "btn-next", label: "Next", action: "step-forward" },
+				{ type: "button", id: "btn-prev", label: "Prev", action: "step-backward" },
 			],
 		};
 
@@ -160,15 +149,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		// Step preserved
 		assert.equal(preserved.step, 2, "Learner's step position must be preserved");
 
-		// Slider value preserved
-		assert.equal(preserved.sliderParam, 45, "Learner's slider value must be preserved");
-
-		// Toggle state preserved
-		assert.equal(preserved.toggleParam, true, "Learner's toggle state must be preserved");
-
-		// Select state preserved
-		assert.equal(preserved.selectParam, "mode-b", "Learner's select state must be preserved");
-
 		// New schema values populated
 		assert.equal(preserved.newParam, "fresh", "New initialState values must be included");
 	});
@@ -176,8 +156,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 	it("clamps out-of-range state when updated schema contracts", () => {
 		const previousState = {
 			step: 10,
-			sliderParam: 150,
-			selectParam: "obsolete-mode",
 		};
 
 		const restrictedArtifact: VisualArtifact = {
@@ -187,16 +165,9 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			renderer: "svg",
 			source: MOCK_SVG,
 			presentation: "inline",
-			initialState: { step: 0, sliderParam: 5 },
+			initialState: { step: 0 },
 			controls: [
-				{ type: "slider", id: "sliderParam", label: "Slider", min: 0, max: 50, value: 5 },
-				{
-					type: "select",
-					id: "selectParam",
-					label: "Select",
-					options: [{ label: "Valid Only", value: "valid-only" }],
-					value: "valid-only",
-				},
+				{ type: "button", id: "btn-reset", label: "Reset", action: "reset" },
 			],
 		};
 
@@ -204,16 +175,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 
 		// Step clamped to new maxSteps (4)
 		assert.equal(clamped.step, 4, "Step must be clamped to new maxSteps");
-
-		// Slider clamped to max (50)
-		assert.equal(clamped.sliderParam, 50, "Slider must be clamped to new max");
-
-		// Incompatible select resets to schema default
-		assert.equal(
-			clamped.selectParam,
-			undefined,
-			"Incompatible option should not preserve invalid string",
-		);
 	});
 
 	it("renders an in-place update notice instead of duplicate visualization when action is update (Fix B)", async () => {
@@ -300,7 +261,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		assert.ok(enhanced.includes('[data-select-valid-mode="dark"]'));
 	});
 
-	it("verifies behavioral state transitions for slider, toggle, select and buttons (Fix E)", async () => {
+	it("verifies behavioral state transitions for deterministic button controls (Fix E)", async () => {
 		const artifact: VisualArtifact = {
 			version: 1,
 			id: "interactive-behavior-test",
@@ -310,23 +271,10 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			presentation: "inline",
 			initialState: {
 				step: 0,
-				volume: 20,
-				grid: false,
-				mode: "compact",
 			},
 			controls: [
-				{ type: "slider", id: "volume", label: "Volume", min: 0, max: 100, value: 20 },
-				{ type: "toggle", id: "grid", label: "Show Grid", value: false },
-				{
-					type: "select",
-					id: "mode",
-					label: "Display Mode",
-					value: "compact",
-					options: [
-						{ value: "compact", label: "Compact" },
-						{ value: "detailed", label: "Detailed" },
-					],
-				},
+				{ type: "button", id: "btn-step-fwd", label: "Step Forward", action: "step-forward" },
+				{ type: "button", id: "btn-step-back", label: "Step Backward", action: "step-backward" },
 				{ type: "button", id: "btn-reset", label: "Reset", action: "reset" },
 			],
 		};
@@ -337,8 +285,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			document: dom.document,
 			HTMLElement: dom.window.HTMLElement,
 			HTMLButtonElement: dom.window.HTMLButtonElement,
-			HTMLInputElement: dom.window.HTMLInputElement,
-			HTMLSelectElement: dom.window.HTMLSelectElement,
 			IS_REACT_ACT_ENVIRONMENT: true,
 		};
 		Object.assign(globalThis, globals);
@@ -350,75 +296,41 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			root.render(<VisualExplanationInstance artifact={artifact} />);
 		});
 
-		// 1. Slider behavioral test: change slider value to 75
-		const sliderInput = dom.document.querySelector<HTMLInputElement>('[data-testid="visual-control-slider-volume"]');
-		assert.ok(sliderInput, "Slider input must exist");
+		// 1. Verify no slider, toggle, or select controls exist
+		assert.equal(dom.document.querySelectorAll('input[type="range"]').length, 0, "No slider controls must exist");
+		assert.equal(dom.document.querySelectorAll('input[type="checkbox"]').length, 0, "No toggle controls must exist");
+		assert.equal(dom.document.querySelectorAll("select").length, 0, "No select controls must exist");
 
-		const getSvgContent = () => {
-			const img = dom.document.querySelector('[data-testid="visual-explanation-svg-container"] img');
-			return decodeURIComponent(img?.getAttribute("src") || "");
-		};
-
-		function triggerChangeEvent(el: HTMLElement, eventObj: unknown) {
-			const reactKey = Object.keys(el).find((k) => k.startsWith("__reactProps"));
-			if (reactKey && (el as Record<string, any>)[reactKey]?.onChange) {
-				(el as Record<string, any>)[reactKey].onChange(eventObj);
-			} else {
-				el.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
-			}
-		}
-
+		// 2. Custom button behavioral test: click custom step-forward button
+		const customStepFwd = dom.document.querySelector<HTMLButtonElement>('[data-testid="visual-control-button-btn-step-fwd"]');
+		assert.ok(customStepFwd, "Custom step forward button must exist");
 		await act(async () => {
-			sliderInput.value = "75";
-			triggerChangeEvent(sliderInput, { target: { value: "75" } });
-		});
-
-		// Verify slider UI and SVG updated with new CSS variable
-		assert.ok(getSvgContent().includes("--ctrl-volume: 75;"), "SVG must reflect new slider value in CSS variable");
-
-		// 2. Toggle behavioral test: toggle grid checkbox on
-		const toggleInput = dom.document.querySelector<HTMLInputElement>('[data-testid="visual-control-toggle-grid"]');
-		assert.ok(toggleInput, "Toggle checkbox must exist");
-
-		await act(async () => {
-			toggleInput.checked = true;
-			triggerChangeEvent(toggleInput, { target: { checked: true } });
-		});
-
-		assert.ok(getSvgContent().includes("--ctrl-grid: 1;"), "SVG must reflect toggle enabled in CSS variable");
-		assert.ok(getSvgContent().includes('[data-toggle="grid"] { display: inline; }'), "Toggle inline rule must be active");
-
-		// 3. Select behavioral test: change select option to "detailed"
-		const selectEl = dom.document.querySelector<HTMLSelectElement>('[data-testid="visual-control-select-mode"]');
-		assert.ok(selectEl, "Select element must exist");
-
-		await act(async () => {
-			triggerChangeEvent(selectEl, { target: { value: "detailed" } });
-		});
-
-		assert.ok(getSvgContent().includes("--ctrl-mode: detailed;"), "SVG must reflect select value in CSS variable");
-		assert.ok(getSvgContent().includes('[data-select-mode="detailed"] { display: inline; }'), "Select display rule active");
-
-		// 4. Button behavioral test: click step-forward button
-		const stepFwdBtn = dom.document.querySelector<HTMLButtonElement>('[data-testid="visual-control-step-forward"]');
-		assert.ok(stepFwdBtn);
-		await act(async () => {
-			stepFwdBtn.click();
+			customStepFwd.click();
 		});
 
 		let indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
 		assert.ok(indicator?.textContent?.includes("Step 1 / 1"), "Step must increment to 1");
 
-		// Click step-backward button
-		const stepBackBtn = dom.document.querySelector<HTMLButtonElement>('[data-testid="visual-control-step-backward"]');
-		assert.ok(stepBackBtn);
+		// 3. Custom button behavioral test: click custom step-backward button
+		const customStepBack = dom.document.querySelector<HTMLButtonElement>('[data-testid="visual-control-button-btn-step-back"]');
+		assert.ok(customStepBack, "Custom step backward button must exist");
 		await act(async () => {
-			stepBackBtn.click();
+			customStepBack.click();
 		});
+
 		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
 		assert.ok(indicator?.textContent?.includes("Step 0 / 1"), "Step must decrement to 0");
 
-		// Click reset button
+		// 4. Standard toolbar step-forward button
+		const toolbarStepFwd = dom.document.querySelector<HTMLButtonElement>('[data-testid="visual-control-step-forward"]');
+		assert.ok(toolbarStepFwd);
+		await act(async () => {
+			toolbarStepFwd.click();
+		});
+		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
+		assert.ok(indicator?.textContent?.includes("Step 1 / 1"), "Toolbar step-forward increments step");
+
+		// 5. Custom reset button
 		const resetBtn = dom.document.querySelector<HTMLButtonElement>('[data-testid="visual-control-button-btn-reset"]');
 		assert.ok(resetBtn);
 		await act(async () => {
@@ -426,6 +338,10 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		});
 		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
 		assert.ok(indicator?.textContent?.includes("Step 0 / 1"), "Step must reset to 0");
+
+		await act(async () => {
+			root.unmount();
+		});
 	});
 
 	it("manages registry lifecycle, Strict Mode, and unmount cleanup without leaks (Fix C)", async () => {
@@ -480,37 +396,24 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		const svgArtifactV1: VisualArtifact = {
 			version: 1,
 			id: "reactive-switch-sim",
-			title: "Reactive Switch Sim V1 (SVG)",
+			title: "Reactive Sim V1 (SVG)",
 			renderer: "svg",
 			source: MOCK_SVG,
 			presentation: "inline",
-			initialState: { step: 0, speed: 50 },
-			controls: [{ type: "slider", id: "speed", label: "Speed", min: 0, max: 100, value: 50 }],
+			initialState: { step: 0 },
+			controls: [{ type: "button", id: "btn-play", label: "Play", action: "play" }],
 		};
 
 		const svgArtifactV2: VisualArtifact = {
 			...svgArtifactV1,
-			title: "Reactive Switch Sim V2 (SVG Updated)",
+			title: "Reactive Sim V2 (SVG Updated)",
 			source: '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40"/></svg>',
 		};
 
-		const htmlArtifactV3: VisualArtifact = {
-			version: 1,
-			id: "reactive-switch-sim",
-			title: "Reactive Switch Sim V3 (Switched to HTML)",
-			renderer: "html",
-			source: '<div id="html-content">Dynamic Canvas Sim</div>',
-			presentation: "inline",
-			initialState: { step: 0, speed: 50 },
-		};
-
-		const svgArtifactV4: VisualArtifact = {
-			version: 1,
-			id: "reactive-switch-sim",
-			title: "Reactive Switch Sim V4 (Switched back to SVG)",
-			renderer: "svg",
+		const svgArtifactV3: VisualArtifact = {
+			...svgArtifactV1,
+			title: "Reactive Sim V3 (SVG Rect)",
 			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect width="80" height="80"/></svg>',
-			presentation: "inline",
 		};
 
 		const dom = parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
@@ -519,7 +422,6 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			document: dom.document,
 			HTMLElement: dom.window.HTMLElement,
 			HTMLButtonElement: dom.window.HTMLButtonElement,
-			HTMLIFrameElement: dom.window.HTMLIFrameElement,
 			IS_REACT_ACT_ENVIRONMENT: true,
 		};
 		Object.assign(globalThis, globals);
@@ -542,7 +444,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		});
 
 		let titleEl = dom.document.querySelector('[data-testid="visual-explanation-card"] h4');
-		assert.equal(titleEl?.textContent, "Reactive Switch Sim V1 (SVG)");
+		assert.equal(titleEl?.textContent, "Reactive Sim V1 (SVG)");
 		const getCardSvg = () => {
 			const img = dom.document.querySelector('[data-testid="visual-explanation-svg-container"] img');
 			return decodeURIComponent(img?.getAttribute("src") || "");
@@ -557,35 +459,25 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		});
 
 		titleEl = dom.document.querySelector('[data-testid="visual-explanation-card"] h4');
-		assert.equal(titleEl?.textContent, "Reactive Switch Sim V2 (SVG Updated)", "Title must reactively update in-place");
+		assert.equal(titleEl?.textContent, "Reactive Sim V2 (SVG Updated)", "Title must reactively update in-place");
 		assert.ok(getCardSvg().includes("<circle"), "SVG source must reflect V2 circle in-place");
+		assert.equal(dom.document.querySelectorAll("iframe").length, 0, "Zero iframes throughout updates");
 
-		// 3. In-place reactive update SVG -> HTML (V2 -> V3)
+		// 3. In-place reactive update V2 -> V3
 		await act(async () => {
-			registerVisualArtifact(htmlArtifactV3);
+			registerVisualArtifact(svgArtifactV3);
 		});
 
 		titleEl = dom.document.querySelector('[data-testid="visual-explanation-card"] h4');
-		assert.equal(titleEl?.textContent, "Reactive Switch Sim V3 (Switched to HTML)");
-		assert.equal(dom.document.querySelectorAll('[data-testid="visual-explanation-svg-container"]').length, 0);
-		let iframes = dom.document.querySelectorAll("iframe");
-		assert.equal(iframes.length, 1, "Must reactively transition to single sandboxed iframe");
+		assert.equal(titleEl?.textContent, "Reactive Sim V3 (SVG Rect)");
+		assert.ok(getCardSvg().includes("<rect"), "SVG source must reflect V3 rect in-place");
+		assert.equal(dom.document.querySelectorAll("iframe").length, 0);
 
-		// 4. In-place reactive update HTML -> SVG (V3 -> V4)
+		// 4. Rapid consecutive updates: test sequence
 		await act(async () => {
-			registerVisualArtifact(svgArtifactV4);
-		});
-
-		titleEl = dom.document.querySelector('[data-testid="visual-explanation-card"] h4');
-		assert.equal(titleEl?.textContent, "Reactive Switch Sim V4 (Switched back to SVG)");
-		assert.equal(dom.document.querySelectorAll("iframe").length, 0, "Iframe must be removed when switching back to SVG");
-		assert.ok(getCardSvg().includes("<rect"), "SVG source must reflect V4 rect in-place");
-
-		// 5. Rapid consecutive updates: test sequence
-		await act(async () => {
-			registerVisualArtifact({ ...svgArtifactV4, title: "Rapid Update 1" });
-			registerVisualArtifact({ ...svgArtifactV4, title: "Rapid Update 2" });
-			registerVisualArtifact({ ...svgArtifactV4, title: "Rapid Update Final" });
+			registerVisualArtifact({ ...svgArtifactV3, title: "Rapid Update 1" });
+			registerVisualArtifact({ ...svgArtifactV3, title: "Rapid Update 2" });
+			registerVisualArtifact({ ...svgArtifactV3, title: "Rapid Update Final" });
 		});
 
 		titleEl = dom.document.querySelector('[data-testid="visual-explanation-card"] h4');
@@ -607,7 +499,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="red"/></svg>',
 			presentation: "inline",
 			controls: [{ type: "button", id: "b1", label: "Button 1", action: "play" }],
-			initialState: { step: 0, speed: 10 },
+			initialState: { step: 0 },
 		};
 
 		const sigBase = computeArtifactSignature(base);
@@ -634,16 +526,16 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		// Modified initialState
 		const diffState: VisualArtifact = {
 			...base,
-			initialState: { step: 0, speed: 20 },
+			initialState: { step: 1 },
 		};
 		assert.notEqual(sigBase, computeArtifactSignature(diffState), "Signature must differ when initialState changes");
 
-		// Modified renderer
-		const diffRenderer: VisualArtifact = {
+		// Modified presentation
+		const diffPresentation: VisualArtifact = {
 			...base,
-			renderer: "html",
+			presentation: "panel",
 		};
-		assert.notEqual(sigBase, computeArtifactSignature(diffRenderer), "Signature must differ when renderer changes");
+		assert.notEqual(sigBase, computeArtifactSignature(diffPresentation), "Signature must differ when presentation changes");
 	});
 
 	it("Phase 6.4: computeArtifactSignature uses structured serialization to eliminate delimiter collisions (Section 3.3)", () => {
@@ -717,8 +609,8 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 
 		assert.notEqual(
 			computeArtifactSignature(artifact1),
-			computeArtifactSignature({ ...artifact1, renderer: "html" }),
-			"Renderer modification must be detected",
+			computeArtifactSignature({ ...artifact1, presentation: "panel" }),
+			"Presentation modification must be detected",
 		);
 
 		assert.notEqual(

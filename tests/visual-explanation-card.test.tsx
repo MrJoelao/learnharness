@@ -39,8 +39,8 @@ describe("Visual Explanation Card Component", () => {
 			initialState: { step: 0, maxSteps: 2 },
 			controls: [
 				{ type: "button", id: "btn-step", label: "Next", action: "step-forward" },
-				{ type: "slider", id: "quantum", label: "Quantum", min: 1, max: 10, value: 4 },
-				{ type: "toggle", id: "preempt", label: "Preemption", value: true },
+				{ type: "button", id: "btn-prev", label: "Back", action: "step-backward" },
+				{ type: "button", id: "btn-rst", label: "Restart", action: "reset" },
 			],
 			accessibility: {
 				description: "A timeline diagram showing processes cycling through CPU burst slices.",
@@ -67,8 +67,9 @@ describe("Visual Explanation Card Component", () => {
 		assert.ok(html.includes('aria-label="Step backward"'), "Step backward button must render");
 		assert.ok(html.includes('aria-label="Reset visualization"'), "Reset button must render");
 		assert.ok(html.includes('aria-label="Expand visual to panel"'), "Expand button must render");
-		assert.ok(html.includes('type="range"'), "Slider control must render");
-		assert.ok(html.includes('type="checkbox"'), "Toggle control must render");
+		assert.ok(html.includes('data-testid="visual-control-button-btn-step"'), "Custom button must render");
+		assert.ok(!html.includes('type="range"'), "Slider control must not exist in MVP v1");
+		assert.ok(!html.includes('type="checkbox"'), "Toggle control must not exist in MVP v1");
 		assert.ok(html.includes("A timeline diagram showing processes cycling"), "Accessibility description must render");
 	});
 
@@ -93,8 +94,8 @@ describe("Visual Explanation Card Component", () => {
 		assert.ok(html.includes('aria-label="Close panel"'), "Close button must render");
 	});
 
-	it("renders a sandboxed iframe when renderer is 'html'", () => {
-		const artifact: VisualArtifact = {
+	it("rejects HTML visual artifacts and never renders an iframe", () => {
+		const htmlArtifact = {
 			version: 1,
 			id: "html-sim",
 			title: "Cache Coherence State Machine",
@@ -104,13 +105,19 @@ describe("Visual Explanation Card Component", () => {
 		};
 
 		const html = renderToStaticMarkup(
-			<VisualExplanationInstance artifact={artifact} initialExpanded={false} />,
+			<VisualExplanationCard
+				part={{
+					type: "tool-visual_explanation",
+					state: "output-available",
+					toolCallId: "call_html_1",
+					output: { ok: true, artifact: htmlArtifact as unknown as VisualArtifact },
+				}}
+			/>,
 		);
 
-		assert.ok(html.includes("<iframe"), "Must render iframe for HTML renderer");
-		assert.ok(html.includes('sandbox="allow-scripts"'), "Iframe must be sandboxed");
-		assert.ok(!html.includes("allow-same-origin"), "Iframe must NOT have allow-same-origin");
-		assert.ok(html.includes("Content-Security-Policy"), "CSP header must be present in srcdoc");
+		assert.ok(html.includes('data-testid="visual-explanation-failed"'), "HTML renderer must trigger failure alert");
+		assert.ok(!html.includes("<iframe"), "No iframe must ever be rendered for visual explanations");
+		assert.ok(html.includes("Visual explanation unavailable"), "Must inform that visual explanation is unavailable");
 	});
 
 	it("renders graceful error alert for malformed or failed artifacts without breaking", () => {
@@ -159,5 +166,24 @@ describe("Visual Explanation Card Component", () => {
 		const html = renderToStaticMarkup(<ToolPartRenderer part={part} />);
 		assert.ok(html.includes("Tree Balancing"), "ToolPartRenderer must render VisualExplanationCard");
 		assert.ok(html.includes('data-testid="visual-explanation-card"'), "VisualExplanationCard test ID present");
+	});
+
+	it("renders download button for SVG artifacts and verifies no iframe is created", () => {
+		const artifact: VisualArtifact = {
+			version: 1,
+			id: "download-test",
+			title: "Memory Flow Diagram",
+			renderer: "svg",
+			source: TEST_SVG,
+			presentation: "inline",
+		};
+
+		const html = renderToStaticMarkup(
+			<VisualExplanationInstance artifact={artifact} initialExpanded={false} />,
+		);
+
+		assert.ok(html.includes('data-testid="visual-download-button"'), "Download button must render");
+		assert.ok(html.includes('aria-label="Download visual artifact"'), "Download button must have aria-label");
+		assert.ok(!html.includes("<iframe"), "No iframe present");
 	});
 });

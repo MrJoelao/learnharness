@@ -239,10 +239,6 @@ These are reachable through public data, event, inheritance or helper-type relat
 - [VisualControlDescriptor](contracts-visual-explanation.md#visualcontroldescriptor) — `contracts-visual-explanation`
 - [VisualPresentation](contracts-visual-explanation.md#visualpresentation) — `contracts-visual-explanation`
 - [VisualRenderer](contracts-visual-explanation.md#visualrenderer) — `contracts-visual-explanation`
-- [VisualSelectControl](contracts-visual-explanation.md#visualselectcontrol) — `contracts-visual-explanation`
-- [VisualSelectOption](contracts-visual-explanation.md#visualselectoption) — `contracts-visual-explanation`
-- [VisualSliderControl](contracts-visual-explanation.md#visualslidercontrol) — `contracts-visual-explanation`
-- [VisualToggleControl](contracts-visual-explanation.md#visualtogglecontrol) — `contracts-visual-explanation`
 - [ServerEvent](events.md#serverevent) — `events`
 - [ServerEvents](events.md#serverevents) — `events`
 - [ServerEventType](events.md#servereventtype) — `events`
@@ -284,4 +280,4 @@ These are reachable through public data, event, inheritance or helper-type relat
 
 Standard JavaScript/DOM types (`Promise`, `AbortSignal`, `File`, `HTMLElement`, and utility types) use their standard contracts. Pi model/messages/tools and TypeBox schemas use the exact peer versions declared by the bundled SDK's `package.json`. Supply those peers when typechecking; they are development types, not permission to import private LearnHarness runtime modules.
 
-Coverage: **145 public types**, **73 supporting declarations**, **979 declared member signatures/variants**. Generation contains no build timestamps or absolute source paths.
+Coverage: **145 public types**, **69 supporting declarations**, **961 declared member signatures/variants**. Generation contains no build timestamps or absolute source paths.
