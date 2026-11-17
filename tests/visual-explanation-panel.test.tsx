@@ -99,6 +99,10 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 		);
 		iframes = dom.document.querySelectorAll("iframe");
 		assert.equal(iframes.length, 1, "Inline iframe remains active after closing panel");
+
+		await act(async () => {
+			root.unmount();
+		});
 	});
 
 	it("preserves state between inline and expanded panel without reset (Fix C)", async () => {
@@ -175,6 +179,10 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 		// Back inline: step indicator is STILL Step 2 / 3
 		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
 		assert.ok(indicator?.textContent?.includes("Step 2 / 3"), "State must be retained after closing panel");
+
+		await act(async () => {
+			root.unmount();
+		});
 	});
 
 	it("supports Escape key closing and accessible focus restoration (Fix D)", async () => {
@@ -294,5 +302,9 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 		// Wait for focus restoration timeout
 		await new Promise((r) => setTimeout(r, 60));
 		assert.equal(dom.document.activeElement, expandBtn, "Focus must be restored to expand button after closing dialog");
+
+		await act(async () => {
+			root.unmount();
+		});
 	});
 });
