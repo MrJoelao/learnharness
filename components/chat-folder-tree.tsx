@@ -723,7 +723,7 @@ export function ChatFolderTree({
 		const isActive = isWorkspace
 			? activeWorkspaceId === item.id
 			: activeChatId === item.id;
-		const isKbd = isWorkspace ? false : kbdChatId === item.id;
+		const isKbd = kbdChatId === item.id;
 
 		if (renamingId === item.id) {
 			return isWorkspace ? (

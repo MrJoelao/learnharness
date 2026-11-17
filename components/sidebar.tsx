@@ -1359,7 +1359,9 @@ export function SessionsSidebar({
 		if (kbdIndex === null || !shown || kbdIndex >= shown.length) return;
 		const targetChat = shown[kbdIndex];
 		if (!targetChat) return;
-		const row = listRef.current?.querySelector<HTMLElement>(`[data-session-id="${targetChat.id}"]`);
+		const row = listRef.current?.querySelector<HTMLElement>(
+			`[data-session-id="${targetChat.id}"], [data-workspace-id="${targetChat.id}"]`,
+		);
 		row?.scrollIntoView({ block: "nearest" });
 	}, [kbdIndex, shown]);
 
@@ -1548,7 +1550,11 @@ export function SessionsSidebar({
 										const target = shown![kbdIndex !== null && kbdIndex < n ? kbdIndex : 0];
 										if (!target) return;
 										e.preventDefault();
-										router.push(`/chat/${target.id}`);
+										if (target.kind === "workspace") {
+											router.push(`/workspaces/${target.id}`);
+										} else {
+											router.push(`/chat/${target.id}`);
+										}
 										setKbdIndex(null);
 										e.currentTarget.blur();
 									}
