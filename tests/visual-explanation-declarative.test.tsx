@@ -697,7 +697,7 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 		assert.ok(cardHtmlOob.includes('data-testid="visual-explanation-failed"'), "Must render failure alert for invalid step");
 		assert.ok(cardHtmlOob.includes("exceeds maximum step index"), "Must include out-of-bounds error message");
 
-		// Clamping fallback in VisualExplanationInstance:
+		// Complete validation in VisualExplanationInstance:
 		const instanceHtmlOob = renderToStaticMarkup(
 			<VisualExplanationInstance
 				artifact={{
@@ -711,8 +711,8 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 				}}
 			/>,
 		);
-		// With 2 steps (indices 0 and 1), clamped initialStep is 1 -> indicator shows "Step 1 / 1"
-		assert.ok(instanceHtmlOob.includes("Step 1 / 1"), "Must clamp out-of-bounds step to maxSteps in instance");
+		assert.ok(instanceHtmlOob.includes('data-testid="visual-explanation-failed"'), "Must render failure alert for out-of-bounds step in instance");
+		assert.ok(instanceHtmlOob.includes("exceeds maximum step index"), "Must include out-of-bounds error message");
 
 		const instanceHtmlNeg = renderToStaticMarkup(
 			<VisualExplanationInstance
@@ -727,8 +727,8 @@ describe("Phase 6 Targeted Bug Fixes & Specification Verification", () => {
 				}}
 			/>,
 		);
-		// Clamped negative step is 0 -> indicator shows "Step 0 / 1"
-		assert.ok(instanceHtmlNeg.includes("Step 0 / 1"), "Must clamp negative step to 0 in instance");
+		assert.ok(instanceHtmlNeg.includes('data-testid="visual-explanation-failed"'), "Must render failure alert for negative step in instance");
+		assert.ok(instanceHtmlNeg.includes("cannot be negative"), "Must include negative step error message");
 	});
 
 	it("CORRECTION 1: validator strictly rejects button controls with action 'custom'", () => {

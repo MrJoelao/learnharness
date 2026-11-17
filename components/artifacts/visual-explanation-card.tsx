@@ -43,23 +43,35 @@ export function scopedArtifactKey(id: string, chatId?: string): string {
 }
 
 export function getRegisteredVisualArtifact(id: string, chatId?: string): VisualArtifact | undefined {
-	return artifactRegistry.get(scopedArtifactKey(id, chatId))?.artifact;
+	const entry = artifactRegistry.get(scopedArtifactKey(id, chatId));
+	if (!entry?.artifact) return undefined;
+	const validation = validateDeclarativeVisualArtifact(entry.artifact);
+	if (!validation.valid || !validation.sanitized) {
+		return undefined;
+	}
+	return validation.sanitized;
 }
 
-export function registerVisualArtifact(artifact: VisualArtifact, chatId?: string): void {
-	const key = scopedArtifactKey(artifact.id, chatId);
+export function registerVisualArtifact(artifact: VisualArtifact, chatId?: string): boolean {
+	const validation = validateDeclarativeVisualArtifact(artifact);
+	if (!validation.valid || !validation.sanitized) {
+		return false;
+	}
+	const sanitized = validation.sanitized;
+	const key = scopedArtifactKey(sanitized.id, chatId);
 	const entry = artifactRegistry.get(key);
 	if (!entry) {
 		artifactRegistry.set(key, {
-			artifact,
+			artifact: sanitized,
 			listeners: new Set(),
 		});
 	} else {
-		entry.artifact = artifact;
+		entry.artifact = sanitized;
 		for (const listener of entry.listeners) {
-			listener(artifact);
+			listener(sanitized);
 		}
 	}
+	return true;
 }
 
 export function subscribeVisualArtifact(
@@ -336,13 +348,15 @@ export function VisualExplanationInstance({
 	className?: string;
 	initialExpanded?: boolean;
 }) {
-	// Defense in depth (RUN 3.2): Strictly validate initial artifact at runtime entrance
-	const initialDoc = useMemo(() => {
-		if (initialArtifact.renderer !== "svg") return null;
-		return parseDeclarativeSvg(initialArtifact.source);
-	}, [initialArtifact]);
+	// Complete artifact envelope & declarative SVG validation (RUN 3.2.1)
+	const validation = useMemo(
+		() => validateDeclarativeVisualArtifact(initialArtifact),
+		[initialArtifact],
+	);
 
-	if (initialArtifact.renderer !== "svg" || !initialDoc) {
+	if (!validation.valid || !validation.sanitized) {
+		const errorNotes =
+			validation.problems.join("; ") || "Invalid visual artifact envelope.";
 		return (
 			<div
 				className="my-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-foreground"
@@ -353,16 +367,14 @@ export function VisualExplanationInstance({
 					<InfoIcon className="size-4 shrink-0" />
 					<span>Visual explanation unavailable</span>
 				</div>
-				<p className="mt-1 text-xs text-muted-foreground">
-					Artifact source is not a valid declarative SVG document.
-				</p>
+				<p className="mt-1 text-xs text-muted-foreground">{errorNotes}</p>
 			</div>
 		);
 	}
 
 	return (
 		<VisualExplanationInstanceInner
-			initialArtifact={initialArtifact}
+			initialArtifact={validation.sanitized}
 			chatId={chatId}
 			className={className}
 			initialExpanded={initialExpanded}
@@ -384,7 +396,13 @@ function VisualExplanationInstanceInner({
 	// Active artifact (updated reactively when an update action arrives for this ID — Fix B)
 	const [artifact, setArtifact] = useState<VisualArtifact>(() => {
 		const registered = getRegisteredVisualArtifact(initialArtifact.id, chatId);
-		return registered ?? initialArtifact;
+		if (registered) {
+			const regValidation = validateDeclarativeVisualArtifact(registered);
+			if (regValidation.valid && regValidation.sanitized) {
+				return regValidation.sanitized;
+			}
+		}
+		return initialArtifact;
 	});
 
 	// Register initial artifact outside render phase with idempotency check
