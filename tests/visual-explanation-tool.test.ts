@@ -307,35 +307,35 @@ describe("Visual Explanation Agent Tool", () => {
 		const chatId = createTestChat();
 		const tool = createVisualExplanationTool({ chatId, chatStore });
 
-		// 8 button controls: accepted
-		const eightControls = Array.from({ length: 8 }, (_, i) => ({
+		// 5 button controls: accepted
+		const fiveControls = Array.from({ length: 5 }, (_, i) => ({
 			type: "button" as const,
 			id: `btn-${i}`,
 			label: `Action ${i}`,
 			action: "step-forward" as const,
 		}));
 
-		const validControlsRes = await tool.execute("call_8_ctrls", {
+		const validControlsRes = await tool.execute("call_5_ctrls", {
 			action: "create",
-			title: "8 Controls Visual",
+			title: "5 Controls Visual",
 			source: SAMPLE_DECLARATIVE_SVG,
-			controls: eightControls,
+			controls: fiveControls,
 		});
 		assert.equal(validControlsRes.isError, undefined);
 
-		// 9 button controls: rejected
-		const nineControls = Array.from({ length: 9 }, (_, i) => ({
+		// 6 button controls: rejected
+		const sixControls = Array.from({ length: 6 }, (_, i) => ({
 			type: "button" as const,
 			id: `btn-${i}`,
 			label: `Action ${i}`,
 			action: "step-forward" as const,
 		}));
 
-		const invalidControlsRes = await tool.execute("call_9_ctrls", {
+		const invalidControlsRes = await tool.execute("call_6_ctrls", {
 			action: "create",
-			title: "9 Controls Visual",
+			title: "6 Controls Visual",
 			source: SAMPLE_DECLARATIVE_SVG,
-			controls: nineControls,
+			controls: sixControls,
 		});
 		assert.equal(invalidControlsRes.isError, true);
 

@@ -31,6 +31,29 @@ const MOCK_SVG = `
 </svg>
 `.trim();
 
+const MOCK_DECLARATIVE_JSON = JSON.stringify({
+	schema: "learnharness.visual.svg.v1",
+	viewBox: { width: 200, height: 100 },
+	steps: [
+		{
+			id: "s0",
+			label: "Step 0",
+			elements: [
+				{ type: "rect", x: 0, y: 0, width: 50, height: 20, fill: "#2563eb" },
+				{ type: "text", x: 10, y: 20, text: "Init", fill: "#ffffff" },
+			],
+		},
+		{
+			id: "s1",
+			label: "Step 1",
+			elements: [
+				{ type: "rect", x: 0, y: 0, width: 100, height: 40, fill: "#16a34a" },
+				{ type: "text", x: 10, y: 20, text: "Step 1", fill: "#ffffff" },
+			],
+		},
+	],
+});
+
 describe("Visual Explanation Declarative Controls (Fix A)", () => {
 	it("binds slider, toggle, and select state to SVG styles and CSS variables", () => {
 		const stateValues = {
@@ -183,7 +206,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			id: "pipeline-lifecycle",
 			title: "Pipeline Simulation v1",
 			renderer: "svg",
-			source: MOCK_SVG,
+			source: MOCK_DECLARATIVE_JSON,
 			presentation: "inline",
 		};
 
@@ -398,7 +421,11 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			id: "reactive-switch-sim",
 			title: "Reactive Sim V1 (SVG)",
 			renderer: "svg",
-			source: MOCK_SVG,
+			source: JSON.stringify({
+				schema: "learnharness.visual.svg.v1",
+				viewBox: { width: 100, height: 100 },
+				steps: [{ id: "s1", label: "S1", elements: [{ type: "rect", x: 10, y: 10, width: 80, height: 40, fill: "#2563eb" }] }],
+			}),
 			presentation: "inline",
 			initialState: { step: 0 },
 			controls: [{ type: "button", id: "btn-play", label: "Play", action: "play" }],
@@ -407,13 +434,21 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		const svgArtifactV2: VisualArtifact = {
 			...svgArtifactV1,
 			title: "Reactive Sim V2 (SVG Updated)",
-			source: '<svg xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40"/></svg>',
+			source: JSON.stringify({
+				schema: "learnharness.visual.svg.v1",
+				viewBox: { width: 100, height: 100 },
+				steps: [{ id: "s1", label: "S1", elements: [{ type: "circle", cx: 50, cy: 50, r: 40, fill: "#16a34a" }] }],
+			}),
 		};
 
 		const svgArtifactV3: VisualArtifact = {
 			...svgArtifactV1,
-			title: "Reactive Sim V3 (SVG Rect)",
-			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect width="80" height="80"/></svg>',
+			title: "Reactive Sim V3 (SVG Line)",
+			source: JSON.stringify({
+				schema: "learnharness.visual.svg.v1",
+				viewBox: { width: 100, height: 100 },
+				steps: [{ id: "s1", label: "S1", elements: [{ type: "line", x1: 0, y1: 0, x2: 100, y2: 100, stroke: "#dc2626" }] }],
+			}),
 		};
 
 		const dom = parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
@@ -446,11 +481,11 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		let titleEl = dom.document.querySelector('[data-testid="visual-explanation-card"] h4');
 		assert.equal(titleEl?.textContent, "Reactive Sim V1 (SVG)");
 		const getCardSvg = () => {
-			const img = dom.document.querySelector('[data-testid="visual-explanation-svg-container"] img');
-			return decodeURIComponent(img?.getAttribute("src") || "");
+			const container = dom.document.querySelector('[data-testid="visual-explanation-declarative-container"]');
+			return container?.innerHTML || "";
 		};
 
-		assert.ok(dom.document.querySelector('[data-testid="visual-explanation-svg-container"]'), "SVG container must be mounted");
+		assert.ok(dom.document.querySelector('[data-testid="visual-explanation-declarative-container"]'), "Declarative container must be mounted");
 		assert.equal(dom.document.querySelectorAll("iframe").length, 0);
 
 		// 2. In-place reactive update SVG -> SVG (V1 -> V2)
@@ -469,8 +504,8 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		});
 
 		titleEl = dom.document.querySelector('[data-testid="visual-explanation-card"] h4');
-		assert.equal(titleEl?.textContent, "Reactive Sim V3 (SVG Rect)");
-		assert.ok(getCardSvg().includes("<rect"), "SVG source must reflect V3 rect in-place");
+		assert.equal(titleEl?.textContent, "Reactive Sim V3 (SVG Line)");
+		assert.ok(getCardSvg().includes("<line"), "SVG source must reflect V3 line in-place");
 		assert.equal(dom.document.querySelectorAll("iframe").length, 0);
 
 		// 4. Rapid consecutive updates: test sequence
@@ -623,27 +658,41 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 	it("reactively updates mounted card in-place when source changes with identical length or controls change (Phase 6.3)", async () => {
 		clearVisualArtifactRegistry();
 
+		const initialDoc = {
+			schema: "learnharness.visual.svg.v1" as const,
+			viewBox: { width: 100, height: 100 },
+			steps: [{ id: "s1", label: "S1", elements: [{ type: "rect" as const, x: 0, y: 0, width: 20, height: 20, fill: "red" }] }],
+		};
+		const initialJson = JSON.stringify(initialDoc);
+
 		const initialArtifact: VisualArtifact = {
 			version: 1,
 			id: "in-place-adversarial-id",
 			title: "Unchanged Title",
 			renderer: "svg",
-			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="red" width="20"/></svg>',
+			source: initialJson,
 			presentation: "inline",
 			controls: [{ type: "button", id: "btn-start", label: "Start", action: "play" }],
 		};
 
-		// Same id, same version, same title, EXACT SAME source length (68 chars), different SVG fill
+		// Same id, same version, same title, EXACT SAME source length, different SVG fill
+		const updatedDocSameLen = {
+			schema: "learnharness.visual.svg.v1" as const,
+			viewBox: { width: 100, height: 100 },
+			steps: [{ id: "s1", label: "S1", elements: [{ type: "rect" as const, x: 0, y: 0, width: 20, height: 20, fill: "blu" }] }],
+		};
+		const updatedJsonSameLen = JSON.stringify(updatedDocSameLen);
+		assert.equal(initialJson.length, updatedJsonSameLen.length, "Source lengths must be identical for adversarial test");
+
 		const updatedArtifactSameLen: VisualArtifact = {
 			version: 1,
 			id: "in-place-adversarial-id",
 			title: "Unchanged Title",
 			renderer: "svg",
-			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="blu" width="20"/></svg>',
+			source: updatedJsonSameLen,
 			presentation: "inline",
 			controls: [{ type: "button", id: "btn-start", label: "Start", action: "play" }],
 		};
-		assert.equal(initialArtifact.source.length, updatedArtifactSameLen.source.length, "Source lengths must be identical for adversarial test");
 
 		const dom = parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
 		const globals = {
@@ -674,12 +723,12 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			);
 		});
 
-		const getImgSrc = () => {
-			const img = dom.document.querySelector('[data-testid="visual-explanation-svg-container"] img');
-			return decodeURIComponent(img?.getAttribute("src") || "");
+		const getCardContent = () => {
+			const container = dom.document.querySelector('[data-testid="visual-explanation-declarative-container"]');
+			return container?.innerHTML || "";
 		};
 
-		assert.ok(getImgSrc().includes('fill="red"'), "Initial card must render red rect");
+		assert.ok(getCardContent().includes('fill="red"'), "Initial card must render red rect");
 		assert.equal(dom.document.querySelectorAll('[data-testid="visual-control-button-btn-start"]').length, 1);
 
 		// 2. Render update notice with same length but different SVG fill
@@ -707,8 +756,8 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 		});
 
 		// Must reflect in-place update in the mounted viewer
-		assert.ok(getImgSrc().includes('fill="blu"'), "Mounted card must reactively update to blue rect even with same source length");
-		assert.ok(!getImgSrc().includes('fill="red"'), "Old source must no longer be present");
+		assert.ok(getCardContent().includes('fill="blu"'), "Mounted card must reactively update to blue rect even with same source length");
+		assert.ok(!getCardContent().includes('fill="red"'), "Old source must no longer be present");
 
 		// 3. Render update notice with modified controls (adding a pause button)
 		const updatedArtifactWithControls: VisualArtifact = {

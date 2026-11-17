@@ -19,6 +19,7 @@ import {
 	type VisualControlDescriptor,
 	type VisualButtonControl,
 	validateVisualArtifact,
+	validateDeclarativeVisualArtifact,
 	isDeclarativeSvg,
 	parseDeclarativeSvg,
 } from "@/src/core";
@@ -291,7 +292,7 @@ export function VisualExplanationCard({
 		(part.output as { chatId?: string })?.chatId ??
 		(part.input as { chatId?: string })?.chatId;
 
-	const validation = useMemo(() => validateVisualArtifact(rawOutput), [rawOutput]);
+	const validation = useMemo(() => validateDeclarativeVisualArtifact(rawOutput), [rawOutput]);
 	const validatedArtifact = validation.sanitized;
 
 	// Invariant: Failed artifact or failed update renders error alert without crashing

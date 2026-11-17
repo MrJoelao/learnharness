@@ -239,7 +239,14 @@ it("performance: real Visual Explanation mount releases browser listeners, obser
 	});
 	const artifact = {
 		version: 1 as const, id: "phase7-cleanup-artifact", title: "Cleanup Visual", renderer: "svg" as const,
-		source: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><g data-step="0"><rect width="10" height="10" /></g><g data-step="1"><circle r="5" /></g></svg>',
+		source: JSON.stringify({
+			schema: "learnharness.visual.svg.v1",
+			viewBox: { width: 100, height: 100 },
+			steps: [
+				{ id: "s0", label: "Step 0", elements: [{ type: "rect", x: 0, y: 0, width: 10, height: 10 }] },
+				{ id: "s1", label: "Step 1", elements: [{ type: "circle", cx: 5, cy: 5, r: 5 }] },
+			],
+		}),
 		presentation: "inline" as const,
 		controls: [{ type: "button" as const, id: "play", label: "Play", action: "play" as const }],
 	};

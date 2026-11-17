@@ -26,6 +26,38 @@ const TEST_SVG = `
 </svg>
 `.trim();
 
+const TEST_DECLARATIVE_DOC = {
+	schema: "learnharness.visual.svg.v1" as const,
+	viewBox: { x: 0, y: 0, width: 300, height: 150 },
+	steps: [
+		{
+			id: "s0",
+			label: "Step 0",
+			elements: [
+				{ type: "rect" as const, x: 0, y: 0, width: 100, height: 40, fill: "#2563eb" },
+				{ type: "text" as const, x: 10, y: 20, text: "Step 0", fill: "#ffffff" },
+			],
+		},
+		{
+			id: "s1",
+			label: "Step 1",
+			elements: [
+				{ type: "rect" as const, x: 0, y: 0, width: 100, height: 40, fill: "#16a34a" },
+				{ type: "text" as const, x: 10, y: 20, text: "Step 1", fill: "#ffffff" },
+			],
+		},
+		{
+			id: "s2",
+			label: "Step 2",
+			elements: [
+				{ type: "rect" as const, x: 0, y: 0, width: 100, height: 40, fill: "#dc2626" },
+				{ type: "text" as const, x: 10, y: 20, text: "Step 2", fill: "#ffffff" },
+			],
+		},
+	],
+};
+const TEST_DECLARATIVE_JSON = JSON.stringify(TEST_DECLARATIVE_DOC);
+
 describe("Visual Explanation Card Component", () => {
 	it("renders an inline SVG visual explanation card with title, summary and controls", () => {
 		const artifact: VisualArtifact = {
@@ -34,7 +66,7 @@ describe("Visual Explanation Card Component", () => {
 			title: "Round Robin Scheduling",
 			summary: "Quantum = 4ms round robin simulation",
 			renderer: "svg",
-			source: TEST_SVG,
+			source: TEST_DECLARATIVE_JSON,
 			presentation: "inline",
 			initialState: { step: 0, maxSteps: 2 },
 			controls: [
@@ -152,7 +184,7 @@ describe("Visual Explanation Card Component", () => {
 			id: "integration-test",
 			title: "Tree Balancing",
 			renderer: "svg",
-			source: TEST_SVG,
+			source: TEST_DECLARATIVE_JSON,
 			presentation: "inline",
 		};
 
@@ -168,13 +200,39 @@ describe("Visual Explanation Card Component", () => {
 		assert.ok(html.includes('data-testid="visual-explanation-card"'), "VisualExplanationCard test ID present");
 	});
 
+	it("strictly rejects raw SVG XML through VisualExplanationCard and renders error alert", () => {
+		const rawSvgArtifact = {
+			version: 1,
+			id: "raw-svg-sched",
+			title: "Raw SVG Diagram",
+			renderer: "svg",
+			source: TEST_SVG,
+			presentation: "inline",
+		};
+
+		const html = renderToStaticMarkup(
+			<VisualExplanationCard
+				part={{
+					type: "tool-visual_explanation",
+					state: "output-available",
+					toolCallId: "call_raw_svg",
+					output: { ok: true, artifact: rawSvgArtifact as unknown as VisualArtifact },
+				}}
+			/>,
+		);
+
+		assert.ok(html.includes('data-testid="visual-explanation-failed"'), "Must render failed alert");
+		assert.ok(html.includes("Raw SVG XML is not permitted"), "Error must state raw SVG XML is not permitted");
+		assert.ok(!html.includes("<iframe"), "No iframe must be rendered");
+	});
+
 	it("renders download button for SVG artifacts and verifies no iframe is created", () => {
 		const artifact: VisualArtifact = {
 			version: 1,
 			id: "download-test",
 			title: "Memory Flow Diagram",
 			renderer: "svg",
-			source: TEST_SVG,
+			source: TEST_DECLARATIVE_JSON,
 			presentation: "inline",
 		};
 

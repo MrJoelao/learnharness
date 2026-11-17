@@ -351,8 +351,8 @@ describe("Visual Explanation Envelope Validation", () => {
 		assert.equal(res.valid, false);
 		assert.ok(res.problems.some((p) => p.includes("unsupported type 'select'")));
 
-		// Exceeding MAX_CONTROLS
-		const tooManyControls = Array.from({ length: 9 }, (_, i) => ({
+		// MAX_CONTROLS boundary (5 allowed, 6 rejected)
+		const fiveControls = Array.from({ length: 5 }, (_, i) => ({
 			type: "button" as const,
 			id: `btn-${i}`,
 			label: `Btn ${i}`,
@@ -360,14 +360,31 @@ describe("Visual Explanation Envelope Validation", () => {
 		}));
 		res = validateVisualArtifact({
 			version: 1,
-			id: "max-ctrl-test",
-			title: "Max Controls Test",
+			id: "five-ctrl-test",
+			title: "Five Controls Test",
 			renderer: "svg",
 			source: VALID_SVG,
-			controls: tooManyControls,
+			controls: fiveControls,
 		});
-		assert.equal(res.valid, false);
-		assert.ok(res.problems.some((p) => p.includes("controls count exceeds limit")));
+		assert.equal(res.valid, true, "5 button controls must be accepted");
+		assert.equal(res.problems.length, 0);
+
+		const sixControls = Array.from({ length: 6 }, (_, i) => ({
+			type: "button" as const,
+			id: `btn-${i}`,
+			label: `Btn ${i}`,
+			action: "play" as const,
+		}));
+		res = validateVisualArtifact({
+			version: 1,
+			id: "six-ctrl-test",
+			title: "Six Controls Test",
+			renderer: "svg",
+			source: VALID_SVG,
+			controls: sixControls,
+		});
+		assert.equal(res.valid, false, "6 button controls must be rejected");
+		assert.ok(res.problems.some((p) => p.includes("controls count exceeds limit of 5")));
 	});
 
 	it("validates educational visual primitives", () => {
