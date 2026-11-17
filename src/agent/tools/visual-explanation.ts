@@ -1,8 +1,8 @@
 /**
  * Visual Explanation Engine — Agent Tool (Phase 6)
  *
- * Exposes the visual_explanation tool to the teaching agent, allowing it to
- * create and update structured, interactive visual artifacts during conversation.
+ * Exposes the visual_explanation tool to prober and teacher agents, allowing
+ * them to create and update structured, interactive visual artifacts during conversation.
  */
 
 import { Type, type Static } from "typebox";

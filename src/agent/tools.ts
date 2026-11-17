@@ -336,6 +336,8 @@ export function createProberTools(
 				// remains available without a search-provider key.
 				...(jobs.research ? { research: jobs.research } : {}),
 				pdf: jobs.pdf!,
+				// Visual Explanation Engine: structured interactive explanations (prober + teacher)
+				visual_explanation: createVisualExplanationTool(ctx),
 				// The map reader (wave 7): present only when the settings gate
 				// opened.
 				...(ctx.graphStore
