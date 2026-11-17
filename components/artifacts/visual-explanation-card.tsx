@@ -18,13 +18,10 @@ import {
 	type VisualArtifact,
 	type VisualControlDescriptor,
 	type VisualButtonControl,
-	validateVisualArtifact,
 	validateDeclarativeVisualArtifact,
-	isDeclarativeSvg,
 	parseDeclarativeSvg,
 } from "@/src/core";
 import { DeclarativeSvgRenderer } from "@/components/artifacts/declarative-svg-renderer";
-import { SvgImage } from "@/components/artifacts/svg-image";
 import { downloadFile, slugFilename } from "@/components/artifacts/download";
 
 interface VisualExplanationCardProps extends ArtifactPartProps {
@@ -339,6 +336,51 @@ export function VisualExplanationInstance({
 	className?: string;
 	initialExpanded?: boolean;
 }) {
+	// Defense in depth (RUN 3.2): Strictly validate initial artifact at runtime entrance
+	const initialDoc = useMemo(() => {
+		if (initialArtifact.renderer !== "svg") return null;
+		return parseDeclarativeSvg(initialArtifact.source);
+	}, [initialArtifact]);
+
+	if (initialArtifact.renderer !== "svg" || !initialDoc) {
+		return (
+			<div
+				className="my-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-foreground"
+				role="alert"
+				data-testid="visual-explanation-failed"
+			>
+				<div className="flex items-center gap-2 font-medium text-destructive">
+					<InfoIcon className="size-4 shrink-0" />
+					<span>Visual explanation unavailable</span>
+				</div>
+				<p className="mt-1 text-xs text-muted-foreground">
+					Artifact source is not a valid declarative SVG document.
+				</p>
+			</div>
+		);
+	}
+
+	return (
+		<VisualExplanationInstanceInner
+			initialArtifact={initialArtifact}
+			chatId={chatId}
+			className={className}
+			initialExpanded={initialExpanded}
+		/>
+	);
+}
+
+function VisualExplanationInstanceInner({
+	initialArtifact,
+	chatId,
+	className = "",
+	initialExpanded = false,
+}: {
+	initialArtifact: VisualArtifact;
+	chatId?: string;
+	className?: string;
+	initialExpanded?: boolean;
+}) {
 	// Active artifact (updated reactively when an update action arrives for this ID — Fix B)
 	const [artifact, setArtifact] = useState<VisualArtifact>(() => {
 		const registered = getRegisteredVisualArtifact(initialArtifact.id, chatId);
@@ -374,13 +416,11 @@ export function VisualExplanationInstance({
 	}, [artifact]);
 
 	// Calculate maximum steps
-	const detectedSvgSteps = useMemo(() => (artifact.renderer === "svg" ? countSvgSteps(artifact.source) : 0), [artifact]);
 	const maxSteps = useMemo(() => {
 		if (declarativeDoc) return Math.max(0, declarativeDoc.steps.length - 1);
 		if (typeof artifact.initialState?.maxSteps === "number") return artifact.initialState.maxSteps as number;
-		if (detectedSvgSteps > 0) return detectedSvgSteps;
-		return 3;
-	}, [artifact, declarativeDoc, detectedSvgSteps]);
+		return 0;
+	}, [artifact, declarativeDoc]);
 
 	// State dictionary initialized from initialState, with step strictly clamped to [0, maxSteps]
 	const rawInitialStep =
@@ -397,17 +437,20 @@ export function VisualExplanationInstance({
 		const unsubscribe = subscribeVisualArtifact(
 			artifact.id,
 			(updated) => {
-				setArtifact(updated);
-				const updatedDecl = updated.renderer === "svg" ? parseDeclarativeSvg(updated.source) : null;
-				const newDetectedSteps = updated.renderer === "svg" ? countSvgSteps(updated.source) : 0;
+				const updateValidation = validateDeclarativeVisualArtifact(updated);
+				if (!updateValidation.valid || !updateValidation.sanitized) {
+					// Invalid update: discard to prevent corrupting local state
+					return;
+				}
+				const sanitizedUpdated = updateValidation.sanitized;
+				setArtifact(sanitizedUpdated);
+				const updatedDecl = parseDeclarativeSvg(sanitizedUpdated.source);
 				const newMax = updatedDecl
 					? Math.max(0, updatedDecl.steps.length - 1)
-					: typeof updated.initialState?.maxSteps === "number"
-						? (updated.initialState.maxSteps as number)
-						: newDetectedSteps > 0
-							? newDetectedSteps
-							: 3;
-				setStateValues((prev) => preserveCompatibleState(prev, updated, newMax));
+					: typeof sanitizedUpdated.initialState?.maxSteps === "number"
+						? (sanitizedUpdated.initialState.maxSteps as number)
+						: 0;
+				setStateValues((prev) => preserveCompatibleState(prev, sanitizedUpdated, newMax));
 				setCurrentStep((prev) => Math.min(prev, newMax));
 			},
 			chatId,
@@ -625,12 +668,7 @@ export function VisualExplanationInstance({
 		return () => document.removeEventListener("focusin", onFocusIn);
 	}, [isExpanded]);
 
-	// Process SVG source with all bound control parameters and steps (Fix A)
-	const processedSvgSource = useMemo(() => {
-		return applyStateToSvg(artifact.source, currentStep, stateValues);
-	}, [artifact.source, currentStep, stateValues]);
-
-	// Render the inner visual frame (Fix C: exactly one active SVG view is mounted at any time)
+	// Render the inner visual frame (Zero iframes, strictly declarative SVG renderer)
 	const renderVisualContent = (expanded: boolean) => {
 		if (declarativeDoc) {
 			return (
@@ -648,14 +686,14 @@ export function VisualExplanationInstance({
 			);
 		}
 
-		// SVG image boundary (isolated, reactive to state)
+		// Strictly reject rendering non-declarative or null documents; never mount SvgImage
 		return (
 			<div
-				className="flex items-center justify-center overflow-hidden rounded-md bg-white p-2"
-				style={{ minHeight: expanded ? "340px" : "180px", maxHeight: expanded ? "70vh" : "360px" }}
-				data-testid="visual-explanation-svg-container"
+				className="flex items-center justify-center rounded-md border border-destructive/20 bg-destructive/5 p-4 text-xs text-destructive"
+				role="alert"
+				data-testid="visual-explanation-failed"
 			>
-				<SvgImage svg={processedSvgSource} className="block h-auto max-h-full max-w-full" />
+				<p>Invalid or unsupported declarative visual document.</p>
 			</div>
 		);
 	};

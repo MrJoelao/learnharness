@@ -94,7 +94,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			id: "btn-actions-test",
 			title: "Button Actions Test",
 			renderer: "svg",
-			source: MOCK_SVG,
+			source: MOCK_DECLARATIVE_JSON,
 			presentation: "inline",
 			initialState: { step: 0, clickCount: 0 },
 			controls: [
@@ -158,7 +158,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			id: "test-compat-id",
 			title: "Updated Schema",
 			renderer: "svg",
-			source: MOCK_SVG,
+			source: MOCK_DECLARATIVE_JSON,
 			presentation: "inline",
 			initialState: { step: 0, newParam: "fresh" },
 			controls: [
@@ -186,7 +186,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			id: "test-restrict-id",
 			title: "Restricted Schema",
 			renderer: "svg",
-			source: MOCK_SVG,
+			source: MOCK_DECLARATIVE_JSON,
 			presentation: "inline",
 			initialState: { step: 0 },
 			controls: [
@@ -290,7 +290,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			id: "interactive-behavior-test",
 			title: "Behavioral Interactive Test",
 			renderer: "svg",
-			source: MOCK_SVG,
+			source: MOCK_DECLARATIVE_JSON,
 			presentation: "inline",
 			initialState: {
 				step: 0,
@@ -376,7 +376,7 @@ describe("Visual Explanation Declarative Controls (Fix A)", () => {
 			id: "lifecycle-card-id",
 			title: "Lifecycle Card",
 			renderer: "svg",
-			source: MOCK_SVG,
+			source: MOCK_DECLARATIVE_JSON,
 			presentation: "inline",
 		};
 

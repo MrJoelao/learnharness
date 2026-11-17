@@ -8,15 +8,40 @@ import React, { act } from "react";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseHTML } from "linkedom";
-import { VisualExplanationInstance } from "../components/artifacts/visual-explanation-card.tsx";
+import {
+	VisualExplanationInstance,
+	registerVisualArtifact,
+	clearVisualArtifactRegistry,
+} from "../components/artifacts/visual-explanation-card.tsx";
 import type { VisualArtifact } from "../src/core/contracts/visual-explanation.ts";
 
-const SVG_SOURCE = `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
-  <rect width="100" height="50" fill="#2563eb"/>
-  <text x="10" y="30" fill="#ffffff">Step 0</text>
-</svg>
-`.trim();
+const DECLARATIVE_DOC = {
+	schema: "learnharness.visual.svg.v1" as const,
+	viewBox: { x: 0, y: 0, width: 200, height: 100 },
+	steps: [
+		{
+			id: "s0",
+			label: "Step 0",
+			elements: [
+				{ type: "rect" as const, x: 0, y: 0, width: 100, height: 50, fill: "#2563eb" },
+				{ type: "text" as const, x: 10, y: 30, text: "Step 0", fill: "#ffffff" },
+			],
+		},
+	],
+};
+const DECLARATIVE_SOURCE = JSON.stringify(DECLARATIVE_DOC);
+
+const MULTI_STEP_DOC = {
+	schema: "learnharness.visual.svg.v1" as const,
+	viewBox: { x: 0, y: 0, width: 200, height: 100 },
+	steps: [
+		{ id: "step-0", label: "Step 0", elements: [{ type: "rect" as const, x: 0, y: 0, width: 50, height: 20, fill: "#2563eb" }] },
+		{ id: "step-1", label: "Step 1", elements: [{ type: "rect" as const, x: 0, y: 0, width: 75, height: 20, fill: "#16a34a" }] },
+		{ id: "step-2", label: "Step 2", elements: [{ type: "rect" as const, x: 0, y: 0, width: 100, height: 20, fill: "#eab308" }] },
+		{ id: "step-3", label: "Step 3", elements: [{ type: "rect" as const, x: 0, y: 0, width: 125, height: 20, fill: "#dc2626" }] },
+	],
+};
+const MULTI_STEP_SOURCE = JSON.stringify(MULTI_STEP_DOC);
 
 describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 	it("ensures exactly ONE visual view is active when expanded (Fix C: No duplicate views, zero iframes)", async () => {
@@ -25,7 +50,7 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			id: "svg-sim-1",
 			title: "SVG Memory Simulator",
 			renderer: "svg",
-			source: SVG_SOURCE,
+			source: DECLARATIVE_SOURCE,
 			presentation: "inline",
 		};
 
@@ -56,7 +81,7 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			0,
 		);
 		assert.equal(
-			dom.document.querySelectorAll('[data-testid="visual-explanation-svg-container"]').length,
+			dom.document.querySelectorAll('[data-testid="visual-explanation-declarative-container"]').length,
 			1,
 			"Initially exactly one inline visual view rendered",
 		);
@@ -82,7 +107,7 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 		iframes = dom.document.querySelectorAll("iframe");
 		assert.equal(iframes.length, 0, "INVARIANT: Zero iframes in DOM");
 		assert.equal(
-			dom.document.querySelectorAll('[data-testid="visual-explanation-svg-container"]').length,
+			dom.document.querySelectorAll('[data-testid="visual-explanation-declarative-container"]').length,
 			1,
 			"INVARIANT: Exactly one active visual view must be active in DOM, never duplicate simulations",
 		);
@@ -104,7 +129,7 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			0,
 		);
 		assert.equal(
-			dom.document.querySelectorAll('[data-testid="visual-explanation-svg-container"]').length,
+			dom.document.querySelectorAll('[data-testid="visual-explanation-declarative-container"]').length,
 			1,
 			"Inline visual view remains active after closing panel",
 		);
@@ -121,7 +146,7 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			id: "state-preserve-sim",
 			title: "Stateful Step Simulator",
 			renderer: "svg",
-			source: '<svg xmlns="http://www.w3.org/2000/svg"><g data-step="0"/><g data-step="1"/></svg>',
+			source: MULTI_STEP_SOURCE,
 			presentation: "inline",
 			initialState: { step: 0, maxSteps: 3 },
 		};
@@ -201,7 +226,7 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 			id: "a11y-focus-test",
 			title: "Accessibility Focus Test",
 			renderer: "svg",
-			source: '<svg xmlns="http://www.w3.org/2000/svg"><rect/></svg>',
+			source: DECLARATIVE_SOURCE,
 			presentation: "inline",
 		};
 
@@ -312,6 +337,112 @@ describe("Visual Explanation Panel & Lifecycle (Fixes C, D, F)", () => {
 		// Wait for focus restoration timeout
 		await new Promise((r) => setTimeout(r, 60));
 		assert.equal(dom.document.activeElement, expandBtn, "Focus must be restored to expand button after closing dialog");
+
+		await act(async () => {
+			root.unmount();
+		});
+	});
+
+	it("RUN 3.2: discards invalid declarative updates and prevents corrupting local state", async () => {
+		clearVisualArtifactRegistry();
+
+		const initialArtifact: VisualArtifact = {
+			version: 1,
+			id: "hardened-update-test",
+			title: "Hardened Update Test",
+			renderer: "svg",
+			source: MULTI_STEP_SOURCE,
+			presentation: "inline",
+			initialState: { step: 1 },
+		};
+
+		const dom = parseHTML("<!doctype html><html><body><div id='root'></div></body></html>");
+		const globals = {
+			window: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			HTMLButtonElement: dom.window.HTMLButtonElement,
+			IS_REACT_ACT_ENVIRONMENT: true,
+		};
+		Object.assign(globalThis, globals);
+
+		const { createRoot } = await import("react-dom/client");
+		const root = createRoot(dom.document.querySelector("#root")!);
+
+		await act(async () => {
+			root.render(<VisualExplanationInstance artifact={initialArtifact} initialExpanded={false} />);
+		});
+
+		// Initial check: Step 1 / 3 rendered in declarative container
+		let indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
+		assert.ok(indicator?.textContent?.includes("Step 1 / 3"));
+		assert.equal(
+			dom.document.querySelectorAll('[data-testid="visual-explanation-declarative-container"]').length,
+			1,
+		);
+		assert.equal(dom.document.querySelectorAll("iframe").length, 0);
+
+		// Attempt updating with invalid raw SVG XML
+		await act(async () => {
+			registerVisualArtifact({
+				...initialArtifact,
+				title: "Corrupted XML Update",
+				source: "<svg><text>Hacked</text></svg>",
+			});
+		});
+
+		// The invalid update must be discarded: still Step 1 / 3 and valid declarative container
+		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
+		assert.ok(indicator?.textContent?.includes("Step 1 / 3"), "State must not be corrupted by invalid update");
+		assert.equal(
+			dom.document.querySelectorAll('[data-testid="visual-explanation-declarative-container"]').length,
+			1,
+		);
+		assert.equal(dom.document.querySelectorAll("iframe").length, 0);
+
+		// Attempt updating with malformed JSON
+		await act(async () => {
+			registerVisualArtifact({
+				...initialArtifact,
+				title: "Malformed JSON Update",
+				source: "{ bad json",
+			});
+		});
+
+		// The invalid update must be discarded: still Step 1 / 3 and valid declarative container
+		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
+		assert.ok(indicator?.textContent?.includes("Step 1 / 3"), "State must remain intact after malformed JSON");
+		assert.equal(
+			dom.document.querySelectorAll('[data-testid="visual-explanation-declarative-container"]').length,
+			1,
+		);
+		assert.equal(dom.document.querySelectorAll("iframe").length, 0);
+
+		// Now send a valid declarative update
+		const validUpdateDoc = {
+			schema: "learnharness.visual.svg.v1" as const,
+			viewBox: { x: 0, y: 0, width: 200, height: 100 },
+			steps: [
+				{ id: "v-0", label: "V0", elements: [{ type: "rect" as const, x: 0, y: 0, width: 50, height: 20, fill: "#2563eb" }] },
+				{ id: "v-1", label: "V1", elements: [{ type: "rect" as const, x: 0, y: 0, width: 75, height: 20, fill: "#16a34a" }] },
+			],
+		};
+		await act(async () => {
+			registerVisualArtifact({
+				...initialArtifact,
+				title: "Valid New Update",
+				source: JSON.stringify(validUpdateDoc),
+			});
+		});
+
+		// Valid update applied: step clamped to 1 / 1
+		indicator = dom.document.querySelector('[data-testid="visual-step-indicator"]');
+		assert.ok(indicator?.textContent?.includes("Step 1 / 1"), "Valid update must be applied successfully");
+		assert.equal(
+			dom.document.querySelectorAll('[data-testid="visual-explanation-declarative-container"]').length,
+			1,
+		);
+		assert.equal(dom.document.querySelectorAll("iframe").length, 0);
 
 		await act(async () => {
 			root.unmount();

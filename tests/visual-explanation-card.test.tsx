@@ -112,7 +112,7 @@ describe("Visual Explanation Card Component", () => {
 			title: "Memory Mapping Panel",
 			summary: "Full screen virtual memory inspect",
 			renderer: "svg",
-			source: TEST_SVG,
+			source: TEST_DECLARATIVE_JSON,
 			presentation: "panel",
 		};
 
@@ -243,5 +243,70 @@ describe("Visual Explanation Card Component", () => {
 		assert.ok(html.includes('data-testid="visual-download-button"'), "Download button must render");
 		assert.ok(html.includes('aria-label="Download visual artifact"'), "Download button must have aria-label");
 		assert.ok(!html.includes("<iframe"), "No iframe present");
+	});
+
+	it("RUN 3.2: VisualExplanationInstance boundary rejects raw SVG XML and renders error alert without mounting SvgImage or iframe", () => {
+		const rawSvgArtifact: VisualArtifact = {
+			version: 1,
+			id: "direct-raw-svg",
+			title: "Direct Raw SVG Test",
+			renderer: "svg",
+			source: TEST_SVG,
+			presentation: "inline",
+		};
+
+		const html = renderToStaticMarkup(
+			<VisualExplanationInstance artifact={rawSvgArtifact} />,
+		);
+
+		assert.ok(html.includes('data-testid="visual-explanation-failed"'), "Must render failure alert");
+		assert.ok(html.includes('role="alert"'), "Must have alert role");
+		assert.ok(html.includes("Visual explanation unavailable"), "Must announce visual explanation unavailable");
+		assert.ok(!html.includes('data-testid="visual-explanation-declarative-container"'), "Must not render declarative container");
+		assert.ok(!html.includes('data-testid="visual-explanation-svg-container"'), "Must not render svg container");
+		assert.ok(!html.includes("<iframe"), "Must never render iframe");
+	});
+
+	it("RUN 3.2: VisualExplanationInstance boundary rejects malformed JSON source", () => {
+		const malformedArtifact: VisualArtifact = {
+			version: 1,
+			id: "direct-malformed-json",
+			title: "Malformed JSON Test",
+			renderer: "svg",
+			source: "{ schema: 'learnharness.visual.svg.v1', invalidJson: ",
+			presentation: "inline",
+		};
+
+		const html = renderToStaticMarkup(
+			<VisualExplanationInstance artifact={malformedArtifact} />,
+		);
+
+		assert.ok(html.includes('data-testid="visual-explanation-failed"'), "Must render failure alert for malformed JSON");
+		assert.ok(html.includes('role="alert"'), "Must have alert role");
+		assert.ok(!html.includes("<iframe"), "Must never render iframe");
+	});
+
+	it("RUN 3.2: VisualExplanationInstance renders declarative container and zero iframes in inline and expanded modes", () => {
+		const validArtifact: VisualArtifact = {
+			version: 1,
+			id: "decl-render-test",
+			title: "Declarative Render Test",
+			renderer: "svg",
+			source: TEST_DECLARATIVE_JSON,
+			presentation: "inline",
+		};
+
+		const inlineHtml = renderToStaticMarkup(
+			<VisualExplanationInstance artifact={validArtifact} initialExpanded={false} />,
+		);
+		assert.ok(inlineHtml.includes('data-testid="visual-explanation-declarative-container"'), "Declarative container must render inline");
+		assert.ok(!inlineHtml.includes("<iframe"), "Zero iframes inline");
+
+		const panelHtml = renderToStaticMarkup(
+			<VisualExplanationInstance artifact={validArtifact} initialExpanded={true} />,
+		);
+		assert.ok(panelHtml.includes('data-testid="visual-explanation-panel"'), "Panel modal must render");
+		assert.ok(panelHtml.includes('data-testid="visual-explanation-declarative-container"'), "Declarative container must render in panel");
+		assert.ok(!panelHtml.includes("<iframe"), "Zero iframes in panel");
 	});
 });
