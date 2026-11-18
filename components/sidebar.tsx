@@ -1425,7 +1425,10 @@ export function SessionsSidebar({
 						{folder.name}
 					</span>
 
-					<span className="text-[10px] tabular-nums font-mono text-muted-foreground/60 px-1 py-0.2 rounded bg-muted/30 shrink-0 select-none">
+					<span
+						aria-label={`${count} ${count === 1 ? "item" : "items"}`}
+						className="text-[10px] tabular-nums font-mono text-muted-foreground/60 px-1 py-0.2 rounded bg-muted/30 shrink-0 select-none"
+					>
 						{count}
 					</span>
 
@@ -1630,7 +1633,10 @@ export function SessionsSidebar({
 								>
 									<ArchiveIcon className="size-3.5 shrink-0" />
 									<span className="min-w-0 flex-1 truncate">All Archived</span>
-									<span className="text-[10px] tabular-nums text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/30">
+									<span
+										aria-label={`${archivedChats.length} ${archivedChats.length === 1 ? "item" : "items"}`}
+										className="text-[10px] tabular-nums text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/30"
+									>
 										{archivedChats.length}
 									</span>
 								</Link>
@@ -1647,7 +1653,10 @@ export function SessionsSidebar({
 								>
 									<FolderIcon className="size-3.5 shrink-0" />
 									<span className="min-w-0 flex-1 truncate">Unorganized</span>
-									<span className="text-[10px] tabular-nums text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/30">
+									<span
+										aria-label={`${unorganizedArchivedChatsCount} ${unorganizedArchivedChatsCount === 1 ? "item" : "items"}`}
+										className="text-[10px] tabular-nums text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/30"
+									>
 										{unorganizedArchivedChatsCount}
 									</span>
 								</Link>
@@ -1722,17 +1731,24 @@ export function SessionsSidebar({
 									organization && chats ? { organization, chats } : undefined,
 								);
 							}}
-							onReorderSiblings={(parentId, kind, ids) => {
-								void executeAction(
-									{ action: "reorder-siblings", parentId, kind, ids },
-									organization && chats ? { organization, chats } : undefined,
-								);
+							onReorderSiblings={(parentId, kind, ids, entries) => {
+								if (entries) {
+									void executeAction(
+										{ action: "reorder-mixed-siblings", parentId, entries },
+										organization && chats ? { organization, chats } : undefined,
+									);
+								} else {
+									void executeAction(
+										{ action: "reorder-siblings", parentId, kind, ids },
+										organization && chats ? { organization, chats } : undefined,
+									);
+								}
 							}}
 							isSearchActive={query.trim() !== ""}
 							searchQuery={query}
 							unorganizedExpanded={unorganizedExpanded}
 							onToggleUnorganized={() => setUnorganizedExpanded((v) => !v)}
-							emptyMessage={query.trim() ? "No sessions match." : "No sessions yet."}
+							emptyMessage={query.trim() ? "No items match." : "No items yet."}
 						/>
 					)}
 				</div>
@@ -1854,7 +1870,7 @@ export function SessionsSidebar({
 						<button
 							type="button"
 							data-testid="archive-nav-button"
-							aria-label="Browse archived sessions"
+							aria-label="Browse archive"
 							onClick={() => router.push("/archive")}
 							className={cn(
 								"flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer",

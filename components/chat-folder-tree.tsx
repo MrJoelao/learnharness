@@ -350,7 +350,7 @@ export function ChatFolderRow({
 			<div className="flex items-center gap-1 shrink-0 ml-auto pl-1">
 				<span
 					data-testid={`folder-count-${folder.id}`}
-					aria-label={`${chatCount} ${chatCount === 1 ? "session" : "sessions"}`}
+					aria-label={`${chatCount} ${chatCount === 1 ? "item" : "items"}`}
 					className="text-[10px] tabular-nums font-mono text-muted-foreground/60 shrink-0 select-none"
 				>
 					{chatCount}
@@ -474,7 +474,7 @@ export function ChatFolderTree({
 	searchQuery = "",
 	unorganizedExpanded = true,
 	onToggleUnorganized,
-	emptyMessage = "No sessions match.",
+	emptyMessage = "No items match.",
 }: ChatFolderTreeProps) {
 	const isSearch = isSearchActive && searchQuery.trim() !== "";
 	// Drag and drop state
@@ -917,7 +917,10 @@ export function ChatFolderTree({
 							/>
 							<span>Unorganized</span>
 						</button>
-						<span className="text-[10px] tabular-nums text-muted-foreground/60">
+						<span
+							aria-label={`${unorganizedItems.length} ${unorganizedItems.length === 1 ? "item" : "items"}`}
+							className="text-[10px] tabular-nums text-muted-foreground/60"
+						>
 							{unorganizedItems.length}
 						</span>
 					</div>
@@ -1026,7 +1029,12 @@ export function ArchiveView({
 						{folder.name}
 					</span>
 
-					<span className="text-[10px] tabular-nums font-mono text-muted-foreground/60 shrink-0 select-none">{count}</span>
+					<span
+						aria-label={`${count} ${count === 1 ? "item" : "items"}`}
+						className="text-[10px] tabular-nums font-mono text-muted-foreground/60 shrink-0 select-none"
+					>
+						{count}
+					</span>
 
 					{(onRestoreFolder || onContextMenuFolder) && (
 						<div className="hidden group-hover:flex group-focus-within:flex items-center gap-1 shrink-0 ml-1">
@@ -1086,7 +1094,7 @@ export function ArchiveView({
 									<button
 										type="button"
 										data-testid={`restore-chat-${c.id}`}
-										aria-label={`Restore session ${c.title}`}
+										aria-label={`Restore ${("kind" in c && (c as { kind?: unknown }).kind === "workspace") ? "workspace" : "session"} ${c.title}`}
 										onClick={(e) => {
 											e.stopPropagation();
 											onRestoreChat(c.id);
@@ -1121,12 +1129,12 @@ export function ArchiveView({
 				<button
 					type="button"
 					data-testid="archive-back-button"
-					aria-label="Back to active sessions"
+					aria-label="Back to active items"
 					onClick={onClose}
 					className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
 				>
 					<ArrowLeftIcon className="size-3.5" />
-					<span>Active sessions</span>
+					<span>Active items</span>
 				</button>
 				<span className="flex items-center gap-1 text-[11px] uppercase tracking-wider text-muted-foreground/70">
 					<ArchiveIcon className="size-3" />
@@ -1135,11 +1143,11 @@ export function ArchiveView({
 			</div>
 
 			<div className="mb-2 rounded-md bg-muted/40 px-2.5 py-1.5 text-[11px] leading-relaxed text-muted-foreground">
-				Browsing archived chats. Viewing does not restore them.
+				Browsing archived items. Viewing does not restore them.
 			</div>
 
 			{folders.length === 0 && chats.length === 0 ? (
-				<div className="py-4 text-center text-xs text-muted-foreground">No archived sessions.</div>
+				<div className="py-4 text-center text-xs text-muted-foreground">No archived items.</div>
 			) : (
 				<div className="flex flex-col gap-0.5">
 					{topFolders.map((f) => renderArchiveFolder(f, 0))}
@@ -1163,7 +1171,7 @@ export function ArchiveView({
 										<button
 											type="button"
 											data-testid={`restore-chat-${c.id}`}
-											aria-label={`Restore session ${c.title}`}
+											aria-label={`Restore ${("kind" in c && (c as { kind?: unknown }).kind === "workspace") ? "workspace" : "session"} ${c.title}`}
 											onClick={(e) => {
 												e.stopPropagation();
 												onRestoreChat(c.id);

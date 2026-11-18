@@ -612,8 +612,11 @@ export function ArchivePage({
 						>
 							{folder.name}
 						</Link>
-						<span className="text-[11px] tabular-nums text-muted-foreground/75 px-1.5 py-0.5 rounded bg-muted/40">
-							{count} {count === 1 ? "session" : "sessions"}
+						<span
+							aria-label={`${count} ${count === 1 ? "item" : "items"}`}
+							className="text-[11px] tabular-nums text-muted-foreground/75 px-1.5 py-0.5 rounded bg-muted/40"
+						>
+							{count} {count === 1 ? "item" : "items"}
 						</span>
 					</div>
 					{(Boolean(folder.archivedAt) || originPath) && (
@@ -716,7 +719,7 @@ export function ArchivePage({
 				<button
 					type="button"
 					data-testid={`archive-chat-options-${chat.id}`}
-					aria-label={`Options for archived session ${chat.title}`}
+					aria-label={`Options for archived ${isWorkspace ? "workspace" : "session"} ${chat.title}`}
 					onClick={(e) => {
 						e.stopPropagation();
 						openChatContext(e, chat);
@@ -737,8 +740,11 @@ export function ArchivePage({
 					<div className="flex items-center gap-2 min-w-0">
 						<h1 className="font-title text-3xl tracking-tight text-foreground">Archive</h1>
 						{!loading && (
-							<span className="text-xs font-mono text-muted-foreground/80 tabular-nums">
-								({archivedChats.length} {archivedChats.length === 1 ? "session" : "sessions"})
+							<span
+								aria-label={`${archivedChats.length} ${archivedChats.length === 1 ? "item" : "items"}`}
+								className="text-xs font-mono text-muted-foreground/80 tabular-nums"
+							>
+								({archivedChats.length} {archivedChats.length === 1 ? "item" : "items"})
 							</span>
 						)}
 					</div>
@@ -755,8 +761,11 @@ export function ArchivePage({
 							Unorganized
 						</span>
 						{!loading && (
-							<span className="text-xs font-mono text-muted-foreground/80 tabular-nums ml-1 shrink-0">
-								({scopedChats.length} {scopedChats.length === 1 ? "session" : "sessions"})
+							<span
+								aria-label={`${scopedChats.length} ${scopedChats.length === 1 ? "item" : "items"}`}
+								className="text-xs font-mono text-muted-foreground/80 tabular-nums ml-1 shrink-0"
+							>
+								({scopedChats.length} {scopedChats.length === 1 ? "item" : "items"})
 							</span>
 						)}
 					</nav>
@@ -817,10 +826,10 @@ export function ArchivePage({
 										destination === "folder" && selectedFolder
 											? `Search in ${selectedFolder.name}…`
 											: destination === "unorganized"
-											? "Search unorganized sessions…"
-											: "Search archived sessions…"
+											? "Search unorganized items…"
+											: "Search archived items…"
 									}
-									aria-label="Search archived sessions"
+									aria-label="Search archived items"
 									className="h-8 w-full rounded-md border-border/70 bg-background pl-8 pr-8 text-xs placeholder:text-muted-foreground/60"
 								/>
 								<SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
@@ -843,7 +852,7 @@ export function ArchivePage({
 							<div
 								data-testid="archive-kind-filter"
 								role="radiogroup"
-								aria-label="Filter archived sessions by kind"
+								aria-label="Filter archived items by kind"
 								className="flex h-7 items-center gap-0.5 rounded-full border border-border/70 bg-card/70 p-0.5 shadow-xs backdrop-blur"
 							>
 								{(["all", "teach", "practice"] as const).map((k) => (
@@ -887,7 +896,7 @@ export function ArchivePage({
 						</div>
 						<h2 className="text-base font-semibold text-foreground">Archive is empty</h2>
 						<p className="mt-1.5 max-w-md text-sm text-muted-foreground leading-relaxed">
-							Sessions and folders you archive will appear here. Viewing archived sessions is always read-only, and you can restore them at any time.
+							Items and folders you archive will appear here. Viewing archived items is always read-only, and you can restore them at any time.
 						</p>
 					</div>
 				)}
@@ -901,9 +910,9 @@ export function ArchivePage({
 						<div className="flex size-10 items-center justify-center rounded-full bg-muted/30 text-muted-foreground mb-3">
 							<SearchIcon className="size-5" />
 						</div>
-						<h2 className="text-sm font-semibold text-foreground">No archived sessions match search</h2>
+						<h2 className="text-sm font-semibold text-foreground">No archived items match search</h2>
 						<p className="mt-1 text-xs text-muted-foreground">
-							No archived sessions matched &ldquo;{searchQuery.trim()}&rdquo;.
+							No archived items matched &ldquo;{searchQuery.trim()}&rdquo;.
 						</p>
 						<div className="mt-4 flex items-center gap-2">
 							<button
@@ -944,9 +953,9 @@ export function ArchivePage({
 						<div className="flex size-10 items-center justify-center rounded-full bg-muted/30 text-muted-foreground mb-3">
 							<SearchIcon className="size-5" />
 						</div>
-						<h2 className="text-sm font-semibold text-foreground">No archived sessions match filter</h2>
+						<h2 className="text-sm font-semibold text-foreground">No archived items match filter</h2>
 						<p className="mt-1 text-xs text-muted-foreground">
-							No archived sessions found with the selected filter criteria.
+							No archived items found with the selected filter criteria.
 						</p>
 						<button
 							type="button"
@@ -980,7 +989,9 @@ export function ArchivePage({
 										{sortedArchivedFolders.length > 0 && (
 											<div className="flex items-center gap-2 px-1 pb-1">
 												<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-													Archived Sessions
+													{filteredChats.some((c) => c.kind === "workspace")
+														? (filteredChats.some((c) => c.kind !== "workspace") ? "Archived Items" : "Archived Workspaces")
+														: "Archived Sessions"}
 												</span>
 												<span className="text-[10px] text-muted-foreground/60 tabular-nums">
 													({filteredChats.length})
@@ -1007,7 +1018,7 @@ export function ArchivePage({
 										data-testid="archive-unorganized-empty"
 										className="py-12 text-center text-xs text-muted-foreground select-none"
 									>
-										No unorganized archived sessions.
+										No unorganized archived items.
 									</div>
 								)}
 							</div>
@@ -1028,8 +1039,11 @@ export function ArchivePage({
 											</span>
 											<div className="min-w-0">
 												<h2 className="text-base font-semibold text-foreground truncate">{selectedFolder.name}</h2>
-												<span className="text-xs text-muted-foreground/80 tabular-nums">
-													{getFolderChatCount(selectedFolder.id, archivedFolders, archivedChats)} {getFolderChatCount(selectedFolder.id, archivedFolders, archivedChats) === 1 ? "session" : "sessions"}
+												<span
+													aria-label={`${getFolderChatCount(selectedFolder.id, archivedFolders, archivedChats)} ${getFolderChatCount(selectedFolder.id, archivedFolders, archivedChats) === 1 ? "item" : "items"}`}
+													className="text-xs text-muted-foreground/80 tabular-nums"
+												>
+													{getFolderChatCount(selectedFolder.id, archivedFolders, archivedChats)} {getFolderChatCount(selectedFolder.id, archivedFolders, archivedChats) === 1 ? "item" : "items"}
 												</span>
 											</div>
 										</div>
@@ -1083,7 +1097,10 @@ export function ArchivePage({
 																<div className="min-w-0 flex-1">
 																	<div className="flex items-center gap-2">
 																		<span className="text-xs font-semibold text-foreground truncate">{child.name}</span>
-																		<span className="text-[11px] tabular-nums text-muted-foreground/75 px-1.5 py-0.5 rounded bg-muted/40">
+																		<span
+																			aria-label={`${count} ${count === 1 ? "item" : "items"}`}
+																			className="text-[11px] tabular-nums text-muted-foreground/75 px-1.5 py-0.5 rounded bg-muted/40"
+																		>
 																			{count}
 																		</span>
 																	</div>
@@ -1127,7 +1144,9 @@ export function ArchivePage({
 										<div data-testid="archive-folder-chats" className="space-y-1.5">
 											{sortedChildFolders.length > 0 && (
 												<div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 px-1 pt-1">
-													Sessions ({visibleFolderChats.length})
+													{visibleFolderChats.some((c) => c.kind === "workspace")
+														? (visibleFolderChats.some((c) => c.kind !== "workspace") ? "Items" : "Workspaces")
+														: "Sessions"} ({visibleFolderChats.length})
 												</div>
 											)}
 											{visibleFolderChats.map((c) => renderChatRow(c, 0))}

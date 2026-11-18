@@ -121,16 +121,17 @@ export function computeUndoAction(
 				description: `Moved ${itemKind === "workspace" ? "workspace" : "session"} "${item?.title ?? action.id}"`,
 			};
 		}
-		case "reorder-siblings": {
+		case "reorder-siblings":
+		case "reorder-mixed-siblings": {
 			if ("entries" in action && Array.isArray(action.entries)) {
 				const siblings = previousState.chats.filter((c) => ("folderId" in c ? c.folderId : null) === action.parentId);
 				const oldEntries: SiblingEntry[] = siblings.map((s) => ({ kind: ("kind" in s && s.kind === "workspace") ? "workspace" : "chat", id: s.id }));
+				const undoAction: SupportedOrganizationAction =
+					action.action === "reorder-mixed-siblings"
+						? { action: "reorder-mixed-siblings", parentId: action.parentId, entries: oldEntries }
+						: { action: "reorder-siblings", parentId: action.parentId, entries: oldEntries };
 				return {
-					undoAction: {
-						action: "reorder-siblings",
-						parentId: action.parentId,
-						entries: oldEntries,
-					},
+					undoAction,
 					description: "Reordered items",
 				};
 			}
