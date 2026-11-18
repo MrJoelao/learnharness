@@ -153,10 +153,19 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(html.includes("Memory &amp; Paging Lab") || html.includes("Memory & Paging Lab"), "Mode name displayed");
 		assert.ok(html.includes("Interactive virtual memory and multi-level page table simulator."), "Description displayed");
 		assert.ok(html.includes("Operating Systems"), "Category displayed");
-		assert.ok(html.includes("os-simulators"), "Plugin identity displayed");
 		assert.ok(html.includes("#memory"), "Tag rendered");
 		assert.ok(html.includes("intermediate"), "Difficulty badge rendered");
 		assert.ok(html.includes("simulation"), "Activity type rendered");
+
+		// Underlying plugin identifier remains correctly associated with its mode and launch action
+		assert.ok(html.includes('data-plugin-id="os-simulators"'), "Plugin identifier associated on card container");
+
+		// Raw plugin identifier must no longer appear in the user-facing card content
+		const { document } = parseHTML(html);
+		const pagingCard = document.querySelector(`[data-testid="study-hub-mode-card-${pagingKey}"]`);
+		assert.ok(pagingCard, "Paging card found");
+		assert.equal(pagingCard.querySelector("h3 + p")?.textContent?.trim(), "Operating Systems", "Category alone is displayed in secondary line");
+		assert.ok(!pagingCard.querySelector("h3 + p")?.textContent?.includes("os-simulators"), "Raw plugin identifier is not visible in card header");
 
 		// Launch buttons with composite key testids
 		assert.ok(html.includes(`data-testid="launch-mode-${pagingKey}"`), "Launch button for paging lab");

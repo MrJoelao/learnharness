@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/top-bar";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { usePlugins } from "@/components/plugins";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
+import { cn } from "@/lib/utils";
 import { fuzzyScore, type PluginModeMetadata } from "@/src/core";
 import {
 	AlertCircleIcon,
@@ -15,7 +16,6 @@ import {
 	BookOpenIcon,
 	BrainIcon,
 	CalculatorIcon,
-	ChevronLeftIcon,
 	CodeIcon,
 	FlaskConicalIcon,
 	GraduationCapIcon,
@@ -313,34 +313,23 @@ export function StudyHubCatalog({
 	return (
 		<main data-testid="study-hub-page" className="flex h-dvh flex-col bg-background">
 			<TopBar>
-				<div className="flex items-center gap-3 min-w-0 flex-1">
-					<Link
-						href="/"
-						aria-label="Back"
-						data-testid="study-hub-back-button"
-						className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground shrink-0 cursor-pointer"
-					>
-						<ChevronLeftIcon className="size-4" />
-					</Link>
-					<div className="flex items-center gap-2 min-w-0">
-						<LayoutGridIcon className="size-4 text-muted-foreground shrink-0" />
-						<h1 data-testid="study-hub-title" className="font-title text-3xl tracking-tight text-foreground truncate">
-							Study Hub
-						</h1>
-					</div>
+				<div className="flex items-center gap-2 min-w-0">
+					<h1 data-testid="study-hub-title" className="font-title text-3xl tracking-tight text-foreground truncate">
+						Study Hub
+					</h1>
 				</div>
 			</TopBar>
 
-			<div className="flex-1 overflow-y-auto px-6 py-8 max-w-6xl w-full mx-auto space-y-8">
+			<div className="flex-1 overflow-y-auto px-6 py-6 max-w-6xl w-full mx-auto space-y-6">
 				{/* Header Section */}
-				<header className="space-y-3">
+				<header className="space-y-4">
 					<div className="flex items-start justify-between gap-4 flex-wrap">
 						<div>
-							<h2 className="text-2xl font-semibold tracking-tight text-foreground">
+							<h2 className="text-xl font-semibold tracking-tight text-foreground">
 								Interactive Study Modes
 							</h2>
 							<p className="mt-1 text-sm text-muted-foreground max-w-2xl leading-relaxed">
-								Discover and launch interactive visual environments, simulators, and domain workspaces powered by LearnHarness plugins.
+								Explore interactive environments and simulators.
 							</p>
 						</div>
 						<Button
@@ -358,9 +347,9 @@ export function StudyHubCatalog({
 
 					{/* Search & Filter Controls */}
 					{activeModes.length > 0 && (
-						<div className="pt-2 space-y-4">
+						<div className="space-y-3">
 							<div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-								<div className="relative flex-1">
+								<div className="relative w-full max-w-lg">
 									<SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
 									<Input
 										type="text"
@@ -369,7 +358,7 @@ export function StudyHubCatalog({
 										placeholder="Search by name, category, description, or tags..."
 										aria-label="Search study modes"
 										data-testid="study-hub-search-input"
-										className="pl-9 pr-9 h-10 w-full"
+										className="pl-9 pr-9 h-9 w-full"
 									/>
 									{searchQuery && (
 										<button
@@ -390,7 +379,7 @@ export function StudyHubCatalog({
 										size="sm"
 										onClick={clearFilters}
 										data-testid="study-hub-clear-filters"
-										className="text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer"
+										className="text-xs text-muted-foreground hover:text-foreground shrink-0 cursor-pointer self-start sm:self-center"
 									>
 										Clear filters
 									</Button>
@@ -399,19 +388,21 @@ export function StudyHubCatalog({
 
 							{/* Category Filters */}
 							{categories.length > 1 && (
-								<div className="flex items-center gap-2 overflow-x-auto pb-1" data-testid="study-hub-category-filters">
+								<div className="flex flex-wrap items-center gap-1.5" data-testid="study-hub-category-filters">
 									<span className="text-xs font-medium text-muted-foreground shrink-0 mr-1 flex items-center gap-1">
 										<SlidersHorizontalIcon className="size-3" /> Category:
 									</span>
 									<button
 										type="button"
 										onClick={() => setSelectedCategory("all")}
+										aria-pressed={selectedCategory === "all"}
 										data-testid="filter-category-all"
-										className={`px-3 py-1 rounded-full text-xs font-medium transition-colors shrink-0 cursor-pointer ${
+										className={cn(
+											"px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer border",
 											selectedCategory === "all"
-												? "bg-primary text-primary-foreground"
-												: "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-										}`}
+												? "border-transparent bg-primary text-primary-foreground font-semibold shadow-xs"
+												: "border-border/40 bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+										)}
 									>
 										All ({activeModes.length})
 									</button>
@@ -423,12 +414,14 @@ export function StudyHubCatalog({
 												key={cat}
 												type="button"
 												onClick={() => setSelectedCategory(isSelected ? "all" : cat)}
+												aria-pressed={isSelected}
 												data-testid={`filter-category-${cat.toLowerCase().replace(/\s+/g, "-")}`}
-												className={`px-3 py-1 rounded-full text-xs font-medium transition-colors shrink-0 cursor-pointer ${
+												className={cn(
+													"px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer border",
 													isSelected
-														? "bg-primary text-primary-foreground"
-														: "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-												}`}
+														? "border-transparent bg-primary text-primary-foreground font-semibold shadow-xs"
+														: "border-border/40 bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+												)}
 											>
 												{cat} ({count})
 											</button>
@@ -439,7 +432,7 @@ export function StudyHubCatalog({
 
 							{/* Difficulty Filters */}
 							{hasDifficulties && (
-								<div className="flex items-center gap-2 overflow-x-auto pb-1" data-testid="study-hub-difficulty-filters">
+								<div className="flex flex-wrap items-center gap-1.5" data-testid="study-hub-difficulty-filters">
 									<span className="text-xs font-medium text-muted-foreground shrink-0 mr-1">
 										Difficulty:
 									</span>
@@ -454,14 +447,16 @@ export function StudyHubCatalog({
 												key={diff}
 												type="button"
 												onClick={() => setSelectedDifficulty(isSelected ? "all" : diff)}
+												aria-pressed={isSelected}
 												data-testid={`filter-difficulty-${diff}`}
-												className={`px-2.5 py-0.5 rounded-md text-xs font-medium capitalize transition-colors shrink-0 cursor-pointer ${
+												className={cn(
+													"px-2.5 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer border",
 													isSelected
-														? "bg-secondary text-secondary-foreground ring-1 ring-border"
-														: "text-muted-foreground hover:bg-accent hover:text-foreground"
-												}`}
+														? "border-transparent bg-primary text-primary-foreground font-semibold shadow-xs"
+														: "border-border/40 bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+												)}
 											>
-												{diff}
+												<span className="capitalize">{diff}</span>
 											</button>
 										);
 									})}
@@ -524,26 +519,29 @@ export function StudyHubCatalog({
 				{isLoading ? (
 					<div
 						data-testid="study-hub-loading"
-						className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+						className="grid grid-cols-1 md:grid-cols-2 gap-4"
 					>
-						{[1, 2, 3].map(n => (
+						{[1, 2, 3, 4].map(n => (
 							<div
 								key={n}
-								className="rounded-2xl border border-border/60 bg-card p-6 shadow-xs animate-pulse space-y-4"
+								className="rounded-xl border border-border/60 bg-card p-4 animate-pulse space-y-2.5"
 							>
-								<div className="flex items-center gap-3">
-									<div className="size-10 rounded-xl bg-muted" />
-									<div className="space-y-2 flex-1">
+								<div className="flex items-start gap-3">
+									<div className="size-9 rounded-lg bg-muted shrink-0" />
+									<div className="space-y-1.5 flex-1 min-w-0">
 										<div className="h-4 w-2/3 bg-muted rounded" />
 										<div className="h-3 w-1/3 bg-muted rounded" />
 									</div>
 								</div>
-								<div className="space-y-2">
+								<div className="space-y-1.5">
 									<div className="h-3 w-full bg-muted rounded" />
 									<div className="h-3 w-4/5 bg-muted rounded" />
 								</div>
-								<div className="pt-2 flex justify-between items-center">
-									<div className="h-5 w-16 bg-muted rounded" />
+								<div className="flex gap-1.5">
+									<div className="h-4 w-16 bg-muted rounded" />
+									<div className="h-4 w-14 bg-muted rounded" />
+								</div>
+								<div className="mt-3 pt-3 border-t border-border/40 flex justify-end">
 									<div className="h-8 w-20 bg-muted rounded" />
 								</div>
 							</div>
@@ -606,7 +604,7 @@ export function StudyHubCatalog({
 					/* Populated Catalog Grid */
 					<div
 						data-testid="study-hub-grid"
-						className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+						className="grid grid-cols-1 md:grid-cols-2 gap-4"
 					>
 						{filteredModes.map(mode => {
 							const modeKey = getModeKey(mode.pluginId, mode.id);
@@ -636,86 +634,94 @@ export function StudyHubCatalog({
 
 							return (
 								<div
-									key={`${mode.pluginId}:${mode.id}`}
+									key={modeKey}
 									data-testid={`study-hub-mode-card-${modeKey}`}
 									data-mode-key={modeKey}
 									data-plugin-id={mode.pluginId}
 									data-mode-id={mode.id}
-									className={`group rounded-2xl border bg-card p-6 shadow-xs flex flex-col justify-between transition-all ${
+									className={cn(
+										"group rounded-xl border bg-card p-4 flex flex-col justify-between transition-colors",
 										isUnavailable
 											? "border-border/40 opacity-75"
-											: "border-border/60 hover:border-border hover:shadow-sm"
-									}`}
+											: "border-border/60 hover:border-border",
+									)}
 								>
-									<div className="space-y-4">
+									<div className="space-y-2.5">
 										{/* Mode Header */}
-										<div className="flex items-start gap-3.5">
-											<div className="flex size-11 items-center justify-center rounded-xl bg-accent text-accent-foreground shrink-0 transition-transform group-hover:scale-105">
-												<IconComponent className="size-5" />
+										<div className="flex items-start gap-3">
+											<div className="flex size-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shrink-0">
+												<IconComponent className="size-4" />
 											</div>
 											<div className="min-w-0 flex-1">
-												<div className="flex items-center justify-between gap-2">
-													<h3 className="font-semibold text-foreground text-base tracking-tight truncate" title={mode.name}>
-														{mode.name}
-													</h3>
-												</div>
-												<div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground truncate">
-													<span className="font-medium text-foreground/80">{mode.category}</span>
-													<span>•</span>
-													<span className="truncate">{mode.pluginId}</span>
-												</div>
+												<h3 className="font-semibold text-foreground text-sm tracking-tight truncate" title={mode.name}>
+													{mode.name}
+												</h3>
+												{mode.category && (
+													<p className="text-xs text-muted-foreground truncate mt-0.5">
+														{mode.category}
+													</p>
+												)}
 											</div>
 										</div>
 
 										{/* Mode Description */}
-										<p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+										<p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
 											{mode.description}
 										</p>
 
-										{/* Tags & Badges */}
-										<div className="flex flex-wrap items-center gap-1.5 pt-1">
-											{mode.difficulty && (
-												<span
-													data-slot="difficulty-badge"
-													className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground capitalize"
-												>
-													{mode.difficulty}
-												</span>
-											)}
-											{mode.activityType && (
-												<span
-													data-slot="activity-type-badge"
-													className="rounded-md bg-muted/70 px-2 py-0.5 text-xs text-muted-foreground"
-												>
-													{mode.activityType}
-												</span>
-											)}
-											{mode.tags?.slice(0, 3).map(tag => (
-												<span
-													key={tag}
-													data-slot="tag-badge"
-													className="rounded-md bg-accent/40 px-2 py-0.5 text-xs text-accent-foreground"
-												>
-													#{tag}
-												</span>
-											))}
-										</div>
+										{/* Difficulty & Activity Type */}
+										{(mode.difficulty || mode.activityType) && (
+											<div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+												{mode.difficulty && (
+													<span
+														data-slot="difficulty-badge"
+														className="inline-flex items-center rounded-md bg-muted/60 px-1.5 py-0.5 font-medium text-muted-foreground capitalize"
+													>
+														{mode.difficulty}
+													</span>
+												)}
+												{mode.difficulty && mode.activityType && (
+													<span className="text-muted-foreground/40 text-[10px]">•</span>
+												)}
+												{mode.activityType && (
+													<span
+														data-slot="activity-type-badge"
+														className="inline-flex items-center rounded-md bg-muted/60 px-1.5 py-0.5 text-muted-foreground"
+													>
+														{mode.activityType}
+													</span>
+												)}
+											</div>
+										)}
+
+										{/* Tags */}
+										{mode.tags && mode.tags.length > 0 && (
+											<div className="flex flex-wrap items-center gap-1 pt-0.5">
+												{mode.tags.slice(0, 3).map(tag => (
+													<span
+														key={tag}
+														data-slot="tag-badge"
+														className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/75 bg-muted/40 font-mono"
+													>
+														#{tag}
+													</span>
+												))}
+											</div>
+										)}
 									</div>
 
 									{/* Bottom Action Row */}
-									<div className="mt-6 pt-4 border-t border-border/40 flex items-center justify-between gap-3">
+									<div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between gap-2 min-h-8">
 										{statusNotice ? (
 											<span
 												data-testid={statusNotice.testId}
 												title={statusNotice.title}
-												className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-md px-2 py-1 truncate"
+												className="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-md px-2 py-0.5 truncate"
 											>
 												{statusNotice.text}
 											</span>
 										) : (
-											<span className="text-xs text-muted-foreground">
-												New workspace
-											</span>
+											<span className="sr-only">Available</span>
 										)}
 
 										<Button
@@ -725,7 +731,7 @@ export function StudyHubCatalog({
 											disabled={isUnavailable || isLaunching}
 											aria-label={`Launch ${mode.name}`}
 											data-testid={`launch-mode-${modeKey}`}
-											className="gap-1.5 cursor-pointer shrink-0 ml-auto"
+											className="h-8 gap-1.5 cursor-pointer shrink-0 ml-auto text-xs"
 										>
 											{isLaunching ? (
 												<>

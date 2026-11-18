@@ -60,23 +60,14 @@ export function WorkspaceRow({
 					</span>
 				)}
 				<div className="flex h-5 items-center justify-between gap-1.5 min-w-0">
-					<div className="flex items-center gap-1.5 min-w-0 flex-1">
-						<BoxIcon
-							className={cn(
-								"size-3.5 shrink-0 text-muted-foreground/70",
-								isUnavailable && "text-muted-foreground/40",
-							)}
-							aria-hidden="true"
-						/>
-						<span
-							className={cn(
-								"truncate font-prose text-sm leading-snug text-foreground min-w-0",
-								isUnavailable && "text-muted-foreground",
-							)}
-						>
-							{workspace.title}
-						</span>
-					</div>
+					<span
+						className={cn(
+							"truncate font-prose text-sm leading-snug text-foreground min-w-0",
+							isUnavailable && "text-muted-foreground",
+						)}
+					>
+						{workspace.title}
+					</span>
 					<div className="flex items-center gap-1.5 shrink-0 ml-auto pl-1.5">
 						{isUnavailable && (
 							<Hint label={`Unavailable: ${workspace.availability}`} side="left">
@@ -89,6 +80,13 @@ export function WorkspaceRow({
 								</span>
 							</Hint>
 						)}
+						<BoxIcon
+							className={cn(
+								"size-3 shrink-0 text-muted-foreground/60",
+								isUnavailable && "text-muted-foreground/40",
+							)}
+							aria-label="Workspace"
+						/>
 						<span className="min-w-[44px] text-right text-[10px] tabular-nums text-muted-foreground/60 shrink-0">
 							{timeAgo(workspace.updatedAt)}
 						</span>
@@ -152,30 +150,28 @@ export function RenameWorkspaceRow({
 		>
 			<span className="flex min-w-0 w-full flex-col">
 				<div className="flex h-5 items-center justify-between gap-1.5 min-w-0">
-					<div className="flex items-center gap-1.5 min-w-0 flex-1">
-						<BoxIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
-						<input
-							ref={inputRef}
-							value={draft}
-							spellCheck={false}
-							onChange={(e) => setDraft(e.target.value)}
-							onBlur={() => handleCommit(draft)}
-							onKeyDown={(e) => {
-								if (e.key === "Enter") {
-									e.preventDefault();
-									handleCommit(draft);
-								}
-								if (e.key === "Escape") {
-									e.stopPropagation();
-									handleCancel();
-								}
-							}}
-							aria-label="Rename workspace"
-							data-testid="workspace-rename-input"
-							className="w-full min-w-0 truncate border-0 border-b border-border bg-transparent px-0 font-prose text-sm leading-snug text-foreground outline-none"
-						/>
-					</div>
+					<input
+						ref={inputRef}
+						value={draft}
+						spellCheck={false}
+						onChange={(e) => setDraft(e.target.value)}
+						onBlur={() => handleCommit(draft)}
+						onKeyDown={(e) => {
+							if (e.key === "Enter") {
+								e.preventDefault();
+								handleCommit(draft);
+							}
+							if (e.key === "Escape") {
+								e.stopPropagation();
+								handleCancel();
+							}
+						}}
+						aria-label="Rename workspace"
+						data-testid="workspace-rename-input"
+						className="w-full min-w-0 truncate border-0 border-b border-border bg-transparent px-0 font-prose text-sm leading-snug text-foreground outline-none"
+					/>
 					<div className="flex items-center gap-1.5 shrink-0 ml-auto pl-1.5">
+						<BoxIcon className="size-3 shrink-0 text-muted-foreground/60" aria-label="Workspace" />
 						<span className="min-w-[44px] text-right text-[10px] tabular-nums text-muted-foreground/60 shrink-0">
 							{timeAgo(workspace.updatedAt)}
 						</span>

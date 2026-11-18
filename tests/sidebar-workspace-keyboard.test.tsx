@@ -14,6 +14,7 @@ import { SessionsSidebar, SidebarProvider } from "../components/sidebar.tsx";
 import { SettingsDialogProvider } from "../components/settings/settings-dialog.tsx";
 import { InteractionLayersProvider } from "../components/interaction-layers.tsx";
 import { ServerEventsProvider } from "../components/server-events.tsx";
+import { WorkspaceRow, RenameWorkspaceRow } from "../components/workspace-row.tsx";
 import type { ChatDirectoryItem, WorkspaceDirectoryEntry } from "../src/core/index.ts";
 
 const sampleChat: ChatDirectoryItem = {
@@ -1051,5 +1052,107 @@ describe("LH-WS-04: Workspace and Chat Rename Event Synchronization", () => {
 			(globalThis as Record<string, unknown>).requestIdleCallback = originalRIC;
 			(globalThis as Record<string, unknown>).cancelIdleCallback = originalCIC;
 		}
+	});
+});
+
+describe("WorkspaceRow and RenameWorkspaceRow trailing icon layout", () => {
+	it("renders workspace title at leading edge and BoxIcon in trailing metadata group before timestamp", () => {
+		const html = renderToStaticMarkup(
+			<WorkspaceRow
+				workspace={sampleWorkspace}
+				active={false}
+				onOpen={() => {}}
+			/>,
+		);
+
+		const { document } = parseHTML(html);
+		const button = document.querySelector("button");
+		assert.ok(button);
+
+		// Title is the first item inside the row's inner flex container (leading edge)
+		const innerFlex = button.querySelector(".h-5.items-center.justify-between");
+		assert.ok(innerFlex, "Inner row flex container exists");
+
+		const firstChild = innerFlex.firstElementChild;
+		assert.ok(firstChild);
+		assert.ok(firstChild.textContent?.includes("TCP/IP Packet Simulator"), "Workspace title must be at the leading edge");
+		assert.equal(firstChild.querySelector("svg"), null, "Leading title must not contain BoxIcon");
+
+		// Trailing metadata group contains BoxIcon and timestamp
+		const trailingMeta = innerFlex.querySelector(".ml-auto");
+		assert.ok(trailingMeta, "Trailing metadata container exists");
+
+		const boxIcon = trailingMeta.querySelector("svg.lucide-box");
+		assert.ok(boxIcon, "BoxIcon must be inside trailing metadata group");
+
+		const timeSpan = trailingMeta.querySelector(".tabular-nums");
+		assert.ok(timeSpan, "Timestamp exists in trailing metadata");
+
+		// BoxIcon must appear immediately before timestamp in trailing metadata
+		assert.equal(boxIcon.nextElementSibling, timeSpan, "BoxIcon must be immediately before the updated timestamp");
+	});
+
+	it("renders unavailable workspace with warning before BoxIcon in trailing metadata", () => {
+		const unavailableWorkspace: WorkspaceDirectoryEntry = {
+			...sampleWorkspace,
+			availability: "plugin-disabled",
+		};
+
+		const html = renderToStaticMarkup(
+			<WorkspaceRow
+				workspace={unavailableWorkspace}
+				active={false}
+				onOpen={() => {}}
+			/>,
+		);
+
+		const { document } = parseHTML(html);
+		const trailingMeta = document.querySelector(".ml-auto");
+		assert.ok(trailingMeta);
+
+		const boxIcon = trailingMeta.querySelector("svg.lucide-box");
+		assert.ok(boxIcon);
+
+		const alertIcon = trailingMeta.querySelector("svg.lucide-triangle-alert, svg.lucide-alert-triangle");
+		assert.ok(alertIcon, "Alert triangle warning must be in trailing metadata");
+		assert.ok(trailingMeta.textContent?.includes("Unavailable: plugin-disabled"));
+	});
+
+	it("RenameWorkspaceRow: renders input at leading edge without leading BoxIcon and places BoxIcon before timestamp in trailing metadata", () => {
+		const html = renderToStaticMarkup(
+			<RenameWorkspaceRow
+				workspace={{
+					id: sampleWorkspace.id,
+					title: sampleWorkspace.title,
+					updatedAt: sampleWorkspace.updatedAt,
+				}}
+				onCommit={() => {}}
+				onCancel={() => {}}
+			/>,
+		);
+
+		const { document } = parseHTML(html);
+		const renameRow = document.querySelector('[data-testid="workspace-rename-row"]');
+		assert.ok(renameRow);
+
+		const innerFlex = renameRow.querySelector(".h-5.items-center.justify-between");
+		assert.ok(innerFlex);
+
+		// First child is input, with no leading icon
+		const firstChild = innerFlex.firstElementChild;
+		assert.ok(firstChild);
+		assert.equal(firstChild.tagName.toLowerCase(), "input", "Input must be at the leading edge");
+		assert.equal(firstChild.getAttribute("data-testid"), "workspace-rename-input");
+
+		// Trailing meta has BoxIcon immediately before timestamp
+		const trailingMeta = innerFlex.querySelector(".ml-auto");
+		assert.ok(trailingMeta);
+
+		const boxIcon = trailingMeta.querySelector("svg.lucide-box");
+		assert.ok(boxIcon, "BoxIcon must be in trailing metadata of rename row");
+
+		const timeSpan = trailingMeta.querySelector(".tabular-nums");
+		assert.ok(timeSpan);
+		assert.equal(boxIcon.nextElementSibling, timeSpan, "BoxIcon must immediately precede timestamp in rename row");
 	});
 });
