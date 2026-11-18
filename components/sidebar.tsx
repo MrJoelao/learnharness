@@ -1502,7 +1502,7 @@ export function SessionsSidebar({
 					<div className="px-2 pt-1.5 pb-1 flex flex-col gap-1.5">
 						<div className="flex items-center justify-between px-1">
 							<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-								Sessions
+								Items
 							</span>
 							<Hint label="New folder" side="bottom">
 								<button
@@ -1562,8 +1562,8 @@ export function SessionsSidebar({
 										e.currentTarget.blur();
 									}
 								}}
-								placeholder="Search sessions…"
-								aria-label="Search sessions"
+								placeholder="Search items…"
+								aria-label="Search items"
 								className="h-7 w-full rounded-md border-border/70 bg-background pl-7 pr-14 text-xs placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-ring"
 							/>
 							<SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/70" />

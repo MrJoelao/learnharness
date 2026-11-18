@@ -1147,7 +1147,7 @@ describe("Bug A Regression: Archived Chat Context, Persisted Fallback, and Resto
 			);
 
 			assert.ok(htmlActiveWithFrom.includes('data-testid="new-menu-trigger"'), "Active chat must show Sessions trigger");
-			assert.ok(htmlActiveWithFrom.includes("Sessions"), "Active chat must show Sessions header");
+			assert.ok(htmlActiveWithFrom.includes("Items"), "Active chat must show Items header");
 			assert.ok(!htmlActiveWithFrom.includes('data-testid="sidebar-archived-folders"'), "Active chat must NOT show Archive shell");
 
 			// Case 2: active chat with direct navigation
