@@ -8,7 +8,10 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-workspaces-"));
 after(() => fs.rmSync(root, { recursive: true, force: true }));
 
 const { createWorkspaceStore } = await import("../src/store/workspaces.ts");
-const { createWorkspaceService } = await import("../src/server/workspaces.ts");
+const { createWorkspaceService, workspaceService } = await import("../src/server/workspaces.ts");
+const { directoryService } = await import("../src/server/directory.ts");
+const { stores } = await import("../src/server/stores.ts");
+const { workspaceKey } = await import("../src/core/organization.ts");
 const { parseWorkspaceId, parseWorkspaceRecord, resolveWorkspaceAvailability, DeletionJournalCorruptError, DeletionJournalUnreadableError } = await import("../src/core/workspaces.ts");
 
 const rawRecord = (id: string, overrides: Record<string, unknown> = {}) => ({
@@ -188,6 +191,25 @@ it("calls onDelete callback when a workspace is deleted", () => {
 	const ws = service.create({ pluginId: "sample", modeId: "mode", title: "Test" });
 	service.delete(ws.id);
 	assert.equal(deletedId, ws.id);
+});
+
+it("singleton workspaceService wires onDelete and cleans up directory placement on deletion without leaving orphan placement", () => {
+	const ws = workspaceService.create({ pluginId: "sample-plugin", modeId: "memory-lab", title: "Singleton Placement Test" });
+	assert.ok(workspaceService.read(ws.id), "workspace created in singleton store");
+
+	// Add placement in directory
+	directoryService.change({ action: "move", kind: "workspace", id: ws.id, parentId: null, targetOrder: 99 });
+	const key = workspaceKey(ws.id);
+	assert.ok(stores.organizationV2Store.read().placements[key], "placement exists in store before deletion");
+
+	// Deletion through singleton workspaceService removes both the record and the directory placement
+	workspaceService.delete(ws.id);
+	assert.equal(workspaceService.read(ws.id), null, "record is deleted");
+	assert.equal(directoryService.read().items.some((item) => item.id === ws.id), false, "item removed from directory");
+	assert.equal(stores.organizationV2Store.read().placements[key], undefined, "no orphan placement left in organizationStore");
+
+	// Idempotent deletion does not throw
+	assert.doesNotThrow(() => workspaceService.delete(ws.id));
 });
 
 it("failure of unlinkSync leaves record file and index intact, preventing orphan creation", (t) => {

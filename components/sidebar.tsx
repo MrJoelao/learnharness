@@ -1060,16 +1060,20 @@ export function SessionsSidebar({
 		[selectedFolderId, refresh],
 	);
 
-	/* Instant rename propagation (2026-09-17): the chat header's rename
-	   commits dispatch lh:chat-renamed; patch the snapshot in place instead
-	   of waiting for the 2.5s poll. */
+	/* Instant rename propagation: chat and workspace renames
+	   dispatch lh:chat-renamed / lh:workspace-renamed; patch the snapshot
+	   in place instead of waiting for the 2.5s poll. */
 	useEffect(() => {
 		const onRenamed = (e: Event) => {
 			const { id, title } = (e as CustomEvent<{ id: string; title: string }>).detail;
 			setChats((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, title } : c)) : prev));
 		};
 		window.addEventListener("lh:chat-renamed", onRenamed);
-		return () => window.removeEventListener("lh:chat-renamed", onRenamed);
+		window.addEventListener("lh:workspace-renamed", onRenamed);
+		return () => {
+			window.removeEventListener("lh:chat-renamed", onRenamed);
+			window.removeEventListener("lh:workspace-renamed", onRenamed);
+		};
 	}, []);
 
 	/* Turn state synchronization */
@@ -1303,7 +1307,8 @@ export function SessionsSidebar({
 			});
 			if (!res.ok) throw new Error(`rename failed: ${res.status}`);
 			setChats((prev) => (prev ? prev.map((c) => (c.id === id ? { ...c, title: t } : c)) : prev));
-			window.dispatchEvent(new CustomEvent("lh:chat-renamed", { detail: { id, title: t } }));
+			const eventName = isWs ? "lh:workspace-renamed" : "lh:chat-renamed";
+			window.dispatchEvent(new CustomEvent(eventName, { detail: { id, title: t } }));
 		} catch (err) {
 			console.error("rename failed:", err);
 		}

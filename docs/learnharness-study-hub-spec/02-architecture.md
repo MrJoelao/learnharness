@@ -253,7 +253,14 @@ Avoid firing duplicate refreshes for one logical operation. Organization changes
 ## 9. Failure behavior
 
 - If metadata write fails, do not navigate to a phantom workspace.
-- If plugin initialization fails after metadata creation, either roll back the new host record safely or keep a recoverable failed workspace with an explicit status; choose one behavior and test it.
-- If plugin is disabled/missing, preserve metadata and data.
+- **Immediate rollback on initialization failure**: If plugin initialization fails during `createWorkspace`, the system executes an immediate transactional rollback: allocated plugin state and host metadata records are safely removed, and a diagnostic error is returned to the caller. Workspaces are not persisted in `creating` or `error` states on disk. If a partial rollback failure occurs (for example, if storage namespace removal succeeds but host record unlinking fails), the host record is preserved so it remains inspectable and recoverable through the inspection and recovery endpoints (`inspectWorkspaces`, `recoverWorkspace`).
+- If plugin is disabled/missing, preserve metadata and data; availability is dynamically resolved at runtime.
 - If plugin mode registration changes its display name, existing workspace title should remain user-controlled; do not silently overwrite a renamed instance.
 - If an unknown newer workspace schema is encountered, refuse destructive writes and show a clear compatibility error.
+
+## 10. Security boundary and plugin trust model (LH-WS-03)
+
+- **Trusted local code**: In LearnHarness, installed plugins are treated as trusted local extensions. Frontend plugin renderers run directly in the application renderer page alongside core UI components.
+- **No frontend sandbox**: The architecture deliberately does not provide an isolated iframe or web worker security sandbox for frontend plugin code. Plugins have direct access to standard DOM and Web APIs.
+- **Storage namespacing**: Workspace storage isolation between plugins is enforced server-side via path validation and sandboxed directories (`plugin-data/<pluginId>/workspaces/<workspaceId>`). Server routines reject directory traversal and symlink escapes.
+- **HTTP storage endpoints as cooperative boundary**: The HTTP storage endpoints (`/api/workspaces/[id]/state/[key]`) validate path safety and map workspace IDs to the owning plugin's data directory. However, in line with the trusted local code model, they do not enforce cryptographic capability tokens or process-origin verification. These endpoints are designed for cooperative modularity, not as an adversarial security boundary against code running inside the trusted frontend renderer.

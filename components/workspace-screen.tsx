@@ -167,8 +167,12 @@ export function WorkspaceScreen({
 				setTitleDraft(detail.title);
 			}
 		};
+		window.addEventListener("lh:workspace-renamed", onRenamed);
 		window.addEventListener("lh:chat-renamed", onRenamed);
-		return () => window.removeEventListener("lh:chat-renamed", onRenamed);
+		return () => {
+			window.removeEventListener("lh:workspace-renamed", onRenamed);
+			window.removeEventListener("lh:chat-renamed", onRenamed);
+		};
 	}, [currentWorkspaceId]);
 
 	// Focus rename input on rename start
@@ -198,7 +202,7 @@ export function WorkspaceScreen({
 			manager?.updateWorkspace?.(data.workspace);
 			setTitleDraft(data.workspace.title);
 			window.dispatchEvent(
-				new CustomEvent("lh:chat-renamed", { detail: { id: workspace.id, title: data.workspace.title } }),
+				new CustomEvent("lh:workspace-renamed", { detail: { id: workspace.id, title: data.workspace.title } }),
 			);
 		} catch (err) {
 			console.error("Failed to rename workspace:", err);

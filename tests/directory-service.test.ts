@@ -264,6 +264,91 @@ it("a mixed folder holds both kinds and sibling order interleaves them", () => {
 	assert.deepEqual(inFolder.map((item) => item.order), [0, 1]);
 });
 
+it("reorder-mixed-siblings: alternating reorder in mixed folder preserves IDs, kinds, rejects foreign/unknown items, and persists on reread", () => {
+	const { service, orgStore } = buildService({
+		chats: [chatSummary("c1"), chatSummary("c2")],
+		workspaces: [wsRecord(WS_A, "Workspace A"), wsRecord(WS_B, "Workspace B")],
+	});
+
+	// 1. Create a folder and place both chats and workspaces inside it
+	const created = service.change({ action: "create-folder", name: "Mixed Folder", parentId: null });
+	const f1 = created.createdFolderId!;
+	service.change({ action: "move", kind: "chat", id: "c1", parentId: f1, targetOrder: 0 });
+	service.change({ action: "move", kind: "chat", id: "c2", parentId: f1, targetOrder: 1 });
+	service.change({ action: "move", kind: "workspace", id: WS_A, parentId: f1, targetOrder: 2 });
+	service.change({ action: "move", kind: "workspace", id: WS_B, parentId: f1, targetOrder: 3 });
+
+	// 2. Perform alternating reordering of the two kinds: [WS_B, c1, WS_A, c2]
+	service.change({
+		action: "reorder-mixed-siblings",
+		parentId: f1,
+		entries: [
+			{ kind: "workspace", id: WS_B },
+			{ kind: "chat", id: "c1" },
+			{ kind: "workspace", id: WS_A },
+			{ kind: "chat", id: "c2" },
+		],
+	});
+
+	// 3 & 4. Verify IDs, kinds, order, and no duplicate placements on re-read
+	const reread = service.read();
+	const inFolder = reread.items.filter((item) => item.folderId === f1);
+	assert.equal(inFolder.length, 4, "exact 4 items in folder");
+	assert.deepEqual(
+		inFolder.map((item) => ({ id: item.id, kind: item.kind, order: item.order })),
+		[
+			{ id: WS_B, kind: "workspace", order: 0 },
+			{ id: "c1", kind: "chat", order: 1 },
+			{ id: WS_A, kind: "workspace", order: 2 },
+			{ id: "c2", kind: "chat", order: 3 },
+		],
+		"alternating reorder strictly preserved with exact IDs and kinds",
+	);
+
+	// Verify orgStore placements have no duplicate entries
+	const placements = orgStore.state.placements;
+	const keysForFolder = Object.entries(placements).filter(([_, p]) => p.folderId === f1);
+	assert.equal(keysForFolder.length, 4, "exactly 4 unique placement keys exist for f1");
+
+	// 5. Rejection of nonexistent items or items belonging to another folder
+	assert.throws(
+		() =>
+			service.change({
+				action: "reorder-mixed-siblings",
+				parentId: f1,
+				entries: [
+					{ kind: "workspace", id: WS_B },
+					{ kind: "chat", id: "nonexistent-chat" },
+				],
+			}),
+		/no longer exists|DirectoryInputError/i,
+		"rejects nonexistent item",
+	);
+
+	// Place an item at root (folderId null)
+	const WS_ROOT = "workspace_33333333-3333-4333-8333-333333333333" as WorkspaceId;
+	const { service: serviceWithRoot } = buildService({
+		chats: [chatSummary("c1")],
+		workspaces: [wsRecord(WS_A), wsRecord(WS_ROOT)],
+	});
+	const fA = serviceWithRoot.change({ action: "create-folder", name: "FA", parentId: null }).createdFolderId!;
+	serviceWithRoot.change({ action: "move", kind: "workspace", id: WS_A, parentId: fA, targetOrder: 0 });
+
+	assert.throws(
+		() =>
+			serviceWithRoot.change({
+				action: "reorder-mixed-siblings",
+				parentId: fA,
+				entries: [
+					{ kind: "workspace", id: WS_A },
+					{ kind: "workspace", id: WS_ROOT },
+				],
+			}),
+		/does not belong to parent|DirectoryInputError/i,
+		"rejects item belonging to another parent",
+	);
+});
+
 it("availability variants resolve per workspace (R7)", () => {
 	const { service } = buildService({
 		workspaces: [wsRecord(WS_A, "A"), wsRecord(WS_B, "B")],

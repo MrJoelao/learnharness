@@ -112,6 +112,7 @@ export function createWorkspaceService({ store, now = () => new Date().toISOStri
 
 export const workspaceService = createWorkspaceService({
 	store: stores.workspaceStore,
+	onDelete: (id) => directoryService.removePlacement(workspaceKey(id)),
 });
 
 function newWorkspaceId(): WorkspaceId {

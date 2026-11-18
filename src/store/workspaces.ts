@@ -330,7 +330,7 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 	};
 }
 
-export const workspaceStore = createWorkspaceStore(path.dirname(WORKSPACE_INDEX_FILE));
+export const workspaceStore = createWorkspaceStore(path.dirname(/* turbopackIgnore: true */ WORKSPACE_INDEX_FILE));
 
 function fileExists(file: string): boolean {
 	try {

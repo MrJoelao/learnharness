@@ -931,3 +931,125 @@ describe("Sidebar Directory Terminology and Search/Filter Consistency", () => {
 		}
 	});
 });
+
+describe("LH-WS-04: Workspace and Chat Rename Event Synchronization", () => {
+	it("Sidebar: updates workspace title optimistically when lh:workspace-renamed is dispatched and preserves chat rename", async () => {
+		const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
+		const originalWindow = globalThis.window;
+		const originalSelf = globalThis.self;
+		const originalDocument = globalThis.document;
+		const originalHTMLElement = globalThis.HTMLElement;
+		const originalElement = globalThis.Element;
+		const originalNode = globalThis.Node;
+		const originalAct = (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT;
+		const originalIO = (globalThis as Record<string, unknown>).IntersectionObserver;
+		const originalRIC = (globalThis as Record<string, unknown>).requestIdleCallback;
+		const originalCIC = (globalThis as Record<string, unknown>).cancelIdleCallback;
+
+		const mockRouter = {
+			bfcacheId: "test",
+			push: () => {},
+			replace: () => {},
+			refresh: () => {},
+			back: () => {},
+			forward: () => {},
+			prefetch: () => {},
+		};
+
+		Object.assign(globalThis, {
+			window: dom.window,
+			self: dom.window,
+			document: dom.document,
+			HTMLElement: dom.window.HTMLElement,
+			Element: dom.window.Element,
+			Node: dom.window.Node,
+			IS_REACT_ACT_ENVIRONMENT: true,
+			localStorage: { getItem: () => null, setItem() {} },
+			IntersectionObserver: MockIntersectionObserver,
+			requestIdleCallback: (cb: () => void) => setTimeout(cb, 0),
+			cancelIdleCallback: (id: NodeJS.Timeout) => clearTimeout(id),
+		});
+
+		try {
+			const root = createRoot(dom.document.getElementById("root")!);
+
+			await act(async () => {
+				root.render(
+					<InteractionLayersProvider>
+						<AppRouterContext.Provider value={mockRouter}>
+							<PathnameContext.Provider value="/">
+								<ServerEventsProvider connect={() => ({ close() {}, onOpen() {}, onEvent() {} })}>
+									<SettingsDialogProvider>
+										<SidebarProvider>
+											<SessionsSidebar
+												initialChats={[sampleChat, sampleWorkspace]}
+												initialFolders={[]}
+											/>
+										</SidebarProvider>
+									</SettingsDialogProvider>
+								</ServerEventsProvider>
+							</PathnameContext.Provider>
+						</AppRouterContext.Provider>
+					</InteractionLayersProvider>,
+				);
+			});
+
+			// Verify initial titles
+			const wsRow = dom.document.querySelector(`[data-workspace-id="${sampleWorkspace.id}"]`);
+			assert.ok(wsRow, "Workspace row exists");
+			assert.ok(wsRow.textContent?.includes("TCP/IP Packet Simulator"), "Initial workspace title rendered");
+
+			// 1. Dispatch lh:workspace-renamed event
+			await act(async () => {
+				dom.window.dispatchEvent(
+					new dom.window.CustomEvent("lh:workspace-renamed", {
+						detail: { id: sampleWorkspace.id, title: "Updated Packet Simulator v2" },
+					}),
+				);
+			});
+
+			// Verify updated workspace title in sidebar
+			assert.ok(wsRow.textContent?.includes("Updated Packet Simulator v2"), "Workspace title updated via lh:workspace-renamed");
+
+			// 2. Dispatch lh:chat-renamed event on chat
+			const chatRow = dom.document.querySelector(`[data-session-id="${sampleChat.id}"]`);
+			assert.ok(chatRow, "Chat row exists");
+			assert.ok(chatRow.textContent?.includes("Computer Networks Lecture"), "Initial chat title rendered");
+
+			await act(async () => {
+				dom.window.dispatchEvent(
+					new dom.window.CustomEvent("lh:chat-renamed", {
+						detail: { id: sampleChat.id, title: "Advanced Networks Lecture" },
+					}),
+				);
+			});
+
+			assert.ok(chatRow.textContent?.includes("Advanced Networks Lecture"), "Chat title updated via lh:chat-renamed");
+
+			// 3. Backward compatibility: lh:chat-renamed targeting a workspace also updates the title
+			await act(async () => {
+				dom.window.dispatchEvent(
+					new dom.window.CustomEvent("lh:chat-renamed", {
+						detail: { id: sampleWorkspace.id, title: "Compat Packet Simulator v3" },
+					}),
+				);
+			});
+			assert.ok(wsRow.textContent?.includes("Compat Packet Simulator v3"), "Workspace title updated via backwards compatible lh:chat-renamed");
+
+			await act(async () => {
+				root.unmount();
+			});
+		} finally {
+			(globalThis as Record<string, unknown>).window = originalWindow;
+			(globalThis as Record<string, unknown>).self = originalSelf;
+			(globalThis as Record<string, unknown>).document = originalDocument;
+			(globalThis as Record<string, unknown>).HTMLElement = originalHTMLElement;
+			(globalThis as Record<string, unknown>).Element = originalElement;
+			(globalThis as Record<string, unknown>).Node = originalNode;
+			(globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = originalAct;
+			(globalThis as Record<string, unknown>).IntersectionObserver = originalIO;
+			(globalThis as Record<string, unknown>).requestIdleCallback = originalRIC;
+			(globalThis as Record<string, unknown>).cancelIdleCallback = originalCIC;
+		}
+	});
+});

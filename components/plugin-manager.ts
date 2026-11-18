@@ -730,7 +730,7 @@ export class PluginFrontendManager {
 				currentWorkspace = Object.freeze({ ...response.workspace });
 				thisManager.updateWorkspace(response.workspace);
 				if (typeof window !== "undefined") {
-					window.dispatchEvent(new CustomEvent("lh:chat-renamed", { detail: { id: initialWorkspace.id, title: response.workspace.title } }));
+					window.dispatchEvent(new CustomEvent("lh:workspace-renamed", { detail: { id: initialWorkspace.id, title: response.workspace.title } }));
 				}
 			},
 		}), container, onError);
