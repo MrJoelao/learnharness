@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { fuzzyScore, type PluginModeMetadata } from "@/src/core";
 import {
 	AlertCircleIcon,
+	ArrowDownIcon,
 	ArrowRightIcon,
 	BookOpenIcon,
 	BrainIcon,
@@ -151,6 +152,7 @@ interface StudyHubModeCardProps {
 	launchingModeKeys: Set<string>;
 	handleOpenReadme: (mode: PluginModeMetadata) => void;
 	handleLaunch: (mode: PluginModeMetadata) => void;
+	style?: React.CSSProperties;
 }
 
 function StudyHubModeCard({
@@ -161,6 +163,7 @@ function StudyHubModeCard({
 	launchingModeKeys,
 	handleOpenReadme,
 	handleLaunch,
+	style,
 }: StudyHubModeCardProps) {
 	const modeKey = getModeKey(mode.pluginId, mode.id);
 	const IconComponent = getModeIcon(mode.icon);
@@ -210,6 +213,7 @@ function StudyHubModeCard({
 			data-mode-id={mode.id}
 			tabIndex={0}
 			role="button"
+			style={style}
 			aria-label={`View details and launch ${mode.name}`}
 			onClick={(e) => {
 				if ((e.target as HTMLElement | null)?.closest?.("button")) {
@@ -224,7 +228,7 @@ function StudyHubModeCard({
 				}
 			}}
 			className={cn(
-				"group relative rounded-xl border bg-card flex flex-col justify-between transition-all duration-200 cursor-pointer text-left overflow-hidden h-full",
+				"group relative rounded-xl border bg-card flex flex-col justify-between transition-all duration-200 cursor-pointer text-left overflow-hidden h-full study-hub-card-enter",
 				isUnavailable
 					? "border-border/40 opacity-75"
 					: isLaunching
@@ -437,6 +441,15 @@ export function StudyHubCatalog({
 	const topicMenuRef = useRef<HTMLDivElement>(null);
 	const diffMenuRef = useRef<HTMLDivElement>(null);
 
+	// Pull-to-refresh state
+	const scrollContainerRef = useRef<HTMLDivElement>(null);
+	const [pullDistance, setPullDistance] = useState(0);
+	const pullDistanceRef = useRef(0);
+	const [isPulling, setIsPulling] = useState(false);
+	const dragStartYRef = useRef<number | null>(null);
+	const isDraggingRef = useRef(false);
+	const wasPullingRef = useRef(false);
+
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
@@ -468,40 +481,27 @@ export function StudyHubCatalog({
 	const [readmeContent, setReadmeContent] = useState<string | null>(null);
 	const [isLoadingReadme, setIsLoadingReadme] = useState(false);
 	const [isLaunchPillVisible, setIsLaunchPillVisible] = useState(true);
-	const lastReadmeScrollTopRef = useRef(0);
 
 	const handleReadmeScroll = (e: React.UIEvent<HTMLDivElement>) => {
 		const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-		const lastScrollTop = lastReadmeScrollTopRef.current;
-		const scrollDelta = scrollTop - lastScrollTop;
-		lastReadmeScrollTopRef.current = scrollTop;
 
+		// If content fits without scrolling, keep visible
 		if (scrollHeight <= clientHeight + 20) {
 			setIsLaunchPillVisible(true);
 			return;
 		}
 
-		if (scrollTop <= 20) {
-			setIsLaunchPillVisible(true);
-			return;
-		}
+		// Visible only at the beginning (top) or end (bottom) of document
+		const isAtTop = scrollTop <= 25;
+		const isAtBottom = scrollTop + clientHeight >= scrollHeight - 35;
 
-		if (scrollTop + clientHeight >= scrollHeight - 30) {
-			setIsLaunchPillVisible(true);
-			return;
-		}
-
-		if (scrollDelta > 5) {
-			setIsLaunchPillVisible(false);
-		} else if (scrollDelta < -5) {
-			setIsLaunchPillVisible(true);
-		}
+		setIsLaunchPillVisible(isAtTop || isAtBottom);
 	};
 
 	const handleOpenReadme = async (mode: PluginModeMetadata) => {
+		if (wasPullingRef.current) return;
 		setSelectedReadmeMode(mode);
 		setIsLaunchPillVisible(true);
-		lastReadmeScrollTopRef.current = 0;
 		if (mode.readme) {
 			setReadmeContent(mode.readme);
 			return;
@@ -622,6 +622,125 @@ export function StudyHubCatalog({
 		});
 	};
 
+	// Progressive pull-to-refresh handlers
+	const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+		if (e.button !== 0) return;
+		if ((e.target as HTMLElement).closest("button, input, textarea, a")) {
+			return;
+		}
+		const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
+		if (scrollContainerRef.current && scrollTop <= 0) {
+			dragStartYRef.current = e.clientY;
+			isDraggingRef.current = true;
+			wasPullingRef.current = false;
+		}
+	};
+
+	const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+		const touch = e.touches[0];
+		if (!touch) return;
+		const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
+		if (scrollContainerRef.current && scrollTop <= 0) {
+			dragStartYRef.current = touch.clientY;
+			isDraggingRef.current = true;
+			wasPullingRef.current = false;
+		}
+	};
+
+	const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+		if (!isDraggingRef.current || dragStartYRef.current === null) return;
+		const touch = e.touches[0];
+		if (!touch) return;
+		const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
+		if (!scrollContainerRef.current || scrollTop > 0) {
+			if (pullDistanceRef.current > 0) {
+				pullDistanceRef.current = 0;
+				setPullDistance(0);
+				setIsPulling(false);
+			}
+			return;
+		}
+		const currentY = touch.clientY;
+		const diff = currentY - dragStartYRef.current;
+		if (diff > 0) {
+			setIsPulling(true);
+			if (diff > 8) wasPullingRef.current = true;
+			const distance = Math.min(75, diff * 0.45);
+			pullDistanceRef.current = distance;
+			setPullDistance(distance);
+		} else {
+			pullDistanceRef.current = 0;
+			setPullDistance(0);
+			setIsPulling(false);
+		}
+	};
+
+	const handleTouchEnd = () => {
+		if (!isDraggingRef.current) return;
+		isDraggingRef.current = false;
+		setIsPulling(false);
+		dragStartYRef.current = null;
+		const shouldRetry = pullDistanceRef.current >= 50 && !isRetrying && !isLoading;
+		pullDistanceRef.current = 0;
+		setPullDistance(0);
+		if (shouldRetry) {
+			handleRetry();
+		}
+		setTimeout(() => {
+			wasPullingRef.current = false;
+		}, 100);
+	};
+
+	useEffect(() => {
+		const handleWindowMouseMove = (e: MouseEvent) => {
+			if (!isDraggingRef.current || dragStartYRef.current === null) return;
+			const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
+			if (!scrollContainerRef.current || scrollTop > 0) {
+				if (pullDistanceRef.current > 0) {
+					pullDistanceRef.current = 0;
+					setPullDistance(0);
+					setIsPulling(false);
+				}
+				return;
+			}
+			const diff = e.clientY - dragStartYRef.current;
+			if (diff > 0) {
+				setIsPulling(true);
+				if (diff > 8) wasPullingRef.current = true;
+				const distance = Math.min(75, diff * 0.45);
+				pullDistanceRef.current = distance;
+				setPullDistance(distance);
+			} else {
+				pullDistanceRef.current = 0;
+				setPullDistance(0);
+				setIsPulling(false);
+			}
+		};
+
+		const handleWindowMouseUp = () => {
+			if (!isDraggingRef.current) return;
+			isDraggingRef.current = false;
+			setIsPulling(false);
+			dragStartYRef.current = null;
+			const shouldRetry = pullDistanceRef.current >= 50 && !isRetrying && !isLoading;
+			pullDistanceRef.current = 0;
+			setPullDistance(0);
+			if (shouldRetry) {
+				handleRetry();
+			}
+			setTimeout(() => {
+				wasPullingRef.current = false;
+			}, 100);
+		};
+
+		window.addEventListener("mousemove", handleWindowMouseMove);
+		window.addEventListener("mouseup", handleWindowMouseUp);
+		return () => {
+			window.removeEventListener("mousemove", handleWindowMouseMove);
+			window.removeEventListener("mouseup", handleWindowMouseUp);
+		};
+	}, [isRetrying, isLoading]);
+
 	const handleLaunch = async (mode: PluginModeMetadata) => {
 		const modeKey = getModeKey(mode.pluginId, mode.id);
 
@@ -719,18 +838,22 @@ export function StudyHubCatalog({
 
 	const hasActiveFilters = searchQuery.trim() !== "" || selectedCategory !== "all" || selectedDifficulty !== "all";
 
-	const renderModeCard = (mode: PluginModeMetadata) => (
-		<StudyHubModeCard
-			key={getModeKey(mode.pluginId, mode.id)}
-			mode={mode}
-			activePlugins={activePlugins}
-			activeModeRenderers={activeModeRenderers}
-			activeManager={activeManager}
-			launchingModeKeys={launchingModeKeys}
-			handleOpenReadme={handleOpenReadme}
-			handleLaunch={handleLaunch}
-		/>
-	);
+	const renderModeCard = (mode: PluginModeMetadata, index: number) => {
+		const modeKey = getModeKey(mode.pluginId, mode.id);
+		return (
+			<StudyHubModeCard
+				key={`${modeKey}-${searchQuery.trim().toLowerCase()}-${selectedCategory}-${selectedDifficulty}`}
+				style={{ animationDelay: `${Math.min(index * 25, 150)}ms` }}
+				mode={mode}
+				activePlugins={activePlugins}
+				activeModeRenderers={activeModeRenderers}
+				activeManager={activeManager}
+				launchingModeKeys={launchingModeKeys}
+				handleOpenReadme={handleOpenReadme}
+				handleLaunch={handleLaunch}
+			/>
+		);
+	};
 
 	return (
 		<main data-testid="study-hub-page" className="relative flex h-dvh flex-col bg-background overflow-hidden">
@@ -740,11 +863,6 @@ export function StudyHubCatalog({
 						<h1 data-testid="study-hub-title" className="font-title text-3xl tracking-tight text-foreground truncate">
 							Study Hub
 						</h1>
-						{activeModes.length > 0 && (
-							<span className="text-xs font-mono text-muted-foreground/80 tabular-nums">
-								({activeModes.length} {activeModes.length === 1 ? "mode" : "modes"} · {categories.length} {categories.length === 1 ? "topic" : "topics"})
-							</span>
-						)}
 					</div>
 					<div className="flex items-center gap-2 shrink-0">
 						<button
@@ -754,17 +872,70 @@ export function StudyHubCatalog({
 							aria-label="Refresh study modes"
 							title="Refresh study modes"
 							data-testid="study-hub-refresh-button"
-							className="flex size-8 items-center justify-center rounded-lg border border-border/80 bg-card/85 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 cursor-pointer shrink-0 shadow-xs backdrop-blur"
+							className="sr-only"
 						>
-							<RefreshCwIcon className={cn("size-3.5", isRetrying && "animate-spin")} />
-							<span className="sr-only">Refresh</span>
+							Refresh
 						</button>
 					</div>
 				</div>
 			</TopBar>
 
-			<div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-6 pb-48 max-w-6xl w-full mx-auto space-y-6">
-				{/* Error Notice */}
+			<div
+				ref={scrollContainerRef}
+				onMouseDown={handleMouseDown}
+				onTouchStart={handleTouchStart}
+				onTouchMove={handleTouchMove}
+				onTouchEnd={handleTouchEnd}
+				className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-6 pb-48 max-w-6xl w-full mx-auto"
+			>
+				{/* Progressive Pull-To-Refresh Indicator */}
+				<div
+					data-testid="study-hub-pull-indicator"
+					aria-hidden={pullDistance === 0 && !isRetrying}
+					className={cn(
+						"flex justify-center transition-all overflow-hidden pointer-events-none select-none",
+						isPulling ? "duration-0" : "duration-200 ease-out"
+					)}
+					style={{
+						height: isRetrying ? 46 : pullDistance,
+						opacity: isRetrying ? 1 : Math.min(1, pullDistance / 16),
+						marginBottom: isRetrying || pullDistance > 0 ? 12 : 0,
+					}}
+				>
+					<div className="flex items-center justify-center size-9 rounded-full bg-card border border-border/80 shadow-md my-auto relative">
+						<svg className="size-6 text-muted-foreground/25" viewBox="0 0 24 24">
+							<circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" fill="none" />
+							<circle
+								cx="12"
+								cy="12"
+								r="9"
+								stroke="currentColor"
+								strokeWidth="2.5"
+								fill="none"
+								className="text-foreground transition-[stroke-dashoffset] duration-75"
+								strokeDasharray={56.55}
+								strokeDashoffset={56.55 * (1 - Math.min(1, pullDistance / 50))}
+								strokeLinecap="round"
+								transform="rotate(-90 12 12)"
+							/>
+						</svg>
+						<div className="absolute inset-0 flex items-center justify-center">
+							{isRetrying ? (
+								<RefreshCwIcon className="size-3.5 text-foreground animate-spin" />
+							) : (
+								<ArrowDownIcon
+									className={cn(
+										"size-3.5 text-foreground transition-transform duration-200",
+										pullDistance >= 50 ? "rotate-180 text-primary" : "rotate-0 text-muted-foreground"
+									)}
+								/>
+							)}
+						</div>
+					</div>
+				</div>
+
+				<div className="space-y-6">
+					{/* Error Notice */}
 				{errorMessage && (
 					<div
 						role="alert"
@@ -880,7 +1051,7 @@ export function StudyHubCatalog({
 					/* No Search Results State */
 					<div
 						data-testid="study-hub-no-results"
-						className="rounded-xl border border-border/50 bg-card p-10 sm:p-12 text-center max-w-md mx-auto space-y-4"
+						className="rounded-xl border border-border/50 bg-card p-10 sm:p-12 text-center max-w-md mx-auto space-y-4 study-hub-card-enter"
 					>
 						<div className="mx-auto flex size-12 items-center justify-center rounded-lg border border-border/40 bg-muted/40 text-muted-foreground">
 							<SearchIcon className="size-6 stroke-[1.5]" />
@@ -907,7 +1078,7 @@ export function StudyHubCatalog({
 					/* Populated Catalog Grid: Continuous unified grid */
 					<div className="space-y-3">
 						{hasActiveFilters && (
-							<div className="flex items-center justify-between text-xs text-muted-foreground pb-0.5">
+							<div className="flex items-center justify-between text-xs text-muted-foreground pb-0.5 study-hub-card-enter">
 								<span>
 									{searchQuery.trim() !== ""
 										? `Search results for “${searchQuery}”`
@@ -922,16 +1093,17 @@ export function StudyHubCatalog({
 							data-testid="study-hub-grid"
 							className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4.5 items-stretch"
 						>
-							{filteredModes.map(renderModeCard)}
+							{filteredModes.map((mode, index) => renderModeCard(mode, index))}
 						</div>
 					</div>
 				)}
+				</div>
 			</div>
 
 			{/* Floating Search & Filter Dock */}
 			{activeModes.length > 0 && (
 				<div className="pointer-events-none absolute inset-x-0 bottom-0 pb-5 z-20">
-					<div className="pointer-events-auto mx-auto w-full max-w-[46rem] px-4 space-y-2">
+					<div className="pointer-events-auto mx-auto w-full max-w-[46rem] px-4 space-y-2.5">
 						{/* Filter Pills Action Row (inspired by home.tsx ComposerActions) */}
 						{(categories.length > 1 || hasDifficulties) && (
 							<div className="flex flex-wrap items-center gap-2 text-xs mb-1">
@@ -1145,13 +1317,13 @@ export function StudyHubCatalog({
 							</div>
 						)}
 
-						{/* Animated Search Bar Card */}
+						{/* Search Bar Card */}
 						<div
 							onClick={() => searchInputRef.current?.focus()}
 							className={cn(
 								"group relative flex items-center rounded-2xl border bg-card/90 p-2 shadow-lg backdrop-blur transition-all duration-200 cursor-text",
 								isSearchFocused
-									? "border-ring/80 ring-2 ring-ring/20 shadow-2xl scale-[1.01] -translate-y-0.5 bg-card"
+									? "border-foreground/30 ring-1 ring-foreground/20 shadow-xl bg-card"
 									: "border-border/80 hover:border-border hover:shadow-xl"
 							)}
 						>
@@ -1191,11 +1363,6 @@ export function StudyHubCatalog({
 									<kbd>⌘</kbd>
 									<kbd>K</kbd>
 								</div>
-							)}
-
-							{/* Animated active focus beam */}
-							{isSearchFocused && (
-								<div className="absolute inset-x-4 -bottom-[1px] h-[2px] bg-gradient-to-r from-transparent via-primary to-transparent rounded-full animate-pulse pointer-events-none" />
 							)}
 						</div>
 					</div>
@@ -1258,7 +1425,7 @@ export function StudyHubCatalog({
 							{/* Full-bleed Banner */}
 							<ReadmeModeBanner imageUrl={imageUrl} mode={selectedReadmeMode} />
 
-							<div className="p-6 sm:p-7 space-y-5 pb-24">
+							<div className="p-6 sm:p-7 space-y-5 pb-8">
 								{/* Quick Metadata Bar (unslopped) */}
 								{(selectedReadmeMode.difficulty || selectedReadmeMode.activityType || (selectedReadmeMode.tags && selectedReadmeMode.tags.length > 0)) && (
 									<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground/80 pb-3 border-b border-border/30">
@@ -1333,6 +1500,9 @@ export function StudyHubCatalog({
 										<HostMarkdown text={readmeContent} />
 									</div>
 								) : null}
+
+								{/* Bottom spacer so floating Launch pill never overlaps text at the end of the document */}
+								<div className="h-20 shrink-0 select-none pointer-events-none" aria-hidden="true" />
 							</div>
 						</div>
 

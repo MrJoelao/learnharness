@@ -1288,20 +1288,34 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			assert.ok(dialogLaunchBtn, "Dialog launch button present");
 			assert.ok(dialogLaunchBtn.className.includes("translate-y-0"), "Launch pill is visible on open");
 
-			// Scroll down hides pill
+			// Scroll down into middle hides pill
 			const scrollArea = dialog.querySelector(".overflow-y-auto") as HTMLDivElement;
 			assert.ok(scrollArea, "Scroll area found");
 			await act(async () => {
 				Object.defineProperty(scrollArea, "scrollHeight", { value: 1000, configurable: true });
 				Object.defineProperty(scrollArea, "clientHeight", { value: 400, configurable: true });
-				Object.defineProperty(scrollArea, "scrollTop", { value: 150, configurable: true });
+				Object.defineProperty(scrollArea, "scrollTop", { value: 200, configurable: true });
 				scrollArea.dispatchEvent(new dom.window.Event("scroll"));
 			});
-			assert.ok(dialogLaunchBtn.className.includes("translate-y-14"), "Launch pill hides when scrolling down");
+			assert.ok(dialogLaunchBtn.className.includes("translate-y-14"), "Launch pill hides when scrolling into middle");
+
+			// Scrolling up in the middle keeps pill hidden
+			await act(async () => {
+				Object.defineProperty(scrollArea, "scrollTop", { value: 100, configurable: true });
+				scrollArea.dispatchEvent(new dom.window.Event("scroll"));
+			});
+			assert.ok(dialogLaunchBtn.className.includes("translate-y-14"), "Launch pill stays hidden when scrolling up in middle");
+
+			// Reaching top returns pill
+			await act(async () => {
+				Object.defineProperty(scrollArea, "scrollTop", { value: 10, configurable: true });
+				scrollArea.dispatchEvent(new dom.window.Event("scroll"));
+			});
+			assert.ok(dialogLaunchBtn.className.includes("translate-y-0"), "Launch pill returns when reaching beginning of readme");
 
 			// Reaching bottom returns pill
 			await act(async () => {
-				Object.defineProperty(scrollArea, "scrollTop", { value: 600, configurable: true }); // 600 + 400 = 1000 >= scrollHeight - 30
+				Object.defineProperty(scrollArea, "scrollTop", { value: 600, configurable: true }); // 600 + 400 = 1000 >= scrollHeight - 35
 				scrollArea.dispatchEvent(new dom.window.Event("scroll"));
 			});
 			assert.ok(dialogLaunchBtn.className.includes("translate-y-0"), "Launch pill returns when reaching bottom of readme");
@@ -1314,6 +1328,84 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		} finally {
 			restoreModal();
 		}
+	}));
+
+	it("26. Pull-to-refresh, animated search results, and uncluttered top bar", withDom(async (dom) => {
+		let retryInvoked = false;
+		const root = createRoot(dom.document.getElementById("root")!);
+		const sampleMode: PluginModeMetadata = {
+			id: "interactive-quiz",
+			pluginId: "quiz-plugin",
+			name: "Interactive Quiz",
+			description: "Quiz yourself on concepts",
+			category: "General",
+			icon: "brain",
+		};
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={[sampleMode]}
+					plugins={[{ info: { id: "quiz-plugin", enabled: true }, phase: "active" }]}
+					modeRenderers={[{ pluginId: "quiz-plugin", modeId: "interactive-quiz" }]}
+					isLoading={false}
+					onRetry={async () => {
+						retryInvoked = true;
+					}}
+				/>
+			);
+		});
+
+		// 1. Verify top bar does not contain "mode · topic" count text
+		const titleEl = dom.document.querySelector('[data-testid="study-hub-title"]');
+		assert.ok(titleEl, "Title is present");
+		assert.ok(!titleEl.parentElement?.textContent?.includes("mode"), "Top bar does not render mode counts");
+		assert.ok(!titleEl.parentElement?.textContent?.includes("topic"), "Top bar does not render topic counts");
+
+		// 2. Verify search card has no scale or translate-y classes that collide with filter pills
+		const searchInput = dom.document.querySelector('[data-testid="study-hub-search-input"]') as HTMLInputElement;
+		assert.ok(searchInput, "Search input present");
+		const searchCard = searchInput.closest(".rounded-2xl") as HTMLDivElement;
+		assert.ok(searchCard, "Search card container present");
+		assert.ok(!searchCard.className.includes("scale-[1.01]"), "Search card has no scale collision");
+		assert.ok(!searchCard.className.includes("-translate-y-0.5"), "Search card has no translate-y collision");
+
+		// 3. Verify card entrance animation class
+		const card = dom.document.querySelector('[data-testid="study-hub-mode-card-quiz-plugin:interactive-quiz"]');
+		assert.ok(card, "Mode card rendered");
+		assert.ok(card.className.includes("study-hub-card-enter"), "Card has entrance animation class");
+
+		// 4. Verify pull-to-refresh indicator
+		const pullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
+		assert.ok(pullIndicator, "Pull indicator is present in DOM");
+		assert.equal(pullIndicator.getAttribute("aria-hidden"), "true", "Initially hidden");
+
+		// Simulate mouse drag down on the scroll container
+		const scrollContainer = pullIndicator.parentElement as HTMLDivElement;
+		assert.ok(scrollContainer, "Scroll container is present");
+
+		await act(async () => {
+			const downEvent = new dom.window.Event("mousedown", { bubbles: true });
+			Object.assign(downEvent, { clientY: 100, button: 0 });
+			scrollContainer.dispatchEvent(downEvent);
+		});
+
+		await act(async () => {
+			const moveEvent = new dom.window.Event("mousemove", { bubbles: true });
+			Object.assign(moveEvent, { clientY: 240 });
+			dom.window.dispatchEvent(moveEvent);
+		});
+
+		assert.equal(pullIndicator.getAttribute("aria-hidden"), "false", "Pull indicator becomes visible while pulling");
+		assert.ok(pullIndicator.style.height !== "0px" && pullIndicator.style.height !== "", "Indicator has positive height");
+
+		// Release mouse to trigger reload
+		await act(async () => {
+			const upEvent = new dom.window.Event("mouseup", { bubbles: true });
+			dom.window.dispatchEvent(upEvent);
+		});
+
+		assert.equal(retryInvoked, true, "Pull-to-refresh triggered onRetry callback");
 	}));
 });
 
