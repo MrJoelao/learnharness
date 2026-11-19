@@ -1354,9 +1354,18 @@ export function SessionsSidebar({
 				router.push("/archive");
 			}
 		};
+		const onToggleStudyHub = () => {
+			if (pathname?.startsWith("/study-hub")) {
+				router.push("/");
+			} else {
+				router.push("/study-hub");
+			}
+		};
 		window.addEventListener("lh:kbd-toggle-archive", onToggleArchive);
+		window.addEventListener("lh:kbd-toggle-study-hub", onToggleStudyHub);
 		return () => {
 			window.removeEventListener("lh:kbd-toggle-archive", onToggleArchive);
+			window.removeEventListener("lh:kbd-toggle-study-hub", onToggleStudyHub);
 		};
 	}, [pathname, router]);
 
@@ -1849,7 +1858,7 @@ export function SessionsSidebar({
 				</div>
 
 				<div className="px-2 py-0.5">
-					<Hint label="Study Hub" side="right">
+					<Hint label="Study Hub" action="toggle-study-hub" side="right">
 						<Link
 							href="/study-hub"
 							data-testid="study-hub-nav-button"

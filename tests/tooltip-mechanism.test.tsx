@@ -25,6 +25,7 @@ describe("hintText — the parenthesized composition", () => {
 		assert.equal(hintText("Dictate", "toggle-dictation"), IS_MAC ? "Dictate (⌘D)" : "Dictate (Ctrl+D)");
 		assert.equal(hintText("Settings", "open-settings"), IS_MAC ? "Settings (⌘,)" : "Settings (Ctrl+,)");
 		assert.equal(hintText("Search sessions", "sessions-search"), IS_MAC ? "Search sessions (⌘⇧F)" : "Search sessions (Ctrl+Shift+F)");
+		assert.equal(hintText("Study Hub", "toggle-study-hub"), IS_MAC ? "Study Hub (⌘⇧H)" : "Study Hub (Ctrl+Shift+H)");
 	});
 
 	it("surface-owned keys ride the binding prop (no registry entry)", () => {

@@ -24,6 +24,7 @@ describe("kbdEventForAction — the one spelling for action events", () => {
 	it("dispatch and listen names are the helper's output", () => {
 		assert.equal(kbdEventForAction("toggle-sidebar"), "lh:kbd-toggle-sidebar");
 		assert.equal(kbdEventForAction("sessions-search"), "lh:kbd-sessions-search");
+		assert.equal(kbdEventForAction("toggle-study-hub"), "lh:kbd-toggle-study-hub");
 	});
 
 	it("the dispatcher imports the same helper (no second spelling exists)", () => {
@@ -48,6 +49,13 @@ describe("the ⌘B chain — keypress → binding → action → event", () => {
 		const action = actionForBinding("mod+b");
 		assert.equal(action, "toggle-sidebar");
 		assert.equal(kbdEventForAction(action), "lh:kbd-toggle-sidebar");
+	});
+
+	it("mod+shift+h is the toggle-study-hub action", () => {
+		assert.equal(actionForBinding("mod+shift+h"), "toggle-study-hub");
+		assert.equal(bindingForAction("toggle-study-hub"), "mod+shift+h");
+		assert.equal(formatBinding("mod+shift+h"), IS_MAC ? "⌘⇧H" : "Ctrl+Shift+H");
+		assert.equal(kbdEventForAction("toggle-study-hub"), "lh:kbd-toggle-study-hub");
 	});
 });
 

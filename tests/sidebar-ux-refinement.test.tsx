@@ -61,6 +61,7 @@ describe("Sidebar UX Refinement Layout & Structural Contract", () => {
 			"content-width row styling matching Settings and Archive",
 		);
 		assert.ok(sidebarCode.includes('<Hint label="New session" action="new-session" side="right">'), "New session wrapped in right Hint tooltip");
+		assert.ok(sidebarCode.includes('<Hint label="Study Hub" action="toggle-study-hub" side="right">'), "Study Hub wrapped in right Hint tooltip");
 		assert.ok(sidebarCode.includes('<Hint label="Archive" action="toggle-archive" side="right">'), "Archive wrapped in right Hint tooltip");
 		assert.ok(sidebarCode.includes('<Hint label="Settings" action="open-settings" side="right">'), "Settings wrapped in right Hint tooltip");
 
