@@ -227,25 +227,57 @@ function StudyHubModeCard({
 				}
 			}}
 			className={cn(
-				"group relative rounded-xl border flex flex-col justify-between transition-colors duration-150 text-left overflow-hidden h-full study-hub-card-enter",
-				isPluginError
-					? "border-border/50 bg-card/50 opacity-75 cursor-default"
-					: isPluginDisabled
-						? "border-border/40 bg-card/50 opacity-75 cursor-default"
-						: isUnavailable
-							? "border-border/40 bg-card/60 opacity-75 cursor-default"
-							: isLaunching
-								? "border-foreground/30 bg-card shadow-xs cursor-wait"
-								: "border-border/60 bg-card hover:border-border hover:shadow-xs hover:bg-card/95 cursor-pointer",
+				"group relative rounded-xl border flex flex-col justify-between text-left overflow-hidden h-full study-hub-card-enter",
+				isUnavailable
+					? "border-border/60 bg-card cursor-default"
+					: isLaunching
+						? "border-foreground/30 bg-card shadow-xs cursor-wait"
+						: "border-border/60 bg-card hover:border-border hover:shadow-xs hover:bg-card/95 cursor-pointer transition-colors duration-150",
 			)}
 		>
+			{/* Whole-card semi-transparent dark overlay for inactive / error / disabled state */}
+			{isUnavailable && (
+				<div
+					data-testid="study-hub-card-unavailable-overlay"
+					className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4 bg-background/85 backdrop-blur-[2px] text-center select-none"
+				>
+					<div className="flex size-9 items-center justify-center rounded-xl border border-border/70 bg-muted/40 mb-2">
+						{isPluginError ? (
+							<AlertCircleIcon className="size-4.5 text-destructive" />
+						) : (
+							<AlertCircleIcon className="size-4.5 text-muted-foreground/80" />
+						)}
+					</div>
+					<p
+						data-testid={statusNotice?.testId}
+						className="text-xs font-semibold text-foreground tracking-tight"
+					>
+						{statusNotice?.text}
+					</p>
+					<p className="text-[11px] text-muted-foreground/80 mt-1 max-w-[210px] line-clamp-2 leading-relaxed">
+						{statusNotice?.title}
+					</p>
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							handleOpenReadme(mode);
+						}}
+						className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/80 hover:text-foreground bg-muted/40 hover:bg-muted/70 border border-border/50 rounded-md transition-colors cursor-pointer"
+					>
+						<BookOpenIcon className="size-3 text-muted-foreground/70" />
+						<span>Readme</span>
+					</button>
+				</div>
+			)}
+
 			{/* Subtle launching progress accent at top edge */}
 			{isLaunching && (
 				<div className="absolute top-0 inset-x-0 h-0.5 z-20 bg-gradient-to-r from-transparent via-foreground/50 to-transparent animate-pulse" />
 			)}
 
 			{/* Top Image Banner: Blueprint fallback or loaded image without overlay conflict */}
-			<div className={cn("relative w-full h-24 overflow-hidden border-b border-border/40 shrink-0 bg-[#090c14]", (isPluginError || isPluginDisabled) && "grayscale contrast-75 opacity-40")}>
+			<div className="relative w-full h-24 overflow-hidden border-b border-border/40 shrink-0 bg-[#090c14]">
 				{hasImage ? (
 					/* eslint-disable-next-line @next/next/no-img-element */
 					<img
@@ -342,46 +374,26 @@ function StudyHubModeCard({
 						handleLaunch(mode);
 					}}
 					disabled={isUnavailable || isLaunching}
-					aria-label={statusNotice ? statusNotice.text : `Launch ${mode.name}`}
-					title={statusNotice?.title}
+					aria-label={`Launch ${mode.name}`}
 					data-testid={`launch-mode-${modeKey}`}
 					className={cn(
-						"h-7 px-2.5 gap-1.5 shrink-0 ml-auto text-xs font-medium rounded-lg transition-colors border select-none",
+						"h-auto py-1 px-1.5 -mr-1.5 gap-1.5 shrink-0 ml-auto text-[11px] font-medium rounded-md transition-colors",
 						isLaunching
-							? "bg-muted/50 text-foreground animate-pulse cursor-wait border-border/40"
-							: isPluginError
-								? "border-border/50 bg-muted/20 text-muted-foreground cursor-not-allowed"
-								: isPluginDisabled
-									? "border-border/50 bg-muted/20 text-muted-foreground/70 cursor-not-allowed"
-									: !hasRenderer
-										? "border-border/50 bg-muted/20 text-muted-foreground/70 cursor-not-allowed"
-										: "border-transparent text-muted-foreground/80 hover:text-foreground hover:bg-muted/60 active:scale-[0.97] cursor-pointer"
+							? "text-muted-foreground cursor-wait"
+							: isUnavailable
+								? "text-muted-foreground/40 cursor-not-allowed pointer-events-none"
+								: "text-muted-foreground/70 hover:text-foreground hover:bg-muted/40 cursor-pointer"
 					)}
 				>
 					{isLaunching ? (
 						<>
 							<Loader2Icon className="size-3 animate-spin text-muted-foreground" />
-							<span className="text-[11px] tracking-tight">Launching...</span>
+							<span>Launching...</span>
 						</>
-					) : isPluginError ? (
-						<span data-testid="mode-plugin-error" className="inline-flex items-center gap-1.5">
-							<span className="size-1.5 rounded-full bg-destructive/80 shrink-0" />
-							<span className="text-[11px] font-normal text-muted-foreground">Plugin error</span>
-						</span>
-					) : isPluginDisabled ? (
-						<span data-testid="mode-plugin-disabled" className="inline-flex items-center gap-1.5">
-							<span className="size-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
-							<span className="text-[11px] font-normal text-muted-foreground/70">Plugin disabled</span>
-						</span>
-					) : !hasRenderer ? (
-						<span data-testid="mode-renderer-unavailable" className="inline-flex items-center gap-1.5">
-							<span className="size-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
-							<span className="text-[11px] font-normal text-muted-foreground/70">Renderer unavailable</span>
-						</span>
 					) : (
 						<>
 							<span>Launch</span>
-							<ArrowRightIcon className="size-3 text-muted-foreground/50 transition-all duration-200 ease-out hover:translate-x-0.5 hover:text-foreground" />
+							<ArrowRightIcon className="size-3 text-muted-foreground/60" />
 						</>
 					)}
 				</Button>
@@ -463,10 +475,12 @@ export function StudyHubCatalog({
 	const [pullDistance, setPullDistance] = useState(0);
 	const pullDistanceRef = useRef(0);
 	const [isPulling, setIsPulling] = useState(false);
+	const [isPullRefreshing, setIsPullRefreshing] = useState(false);
 	const dragStartYRef = useRef<number | null>(null);
 	const isDraggingRef = useRef(false);
 	const wasPullingRef = useRef(false);
 	const wheelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const pullRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
@@ -640,6 +654,17 @@ export function StudyHubCatalog({
 		});
 	};
 
+	const triggerPullRefresh = () => {
+		setIsPullRefreshing(true);
+		handleRetry();
+		if (pullRefreshTimeoutRef.current) {
+			clearTimeout(pullRefreshTimeoutRef.current);
+		}
+		pullRefreshTimeoutRef.current = setTimeout(() => {
+			setIsPullRefreshing(false);
+		}, 650);
+	};
+
 	// Progressive pull-to-refresh handlers
 	const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
 		if (e.button !== 0) return;
@@ -703,7 +728,7 @@ export function StudyHubCatalog({
 		pullDistanceRef.current = 0;
 		setPullDistance(0);
 		if (shouldRetry) {
-			handleRetry();
+			triggerPullRefresh();
 		}
 		setTimeout(() => {
 			wasPullingRef.current = false;
@@ -713,7 +738,7 @@ export function StudyHubCatalog({
 	const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
 		const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
 		if (scrollTop <= 0 && e.deltaY < 0 && !isRetrying && !isLoading) {
-			const step = Math.min(16, Math.abs(e.deltaY) * 0.12);
+			const step = Math.min(32, Math.abs(e.deltaY) * 0.18);
 			const next = Math.min(MAX_PULL_DISTANCE, pullDistanceRef.current + step);
 			pullDistanceRef.current = next;
 			setIsPulling(true);
@@ -721,6 +746,9 @@ export function StudyHubCatalog({
 
 			if (wheelTimeoutRef.current) {
 				clearTimeout(wheelTimeoutRef.current);
+			}
+			if (pullRefreshTimeoutRef.current) {
+				clearTimeout(pullRefreshTimeoutRef.current);
 			}
 
 			if (next >= PULL_THRESHOLD) {
@@ -730,9 +758,9 @@ export function StudyHubCatalog({
 					setPullDistance(0);
 					setIsPulling(false);
 					if (shouldRetry) {
-						handleRetry();
+						triggerPullRefresh();
 					}
-				}, 220);
+				}, 180);
 			} else {
 				wheelTimeoutRef.current = setTimeout(() => {
 					pullDistanceRef.current = 0;
@@ -746,6 +774,9 @@ export function StudyHubCatalog({
 			setIsPulling(false);
 			if (wheelTimeoutRef.current) {
 				clearTimeout(wheelTimeoutRef.current);
+			}
+			if (pullRefreshTimeoutRef.current) {
+				clearTimeout(pullRefreshTimeoutRef.current);
 			}
 		}
 	};
@@ -786,7 +817,7 @@ export function StudyHubCatalog({
 			pullDistanceRef.current = 0;
 			setPullDistance(0);
 			if (shouldRetry) {
-				handleRetry();
+				triggerPullRefresh();
 			}
 			setTimeout(() => {
 				wasPullingRef.current = false;
@@ -808,6 +839,9 @@ export function StudyHubCatalog({
 			window.removeEventListener("dragstart", handleDragStart);
 			if (wheelTimeoutRef.current) {
 				clearTimeout(wheelTimeoutRef.current);
+			}
+			if (pullRefreshTimeoutRef.current) {
+				clearTimeout(pullRefreshTimeoutRef.current);
 			}
 		};
 	}, [isRetrying, isLoading]);
@@ -963,15 +997,15 @@ export function StudyHubCatalog({
 				{/* Progressive Pull-To-Refresh Indicator */}
 				<div
 					data-testid="study-hub-pull-indicator"
-					aria-hidden={pullDistance === 0 && !isRetrying}
+					aria-hidden={pullDistance === 0 && !isRetrying && !isPullRefreshing}
 					className={cn(
 						"w-full flex justify-center pointer-events-none select-none transition-all",
 						isPulling ? "duration-75" : "duration-300 ease-out"
 					)}
 					style={{
-						height: isRetrying ? 52 : pullDistance > 0 ? pullDistance : 0,
-						opacity: isRetrying ? 1 : pullDistance > 0 ? Math.min(1, pullDistance / 10) : 0,
-						marginBottom: isRetrying ? 12 : pullDistance > 0 ? 8 : 0,
+						height: (isRetrying || isPullRefreshing) ? 52 : pullDistance > 0 ? pullDistance : 0,
+						opacity: (isRetrying || isPullRefreshing) ? 1 : pullDistance > 0 ? Math.min(1, pullDistance / 10) : 0,
+						marginBottom: (isRetrying || isPullRefreshing) ? 12 : pullDistance > 0 ? 8 : 0,
 					}}
 				>
 					<div
@@ -980,7 +1014,7 @@ export function StudyHubCatalog({
 							isPulling ? "duration-0" : "duration-200 ease-out"
 						)}
 						style={{
-							transform: `scale(${isRetrying ? 1 : Math.min(1, Math.max(0.6, pullDistance / 28))})`,
+							transform: `scale(${(isRetrying || isPullRefreshing) ? 1 : Math.min(1, Math.max(0.6, pullDistance / 28))})`,
 						}}
 					>
 						<svg className="size-6 text-muted-foreground/25" viewBox="0 0 24 24">
@@ -1000,7 +1034,7 @@ export function StudyHubCatalog({
 							/>
 						</svg>
 						<div className="absolute inset-0 flex items-center justify-center">
-							{isRetrying ? (
+							{(isRetrying || isPullRefreshing) ? (
 								<RefreshCwIcon className="size-4 text-primary animate-spin" />
 							) : (
 								<ArrowDownIcon

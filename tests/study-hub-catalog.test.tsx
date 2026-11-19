@@ -1465,9 +1465,9 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		// Sustained, intentional scroll past threshold triggers reload
 		await act(async () => {
-			for (let i = 0; i < 7; i++) {
+			for (let i = 0; i < 4; i++) {
 				const wheelEvent = new dom.window.Event("wheel", { bubbles: true });
-				Object.assign(wheelEvent, { deltaY: -150 });
+				Object.assign(wheelEvent, { deltaY: -200 });
 				wheelScrollContainer.dispatchEvent(wheelEvent);
 			}
 		});
@@ -1477,6 +1477,10 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		assert.equal(wheelRetryInvoked, true, "Sustained wheel pull triggered onRetry callback");
+
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 700));
+		});
 
 		// 5. Verify Popover animations when opening Topic and Difficulty
 		const sampleModesWithFilters: PluginModeMetadata[] = [
@@ -1536,6 +1540,10 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(readmeOption, "Readme option exists");
 		assert.ok(!readmeOption.className.includes("group-hover:text-foreground"), "Readme option does not highlight on whole-card group hover");
 
+		const normalLaunchBtn = normalCard.querySelector('button[data-testid="launch-mode-quiz-plugin:interactive-quiz"]') as HTMLButtonElement;
+		assert.ok(normalLaunchBtn, "Normal launch button exists");
+		assert.ok(normalLaunchBtn.className.includes("hover:bg-muted/40"), "Launch button has same hover style as readme");
+
 		// Render with an error plugin to verify whole-card error styling and unslop launch button slot
 		await act(async () => {
 			root.render(
@@ -1550,19 +1558,23 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		const errorCard = dom.document.querySelector('[data-testid="study-hub-mode-card-quiz-plugin:interactive-quiz"]') as HTMLDivElement;
 		assert.ok(errorCard, "Error card exists");
-		assert.ok(errorCard.className.includes("opacity-75"), "Error card has subdued opacity-75");
-		assert.ok(errorCard.className.includes("border-border/50"), "Error card has quiet neutral border");
+		assert.ok(errorCard.className.includes("border-border/60"), "Error card has quiet neutral border");
 		assert.ok(!errorCard.className.includes("border-destructive"), "No AI-slop neon destructive border");
 		assert.ok(!errorCard.className.includes("bg-destructive"), "No AI-slop pink background wash");
 		assert.equal(errorCard.querySelector('.bg-destructive\\/70'), null, "No AI-slop top accent line");
 
-		const banner = errorCard.querySelector('.grayscale') as HTMLDivElement;
-		assert.ok(banner, "Error card banner has grayscale offline treatment");
+		const overlay = errorCard.querySelector('[data-testid="study-hub-card-unavailable-overlay"]') as HTMLDivElement;
+		assert.ok(overlay, "Whole-card unavailable overlay rendered");
+		assert.ok(overlay.className.includes("bg-background/85"), "Overlay has dark semi-transparent glass style");
 
 		const errorPill = dom.document.querySelector('[data-testid="mode-plugin-error"]');
-		assert.ok(errorPill, "Unslop plugin error badge rendered in action slot");
-		assert.ok(errorPill?.querySelector('.bg-destructive\\/80'), "Plugin error semantic status dot is rendered");
+		assert.ok(errorPill, "Plugin error message rendered in central overlay");
 		assert.match(errorPill?.textContent || "", /Plugin error/i, "Plugin error text rendered");
+
+		const launchBtn = dom.document.querySelector('[data-testid="launch-mode-quiz-plugin:interactive-quiz"]') as HTMLButtonElement;
+		assert.ok(launchBtn, "Launch button exists underneath");
+		assert.equal(launchBtn.disabled, true, "Launch button disabled");
+		assert.ok(launchBtn.className.includes("cursor-not-allowed"), "Launch button has disabled cursor on error card");
 	}));
 });
 
