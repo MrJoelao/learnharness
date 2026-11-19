@@ -1406,7 +1406,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		assert.equal(retryInvoked, false, "Shallow pull did not trigger reload prematurely");
 
-		// 4b. Intentional pull past threshold (diff = 220 -> (220 - 8) * 0.45 = 95.4 >= 76)
+		// 4b. Intentional pull past threshold (diff = 350 -> (350 - 24) * 0.32 = 104.3 >= 100)
 		await act(async () => {
 			const downEvent = new dom.window.Event("mousedown", { bubbles: true });
 			Object.assign(downEvent, { clientY: 100, button: 0 });
@@ -1415,7 +1415,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		await act(async () => {
 			const moveEvent = new dom.window.Event("mousemove", { bubbles: true });
-			Object.assign(moveEvent, { clientY: 320 });
+			Object.assign(moveEvent, { clientY: 450 });
 			dom.window.dispatchEvent(moveEvent);
 		});
 
@@ -1429,7 +1429,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		assert.equal(retryInvoked, true, "Deliberate pull-to-refresh triggered onRetry callback");
 
-		// 4c. Test mouse wheel / trackpad scroll pull-to-refresh with intentional flick
+		// 4c. Test mouse wheel / trackpad scroll pull-to-refresh
 		let wheelRetryInvoked = false;
 		await act(async () => {
 			root.render(
@@ -1445,22 +1445,38 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			);
 		});
 
+		// A single accidental wheel flick does NOT trigger reload
 		const wheelPullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
 		const wheelScrollContainer = wheelPullIndicator.parentElement as HTMLDivElement;
-		const wheelEvent = new dom.window.Event("wheel", { bubbles: true });
-		Object.assign(wheelEvent, { deltaY: -250 });
+		const singleFlickEvent = new dom.window.Event("wheel", { bubbles: true });
+		Object.assign(singleFlickEvent, { deltaY: -200 });
 
 		await act(async () => {
-			wheelScrollContainer.dispatchEvent(wheelEvent);
+			wheelScrollContainer.dispatchEvent(singleFlickEvent);
 		});
 
 		assert.equal(wheelPullIndicator.getAttribute("aria-hidden"), "false", "Pull indicator visible via wheel pull");
 
 		await act(async () => {
+			await new Promise((r) => setTimeout(r, 280));
+		});
+
+		assert.equal(wheelRetryInvoked, false, "Single wheel flick does not prematurely trigger reload");
+
+		// Sustained, intentional scroll past threshold triggers reload
+		await act(async () => {
+			for (let i = 0; i < 7; i++) {
+				const wheelEvent = new dom.window.Event("wheel", { bubbles: true });
+				Object.assign(wheelEvent, { deltaY: -150 });
+				wheelScrollContainer.dispatchEvent(wheelEvent);
+			}
+		});
+
+		await act(async () => {
 			await new Promise((r) => setTimeout(r, 260));
 		});
 
-		assert.equal(wheelRetryInvoked, true, "Wheel pull triggered onRetry callback");
+		assert.equal(wheelRetryInvoked, true, "Sustained wheel pull triggered onRetry callback");
 
 		// 5. Verify Popover animations when opening Topic and Difficulty
 		const sampleModesWithFilters: PluginModeMetadata[] = [
@@ -1534,9 +1550,19 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		const errorCard = dom.document.querySelector('[data-testid="study-hub-mode-card-quiz-plugin:interactive-quiz"]') as HTMLDivElement;
 		assert.ok(errorCard, "Error card exists");
-		assert.ok(errorCard.className.includes("border-destructive/40"), "Error card has red border");
-		assert.ok(errorCard.className.includes("bg-destructive/[0.02]"), "Error card has red tinted background");
-		assert.ok(dom.document.querySelector('[data-testid="mode-plugin-error"]'), "Unslop plugin error badge rendered in action slot");
+		assert.ok(errorCard.className.includes("opacity-75"), "Error card has subdued opacity-75");
+		assert.ok(errorCard.className.includes("border-border/50"), "Error card has quiet neutral border");
+		assert.ok(!errorCard.className.includes("border-destructive"), "No AI-slop neon destructive border");
+		assert.ok(!errorCard.className.includes("bg-destructive"), "No AI-slop pink background wash");
+		assert.equal(errorCard.querySelector('.bg-destructive\\/70'), null, "No AI-slop top accent line");
+
+		const banner = errorCard.querySelector('.grayscale') as HTMLDivElement;
+		assert.ok(banner, "Error card banner has grayscale offline treatment");
+
+		const errorPill = dom.document.querySelector('[data-testid="mode-plugin-error"]');
+		assert.ok(errorPill, "Unslop plugin error badge rendered in action slot");
+		assert.ok(errorPill?.querySelector('.bg-destructive\\/80'), "Plugin error semantic status dot is rendered");
+		assert.match(errorPill?.textContent || "", /Plugin error/i, "Plugin error text rendered");
 	}));
 });
 
