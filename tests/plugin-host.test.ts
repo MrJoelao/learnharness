@@ -746,3 +746,12 @@ test("document conversion preserves ordinary conversion errors and host disposal
 	await f.host.dispose(); assert.equal(captured.aborted, true);
 	pending.resolve(documentResult); await rejected;
 });
+
+test("readme reads markdown file from plugin root or dist", async t => {
+	const f = fixture(t);
+	const dir = f.plugin("readme-test");
+	fs.writeFileSync(path.join(dir, "README.md"), "# Hello from Plugin");
+	await f.host.initialize();
+	assert.equal(f.host.readme("readme-test"), "# Hello from Plugin");
+	assert.throws(() => f.host.readme("non-existent"), status(404));
+});

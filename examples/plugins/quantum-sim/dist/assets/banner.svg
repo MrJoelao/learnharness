@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 280" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1120" />
+      <stop offset="50%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8" />
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#c084fc" stop-opacity="0.8" />
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="#1e293b" stroke-width="0.75" stroke-dasharray="2 4" />
+    </pattern>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="280" fill="url(#bg)" />
+  <rect width="800" height="280" fill="url(#grid)" opacity="0.6" />
+
+  <!-- Bloch Sphere Schematics on the right -->
+  <g transform="translate(620, 140)">
+    <circle r="75" fill="none" stroke="#334155" stroke-width="1.5" />
+    <ellipse rx="75" ry="24" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="3 3" opacity="0.6" />
+    <ellipse rx="24" ry="75" fill="none" stroke="#818cf8" stroke-width="1" stroke-dasharray="3 3" opacity="0.5" />
+    <!-- Axes -->
+    <line x1="0" y1="-85" x2="0" y2="85" stroke="#475569" stroke-width="1.5" />
+    <line x1="-85" y1="0" x2="85" y2="0" stroke="#475569" stroke-width="1.5" />
+    <!-- State Vector -->
+    <line x1="0" y1="0" x2="42" y2="-52" stroke="#38bdf8" stroke-width="2.5" />
+    <circle cx="42" cy="-52" r="5" fill="#38bdf8" />
+    <text x="50" y="-55" fill="#38bdf8" font-family="monospace" font-size="12" font-weight="bold">|ψ⟩</text>
+    <text x="-12" y="-92" fill="#94a3b8" font-family="monospace" font-size="11">|0⟩</text>
+    <text x="-12" y="100" fill="#94a3b8" font-family="monospace" font-size="11">|1⟩</text>
+  </g>
+
+  <!-- Quantum Circuit lines on the left / center -->
+  <g transform="translate(60, 50)">
+    <!-- Wire q[0] -->
+    <text x="0" y="45" fill="#94a3b8" font-family="monospace" font-size="13">|q₀⟩</text>
+    <line x1="45" y1="40" x2="450" y2="40" stroke="#334155" stroke-width="2" />
+    
+    <!-- Wire q[1] -->
+    <text x="0" y="125" fill="#94a3b8" font-family="monospace" font-size="13">|q₁⟩</text>
+    <line x1="45" y1="120" x2="450" y2="120" stroke="#334155" stroke-width="2" />
+
+    <!-- Wire q[2] -->
+    <text x="0" y="205" fill="#94a3b8" font-family="monospace" font-size="13">|q₂⟩</text>
+    <line x1="45" y1="200" x2="450" y2="200" stroke="#334155" stroke-width="2" />
+
+    <!-- Gate H on q0 -->
+    <rect x="90" y="22" width="36" height="36" rx="6" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+    <text x="101" y="46" fill="#e2e8f0" font-family="sans-serif" font-weight="bold" font-size="15">H</text>
+
+    <!-- CNOT between q0 and q1 -->
+    <line x1="180" y1="40" x2="180" y2="120" stroke="#818cf8" stroke-width="2" />
+    <circle cx="180" cy="40" r="4.5" fill="#818cf8" />
+    <circle cx="180" cy="120" r="12" fill="#0f172a" stroke="#818cf8" stroke-width="2" />
+    <line x1="172" y1="120" x2="188" y2="120" stroke="#818cf8" stroke-width="2" />
+    <line x1="180" y1="112" x2="180" y2="128" stroke="#818cf8" stroke-width="2" />
+
+    <!-- Gate X on q1 -->
+    <rect x="240" y="102" width="36" height="36" rx="6" fill="#1e293b" stroke="#c084fc" stroke-width="1.5" />
+    <text x="252" y="126" fill="#e2e8f0" font-family="sans-serif" font-weight="bold" font-size="15">X</text>
+
+    <!-- Gate Phase T on q0 -->
+    <rect x="240" y="22" width="36" height="36" rx="6" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+    <text x="253" y="46" fill="#e2e8f0" font-family="sans-serif" font-weight="bold" font-size="15">T</text>
+
+    <!-- Toffoli on q0, q1, q2 -->
+    <line x1="330" y1="40" x2="330" y2="200" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="330" cy="40" r="4.5" fill="#38bdf8" />
+    <circle cx="330" cy="120" r="4.5" fill="#38bdf8" />
+    <circle cx="330" cy="200" r="12" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <line x1="322" y1="200" x2="338" y2="200" stroke="#38bdf8" stroke-width="2" />
+    <line x1="330" y1="192" x2="330" y2="208" stroke="#38bdf8" stroke-width="2" />
+
+    <!-- Measurement symbol on q0 -->
+    <rect x="390" y="22" width="36" height="36" rx="6" fill="#1e293b" stroke="#64748b" stroke-width="1.5" />
+    <path d="M 398 50 A 10 10 0 0 1 418 50" fill="none" stroke="#94a3b8" stroke-width="1.5" />
+    <line x1="408" y1="50" x2="416" y2="34" stroke="#38bdf8" stroke-width="1.5" />
+  </g>
+</svg>

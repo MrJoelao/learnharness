@@ -8,10 +8,22 @@ continues to mean a static plugin page view.
 
 `PluginBackendContext.registerMode(definition)` admits a plugin-scoped mode definition.
 The required fields are `id`, `name`, `description`, `category`, and
-`initializeWorkspace`. `icon`, `tags`, `difficulty`, `activityType`, and `capabilities`
+`initializeWorkspace`. `icon`, `image`, `readme`, `tags`, `difficulty`, `activityType`, and `capabilities`
 are optional. IDs use 1–128 ASCII letters/digits/dot/underscore/hyphen characters and
 must start with a letter or digit. Display fields and lists have explicit size limits;
 list values are case-insensitively unique. Unknown properties are rejected.
+
+The optional `image` field specifies a relative path (1–500 characters) to an image asset
+within the plugin directory (such as `"assets/preview.png"` or `"preview.svg"`). When declared,
+the Study Hub catalog renders a 16:9 banner preview atop the mode card, served through
+the plugin asset endpoint (`/api/plugins/[id]/assets/...`). When omitted or missing, a clean
+technical icon fallback is displayed.
+
+The optional `readme` field specifies a relative path (1–500 characters) to a Markdown file
+containing detailed usage documentation. If omitted, the host automatically checks for
+`README.md` in the plugin root and distribution directories. In the Study Hub catalog,
+clicking a mode card opens an accessible dialog displaying the rendered README Markdown
+alongside mode metadata and a direct launch button.
 
 Registration returns an idempotent unregister callback and is tied to the backend
 activation. Duplicate mode IDs within one plugin or invalid definitions are rejected

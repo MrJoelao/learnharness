@@ -532,9 +532,13 @@ transactional. Write derived feature data to plugin state, never core learning f
 
 Modes extend Plugin API v1 additively. A backend declares each mode with
 `ctx.registerMode({ id, name, description, category, initializeWorkspace, ... })`.
-IDs are stable and scoped to the owning plugin. Metadata is validated and detached
+IDs are stable and scoped to the owning plugin. Optional fields include `icon`, `image`,
+`readme`, `tags`, `difficulty`, `activityType`, and `capabilities`. Metadata is validated and detached
 at registration; unknown properties, duplicate IDs, invalid lengths/tags and missing
-initializers fail that plugin's activation visibly. No mode configuration object is
+initializers fail that plugin's activation visibly. An optional `image` (e.g. `"assets/preview.svg"`)
+displays a 16:9 banner preview on the mode's Study Hub card. The mode card also supports opening
+a README documentation modal: specify `readme` as a relative path to Markdown, or place a standard
+`README.md` in the plugin root. No mode configuration object is
 accepted in this API version.
 
 The backend registration is authoritative for the catalog and every launch. The host

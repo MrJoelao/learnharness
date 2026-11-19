@@ -1225,5 +1225,95 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			restoreModal();
 		}
 	}));
+
+	it("25. Card renders image banner when defined, clicking card opens Readme dialog with markdown and metadata", withDom(async (dom) => {
+		const restoreModal = installModalDom(dom);
+		const modesWithImage: PluginModeMetadata[] = [
+			{
+				id: "viz-lab",
+				pluginId: "algo-tools",
+				name: "Visualization Lab",
+				description: "Algorithm steps visualized.",
+				category: "Algorithms",
+				icon: "Code",
+				image: "assets/preview.png",
+				readme: "# Visualization Lab\n\nDeep dive into tree rotations.",
+				difficulty: "intermediate",
+				activityType: "simulation",
+				tags: ["algorithms", "visual"],
+			},
+		];
+
+		const renderers = [{ pluginId: "algo-tools", modeId: "viz-lab" }];
+		const plugins = [{ info: { id: "algo-tools", enabled: true }, phase: "active" }];
+
+		try {
+			const root = createRoot(dom.document.getElementById("root")!);
+			let launchedMode: PluginModeMetadata | null = null;
+
+			await act(async () => {
+				root.render(
+					<InteractionLayersProvider>
+						<StudyHubCatalog
+							modes={modesWithImage}
+							modeRenderers={renderers}
+							plugins={plugins}
+							isLoading={false}
+							onLaunch={async (m) => {
+								launchedMode = m;
+							}}
+						/>
+					</InteractionLayersProvider>,
+				);
+			});
+
+			// Verify card rendered with image
+			const card = dom.document.querySelector('[data-testid="study-hub-mode-card-algo-tools:viz-lab"]');
+			assert.ok(card, "Card rendered");
+			const img = card.querySelector("img");
+			assert.ok(img, "Image rendered on card");
+			assert.ok(img.getAttribute("src")?.includes("/api/plugins/algo-tools/assets/preview.png"), "Image src resolved to plugin assets API");
+
+			// Click card to open Readme dialog
+			await act(async () => {
+				card.click();
+			});
+
+			const dialog = dom.document.querySelector('[data-testid="study-hub-readme-dialog"]');
+			assert.ok(dialog, "Readme modal dialog rendered");
+			assert.ok(dialog.textContent?.includes("Deep dive into tree rotations"), "Readme markdown rendered");
+
+			// Launch from dialog
+			const dialogLaunchBtn = dom.document.querySelector('[data-testid="study-hub-readme-launch-button"]') as HTMLButtonElement;
+			assert.ok(dialogLaunchBtn, "Dialog launch button present");
+			assert.ok(dialogLaunchBtn.className.includes("translate-y-0"), "Launch pill is visible on open");
+
+			// Scroll down hides pill
+			const scrollArea = dialog.querySelector(".overflow-y-auto") as HTMLDivElement;
+			assert.ok(scrollArea, "Scroll area found");
+			await act(async () => {
+				Object.defineProperty(scrollArea, "scrollHeight", { value: 1000, configurable: true });
+				Object.defineProperty(scrollArea, "clientHeight", { value: 400, configurable: true });
+				Object.defineProperty(scrollArea, "scrollTop", { value: 150, configurable: true });
+				scrollArea.dispatchEvent(new dom.window.Event("scroll"));
+			});
+			assert.ok(dialogLaunchBtn.className.includes("translate-y-14"), "Launch pill hides when scrolling down");
+
+			// Reaching bottom returns pill
+			await act(async () => {
+				Object.defineProperty(scrollArea, "scrollTop", { value: 600, configurable: true }); // 600 + 400 = 1000 >= scrollHeight - 30
+				scrollArea.dispatchEvent(new dom.window.Event("scroll"));
+			});
+			assert.ok(dialogLaunchBtn.className.includes("translate-y-0"), "Launch pill returns when reaching bottom of readme");
+
+			await act(async () => {
+				dialogLaunchBtn.click();
+			});
+
+			assert.equal((launchedMode as PluginModeMetadata | null)?.id, "viz-lab", "Mode launched via dialog");
+		} finally {
+			restoreModal();
+		}
+	}));
 });
 

@@ -135,10 +135,16 @@ Required:
 
 Optional:
 - `icon`
+- `image`
+- `readme`
 - `tags`
 - `difficulty`
 - `activityType`
 - `capabilities`
+
+Image & Readme Contract:
+- `image`: optional relative path (1–500 chars) pointing to an asset within the plugin directory (e.g. `"assets/preview.svg"` or `"preview.png"`). The Study Hub catalog resolves relative asset paths against `/api/plugins/[id]/assets/...` (or direct path if prefixed with `/`) and renders a 16:9 banner atop the mode card.
+- `readme`: optional relative path (1–500 chars) pointing to a Markdown file within the plugin directory. The server exposes `GET /api/plugins/[id]/readme`, which resolves `definition.readme`, `manifest.readme`, or root/dist `README.md`. In the Study Hub catalog, clicking the mode card opens an interactive documentation modal (`HostDialog` + `HostMarkdown`).
 
 Validation:
 - IDs are non-empty, bounded, stable and plugin-scoped.

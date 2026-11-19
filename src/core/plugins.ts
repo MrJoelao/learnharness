@@ -38,6 +38,10 @@ export interface PluginManifest {
 	/** Bundled Node CommonJS module. Node builtins are available. */
 	backend?: string;
 	styles?: string;
+	/** Optional preview image or banner for Study Hub catalog cards. */
+	image?: string;
+	/** Optional readme file path, defaults to README.md. */
+	readme?: string;
 }
 export interface PluginInfo {
 	id: string;
@@ -207,6 +211,10 @@ export interface PluginModeDefinition {
 	difficulty?: "beginner" | "intermediate" | "advanced";
 	activityType?: string;
 	capabilities?: string[];
+	/** Optional image or banner relative path or URL for the Study Hub card. */
+	image?: string;
+	/** Optional custom readme or extended markdown documentation for this mode. */
+	readme?: string;
 	initializeWorkspace(context: PluginWorkspaceCreateContext): void | Promise<void>;
 }
 export interface PluginModeMetadata extends Omit<PluginModeDefinition, "initializeWorkspace"> {
@@ -439,7 +447,7 @@ export function parsePluginManifest(value: unknown, folder: string, appVersion: 
 		if (actual[i]! > required[i]!) break;
 		if (actual[i]! < required[i]!) throw new Error(`Requires LearnHarness ${m.minAppVersion} or newer`);
 	}
-	for (const key of ["description", "author"] as const) {
+	for (const key of ["description", "author", "image", "readme"] as const) {
 		if (m[key] !== undefined && typeof m[key] !== "string") throw new Error(`Manifest ${key} must be a string`);
 	}
 	for (const [key, ext] of [["main", ".js"], ["backend", ".cjs"], ["styles", ".css"]] as const) {
@@ -449,5 +457,6 @@ export function parsePluginManifest(value: unknown, folder: string, appVersion: 
 	if (m.styles && !m.main) throw new Error("styles requires a frontend main entry");
 	return { apiVersion: 1, id: folder, name: m.name as string, version: m.version as string, minAppVersion: m.minAppVersion as string,
 		...(m.description !== undefined ? { description: m.description as string } : {}), ...(m.author !== undefined ? { author: m.author as string } : {}),
+		...(m.image !== undefined ? { image: m.image as string } : {}), ...(m.readme !== undefined ? { readme: m.readme as string } : {}),
 		...(m.main ? { main: m.main as string } : {}), ...(m.backend ? { backend: m.backend as string } : {}), ...(m.styles ? { styles: m.styles as string } : {}) };
 }

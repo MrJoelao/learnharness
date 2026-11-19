@@ -112,6 +112,8 @@ describe("Study Hub Phase 4: Sidebar, Archive, and Workspace UX", () => {
 		assert.ok(html.includes('data-testid="new-menu-trigger"'), "New session trigger must exist");
 		assert.ok(html.includes('data-testid="study-hub-nav-button"'), "Study Hub nav button must exist");
 		assert.ok(html.includes('href="/study-hub"'), "Study Hub link href must be /study-hub");
+		assert.ok(html.includes("w-fit"), "Study Hub button must use w-fit so hover does not span full sidebar width");
+		assert.ok(html.includes("inline-flex"), "Study Hub button must use inline-flex");
 
 		// Verify order: New session comes before Study Hub, which comes before the divider & Archive
 		const newSessionIndex = html.indexOf('data-testid="new-menu-trigger"');

@@ -920,7 +920,7 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			if (!pkg.info.enabled || pkg.info.status !== "active" || !manifest || pkg.blocked) throw new PluginHostError(409, "Plugin assets are disabled or unavailable");
 			if (!segments.length || !segments.every(safeSegment)) throw new PluginHostError(400, "Invalid plugin asset path");
 			const file = segments.join("/");
-			if (!(segments.length === 1 && (file === manifest.main || file === manifest.styles)) && !(segments.length > 1 && segments[0] === "assets")) throw new PluginHostError(404, "Plugin asset is not allowlisted");
+			if (!(segments.length === 1 && (file === manifest.main || file === manifest.styles || (manifest.image && file === manifest.image))) && !(segments.length > 1 && segments[0] === "assets")) throw new PluginHostError(404, "Plugin asset is not allowlisted");
 			if (segments.some(s => s === "data") || file === manifest.backend) throw new PluginHostError(404, "Private plugin file");
 			try {
 				if (pkg.info.origin === "core") pluginRoot(core!.directory);
@@ -929,6 +929,27 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			const bytes = pkg.files.get(file);
 			if (!bytes) throw new PluginHostError(404, "Unknown plugin asset");
 			return { bytes: Uint8Array.from(bytes), contentType: mimeTypes[path.extname(file).toLowerCase()] ?? "application/octet-stream" };
+		},
+		readme(id: string): string | null {
+			assertOpen();
+			const pkg = packages.get(id);
+			if (!pkg) throw new PluginHostError(404, "Plugin not found");
+			const candidates = [
+				pkg.info.manifest?.readme ? path.join(pkg.rootDirectory, pkg.info.manifest.readme) : null,
+				path.join(pkg.rootDirectory, "README.md"),
+				path.join(pkg.directory, "README.md"),
+				path.join(pkg.rootDirectory, "readme.md"),
+				path.join(pkg.directory, "readme.md"),
+			].filter(Boolean) as string[];
+
+			for (const file of candidates) {
+				try {
+					if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+						return fs.readFileSync(file, "utf8");
+					}
+				} catch {}
+			}
+			return null;
 		},
 		dispose(): Promise<void> {
 			if (disposing) return disposing;

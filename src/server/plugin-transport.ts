@@ -20,6 +20,7 @@ export interface PluginTransportHost {
 	call(id: string, operation: string, input: unknown): Promise<unknown>;
 	convertDocument(id: string, request: Request): ReturnType<PluginFrontendContext["documents"]["toMarkdown"]>;
 	asset(id: string, segments: string[]): { bytes: Uint8Array; contentType: string };
+	readme?(id: string): string | null;
 }
 class InputError extends Error {}
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -110,6 +111,11 @@ export function createPluginTransport(deps: { getHost(): Promise<PluginTransport
 		asset: (id: string, segments: string[]) => guarded(async () => {
 			const { bytes, contentType } = (await deps.getHost()).asset(id, segments);
 			return new Response(new Uint8Array(bytes), { headers: { "Content-Type": contentType, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
+		}),
+		readme: (id: string) => guarded(async () => {
+			const host = await deps.getHost();
+			if (!host.readme) return json({ readme: null });
+			return json({ readme: host.readme(id) });
 		}),
 	};
 }

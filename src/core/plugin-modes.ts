@@ -19,7 +19,7 @@ function stringList(value: unknown, field: string, maxItems: number, maxLength: 
 /** Validate and detach metadata before it enters a catalog or lifecycle map. */
 export function preparePluginMode(definition: PluginModeDefinition, pluginId: string): { metadata: PluginModeMetadata; initializeWorkspace: PluginModeDefinition["initializeWorkspace"] } {
 	if (!definition || typeof definition !== "object" || Array.isArray(definition)) throw new Error("Mode definition must be an object");
-	const allowed = new Set(["id", "name", "description", "category", "icon", "tags", "difficulty", "activityType", "capabilities", "initializeWorkspace"]);
+	const allowed = new Set(["id", "name", "description", "category", "icon", "tags", "difficulty", "activityType", "capabilities", "image", "readme", "initializeWorkspace"]);
 	if (Object.keys(definition).some(key => !allowed.has(key))) throw new Error("Mode definition contains an unsupported property");
 	if (typeof definition.id !== "string" || !PLUGIN_MODE_ID_PATTERN.test(definition.id)) throw new Error("Mode id must be a stable 1–128 character route-safe identifier");
 	const name = boundedText(definition.name, "name", 100)!;
@@ -30,6 +30,8 @@ export function preparePluginMode(definition: PluginModeDefinition, pluginId: st
 	const tags = stringList(definition.tags, "tags", 20, 40);
 	const capabilities = stringList(definition.capabilities, "capabilities", 20, 80);
 	const activityType = boundedText(definition.activityType, "activityType", 80, true);
+	const image = boundedText(definition.image, "image", 500, true);
+	const readme = typeof definition.readme === "string" && definition.readme.trim() ? definition.readme.trim() : undefined;
 	if (definition.difficulty !== undefined && !["beginner", "intermediate", "advanced"].includes(definition.difficulty)) throw new Error("Mode difficulty must be beginner, intermediate or advanced");
 	if (typeof definition.initializeWorkspace !== "function") throw new Error("Mode initializeWorkspace must be a function");
 	const metadata: PluginModeMetadata = Object.freeze({
@@ -38,6 +40,8 @@ export function preparePluginMode(definition: PluginModeDefinition, pluginId: st
 		...(definition.difficulty === undefined ? {} : { difficulty: definition.difficulty }),
 		...(activityType === undefined ? {} : { activityType }),
 		...(capabilities === undefined ? {} : { capabilities: Object.freeze(capabilities) as unknown as string[] }),
+		...(image === undefined ? {} : { image }),
+		...(readme === undefined ? {} : { readme }),
 	});
 	return { metadata, initializeWorkspace: definition.initializeWorkspace.bind(definition) };
 }

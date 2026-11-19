@@ -36,22 +36,23 @@ Do not create separate `Workspaces`, `Modes` or `Labs` sidebar sections. Do not 
 
 Study Hub is a catalog and launcher.
 
-### Header
+### Header & Toolbar
 - Title: Study Hub.
 - Short description explaining that the learner can open interactive learning tools.
-- Search field.
-- Lightweight category/topic filters.
+- Toolbar: full fluid width matching the card grid, containing a search input (`flex-1`), category/difficulty pill filters, and an icon-only Refresh button (`RefreshCwIcon`) with accessible tooltip and screen-reader label.
 
 ### Mode cards/list items
-Each mode should display:
-- Icon.
-- Name.
+Each mode card displays:
+- Top 16:9 image banner when defined by the mode (e.g. `assets/preview.png`), or a clean fallback container with the mode's technical icon.
+- Mode identity: Icon, Name, Category.
 - One-sentence description.
-- Optional category/tags.
-- Optional difficulty/activity label only if it adds real decision value.
-- Clear launch action.
+- Optional difficulty level, activity type, and tag chips.
+- Clear launch action button.
 
-Avoid overloading cards with metadata. Search and filters should remain secondary to the mode name and description.
+Interactive documentation:
+- The entire card is clickable (`role="button"`, keyboard navigable via Enter/Space), opening an accessible documentation modal (`HostDialog`).
+- The modal renders the mode's complete `README.md` (or custom markdown file via `readme` property) using `HostMarkdown`, alongside mode metadata and a direct Launch action.
+- Child button clicks (like the direct "Launch" button) isolate event propagation to prevent unintended modal opening.
 
 ### States
 - Loading: stable skeleton or concise loading state.

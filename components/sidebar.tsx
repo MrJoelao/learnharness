@@ -1855,7 +1855,7 @@ export function SessionsSidebar({
 							data-testid="study-hub-nav-button"
 							aria-label="Study Hub"
 							className={cn(
-								"flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer",
+								"inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer",
 								pathname?.startsWith("/study-hub") && "bg-accent text-foreground font-semibold",
 							)}
 						>

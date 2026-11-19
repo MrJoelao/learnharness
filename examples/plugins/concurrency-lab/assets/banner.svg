@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" width="640" height="360" fill="none">
+  <defs>
+    <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+      <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#1e2430" stroke-width="0.75" stroke-opacity="0.6"/>
+    </pattern>
+    <linearGradient id="laneFade" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#141822"/>
+      <stop offset="100%" stop-color="#181e2b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="640" height="360" fill="#0d1117"/>
+  <rect width="640" height="360" fill="url(#grid)"/>
+
+  <!-- Subtle vignette / border -->
+  <rect x="0.5" y="0.5" width="639" height="359" fill="none" stroke="#252d3d" stroke-width="1"/>
+
+  <!-- Top bar / badge -->
+  <rect x="32" y="28" width="140" height="22" rx="4" fill="#161c26" stroke="#2a3547" stroke-width="1"/>
+  <circle cx="44" cy="39" r="4" fill="#3b82f6"/>
+  <text x="56" y="43" fill="#94a3b8" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" font-weight="500">OSTEP §31 · LAB</text>
+
+  <!-- Title & Mode Name -->
+  <text x="32" y="76" fill="#f1f5f9" font-family="ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="20" font-weight="600" letter-spacing="-0.02em">Concurrency &amp; Synchronization</text>
+  <text x="32" y="96" fill="#64748b" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12">Deterministic thread scheduling, semaphores and lock inspection</text>
+
+  <!-- Timeline schematic container -->
+  <rect x="32" y="118" width="576" height="210" rx="8" fill="url(#laneFade)" stroke="#222b3a" stroke-width="1"/>
+
+  <!-- Time axis markings -->
+  <line x1="160" y1="126" x2="160" y2="318" stroke="#1e2636" stroke-dasharray="3 3"/>
+  <line x1="280" y1="126" x2="280" y2="318" stroke="#1e2636" stroke-dasharray="3 3"/>
+  <line x1="400" y1="126" x2="400" y2="318" stroke="#1e2636" stroke-dasharray="3 3"/>
+  <line x1="520" y1="126" x2="520" y2="318" stroke="#1e2636" stroke-dasharray="3 3"/>
+
+  <!-- Lane 1: Thread 0 (Producer) -->
+  <text x="48" y="162" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="11" font-weight="600">Thread 0</text>
+  <text x="48" y="176" fill="#475569" font-family="ui-sans-serif, sans-serif" font-size="10">producer</text>
+  <line x1="128" y1="166" x2="588" y2="166" stroke="#263143" stroke-width="2"/>
+  <!-- Execution slice T0 -->
+  <rect x="140" y="152" width="110" height="28" rx="4" fill="#1e293b" stroke="#3b82f6" stroke-width="1.25"/>
+  <text x="150" y="170" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="11">sem_wait(&amp;empty)</text>
+
+  <rect x="290" y="152" width="100" height="28" rx="4" fill="#1e293b" stroke="#60a5fa" stroke-width="1"/>
+  <text x="300" y="170" fill="#bfdbfe" font-family="ui-monospace, monospace" font-size="11">put(buffer[i])</text>
+
+  <rect x="430" y="152" width="105" height="28" rx="4" fill="#1e293b" stroke="#3b82f6" stroke-width="1"/>
+  <text x="440" y="170" fill="#93c5fd" font-family="ui-monospace, monospace" font-size="11">sem_post(&amp;full)</text>
+
+  <!-- Lane 2: Mutex / Semaphore -->
+  <text x="48" y="222" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="11" font-weight="600">Mutex</text>
+  <text x="48" y="236" fill="#475569" font-family="ui-sans-serif, sans-serif" font-size="10">value = 1</text>
+  <line x1="128" y1="226" x2="588" y2="226" stroke="#263143" stroke-width="2"/>
+  <rect x="270" y="214" width="140" height="24" rx="4" fill="#172554" stroke="#2563eb" stroke-width="1"/>
+  <text x="282" y="230" fill="#60a5fa" font-family="ui-monospace, monospace" font-size="10" font-weight="500">LOCKED (Thread 0)</text>
+
+  <!-- Lane 3: Thread 1 (Consumer) -->
+  <text x="48" y="282" fill="#94a3b8" font-family="ui-monospace, monospace" font-size="11" font-weight="600">Thread 1</text>
+  <text x="48" y="296" fill="#475569" font-family="ui-sans-serif, sans-serif" font-size="10">consumer</text>
+  <line x1="128" y1="286" x2="588" y2="286" stroke="#263143" stroke-width="2"/>
+  <!-- Blocked wait state -->
+  <rect x="180" y="272" width="90" height="28" rx="4" fill="#1c1917" stroke="#78350f" stroke-width="1" stroke-dasharray="3 2"/>
+  <text x="194" y="290" fill="#d97706" font-family="ui-monospace, monospace" font-size="11">blocked ⏳</text>
+
+  <!-- Execution slice T1 -->
+  <rect x="470" y="272" width="105" height="28" rx="4" fill="#1e293b" stroke="#10b981" stroke-width="1"/>
+  <text x="482" y="290" fill="#6ee7b7" font-family="ui-monospace, monospace" font-size="11">get() → 0x2A</text>
+
+  <!-- Sync Arrow from T0 post to T1 unblock -->
+  <path d="M 482 180 L 482 230 L 510 270" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="2 2" fill="none"/>
+</svg>

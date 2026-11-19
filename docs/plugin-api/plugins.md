@@ -1633,6 +1633,8 @@ export interface PluginManifest {
     main?: string;
     backend?: string;
     styles?: string;
+    image?: string;
+    readme?: string;
 }
 ```
 
@@ -1648,6 +1650,8 @@ export interface PluginManifest {
 - [main](#pluginmanifest-main)
 - [backend](#pluginmanifest-backend)
 - [styles](#pluginmanifest-styles)
+- [image](#pluginmanifest-image)
+- [readme](#pluginmanifest-readme)
 
 ### PluginManifest apiVersion
 
@@ -1713,6 +1717,22 @@ backend?: string;
 styles?: string;
 ```
 
+### PluginManifest image
+
+Optional preview image or banner for Study Hub catalog cards.
+
+```ts
+image?: string;
+```
+
+### PluginManifest readme
+
+Optional readme file path, defaults to README.md.
+
+```ts
+readme?: string;
+```
+
 ## PluginModeDefinition
 
 Public SDK type, exported as `PluginModeDefinition`. Import with `import type`; the SDK has no runtime exports.
@@ -1731,6 +1751,8 @@ export interface PluginModeDefinition {
     difficulty?: "beginner" | "intermediate" | "advanced";
     activityType?: string;
     capabilities?: string[];
+    image?: string;
+    readme?: string;
     initializeWorkspace(context: PluginWorkspaceCreateContext): void | Promise<void>;
 }
 ```
@@ -1748,6 +1770,8 @@ export interface PluginModeDefinition {
 - [difficulty](#pluginmodedefinition-difficulty)
 - [activityType](#pluginmodedefinition-activitytype)
 - [capabilities](#pluginmodedefinition-capabilities)
+- [image](#pluginmodedefinition-image)
+- [readme](#pluginmodedefinition-readme)
 - [initializeWorkspace](#pluginmodedefinition-initializeworkspace)
 
 ### PluginModeDefinition id
@@ -1802,6 +1826,22 @@ activityType?: string;
 
 ```ts
 capabilities?: string[];
+```
+
+### PluginModeDefinition image
+
+Optional image or banner relative path or URL for the Study Hub card.
+
+```ts
+image?: string;
+```
+
+### PluginModeDefinition readme
+
+Optional custom readme or extended markdown documentation for this mode.
+
+```ts
+readme?: string;
 ```
 
 ### PluginModeDefinition initializeWorkspace

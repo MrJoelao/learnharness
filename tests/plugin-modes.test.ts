@@ -14,6 +14,9 @@ it("validates and detaches backend mode metadata", () => {
 	const parsed = preparePluginMode(definition, "modes");
 	assert.equal(parsed.metadata.name, "Lab");
 	assert.deepEqual(parsed.metadata.tags, ["Recall"]);
+	const withImage = preparePluginMode({ ...definition, image: "assets/banner.png", readme: "# My Readme" }, "modes");
+	assert.equal(withImage.metadata.image, "assets/banner.png");
+	assert.equal(withImage.metadata.readme, "# My Readme");
 	const invalidDefinitions: unknown[] = [
 		{ ...definition, id: "../bad" },
 		{ ...definition, description: "" },
