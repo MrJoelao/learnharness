@@ -1287,8 +1287,8 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			const dialogLaunchBtn = dom.document.querySelector('[data-testid="study-hub-readme-launch-button"]') as HTMLButtonElement;
 			assert.ok(dialogLaunchBtn, "Dialog launch button present");
 			assert.ok(dialogLaunchBtn.className.includes("translate-y-0"), "Launch pill is visible on open");
-			assert.ok(dialogLaunchBtn.className.includes("delay-150"), "Launch pill has delay-150 for natural movement");
-			assert.ok(dialogLaunchBtn.className.includes("duration-500"), "Launch pill has duration-500 for smooth transition");
+			assert.ok(dialogLaunchBtn.className.includes("delay-75"), "Launch pill has delay-75 for natural movement");
+			assert.ok(dialogLaunchBtn.className.includes("duration-300"), "Launch pill has duration-300 for smooth transition");
 
 			// Scroll down into middle hides pill
 			const scrollArea = dialog.querySelector(".overflow-y-auto") as HTMLDivElement;
