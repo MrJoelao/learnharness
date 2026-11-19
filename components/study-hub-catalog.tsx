@@ -227,21 +227,27 @@ function StudyHubModeCard({
 				}
 			}}
 			className={cn(
-				"group relative rounded-xl border bg-card flex flex-col justify-between transition-all duration-200 cursor-pointer text-left overflow-hidden h-full study-hub-card-enter",
-				isUnavailable
-					? "border-border/40 opacity-75"
-					: isLaunching
-						? "border-foreground/30 shadow-xs"
-						: "border-border/60 hover:border-border hover:shadow-xs hover:bg-card/95",
+				"group relative rounded-xl border flex flex-col justify-between transition-all duration-200 cursor-pointer text-left overflow-hidden h-full study-hub-card-enter",
+				isPluginError
+					? "border-destructive/40 bg-destructive/[0.02] shadow-xs hover:border-destructive/60 hover:bg-destructive/[0.04]"
+					: isPluginDisabled
+						? "border-border/40 opacity-75 bg-card/60"
+						: isUnavailable
+							? "border-border/40 opacity-75 bg-card/70"
+							: isLaunching
+								? "border-foreground/30 shadow-xs bg-card"
+								: "border-border/60 hover:border-border hover:shadow-xs hover:bg-card/95 bg-card",
 			)}
 		>
-			{/* Subtle launching progress accent at top edge */}
-			{isLaunching && (
+			{/* Accent line: error indication or launching progress */}
+			{isPluginError ? (
+				<div className="absolute top-0 inset-x-0 h-0.5 z-20 bg-destructive/70" />
+			) : isLaunching ? (
 				<div className="absolute top-0 inset-x-0 h-0.5 z-20 bg-gradient-to-r from-transparent via-foreground/50 to-transparent animate-pulse" />
-			)}
+			) : null}
 
 			{/* Top Image Banner: Blueprint fallback or loaded image without overlay conflict */}
-			<div className="relative w-full h-24 overflow-hidden border-b border-border/40 shrink-0 bg-[#090c14]">
+			<div className={cn("relative w-full h-24 overflow-hidden border-b border-border/40 shrink-0 bg-[#090c14]", isPluginError && "grayscale-[35%]")}>
 				{hasImage ? (
 					/* eslint-disable-next-line @next/next/no-img-element */
 					<img
@@ -260,7 +266,12 @@ function StudyHubModeCard({
 				<div className="space-y-1.5">
 					{/* Mode Header */}
 					<div className="flex items-start gap-2.5">
-						<div className="flex size-7 items-center justify-center rounded-lg border border-border/40 bg-muted/25 text-foreground shrink-0 transition-colors group-hover:border-border/70 group-hover:bg-muted/40 mt-0.5">
+						<div className={cn(
+							"flex size-7 items-center justify-center rounded-lg border shrink-0 transition-colors mt-0.5",
+							isPluginError
+								? "border-destructive/30 bg-destructive/10 text-destructive"
+								: "border-border/40 bg-muted/25 text-foreground group-hover:border-border/70 group-hover:bg-muted/40"
+						)}>
 							<IconComponent className="size-3.5 stroke-[1.5]" />
 						</div>
 						<div className="min-w-0 flex-1">
@@ -317,27 +328,16 @@ function StudyHubModeCard({
 
 			{/* Bottom Action Row: Uniform height pinned at bottom */}
 			<div className="h-10 px-3.5 sm:px-4 border-t border-border/40 flex items-center justify-between gap-2 mt-auto bg-muted/10 shrink-0">
-				{statusNotice ? (
-					<span
-						data-testid={statusNotice.testId}
-						title={statusNotice.title}
-						className={cn(
-							"text-[10px] font-medium rounded px-1.5 py-0.5 truncate border",
-							isPluginDisabled
-								? "text-amber-500 bg-amber-500/10 border-amber-500/20"
-								: isPluginError
-									? "text-destructive bg-destructive/10 border-destructive/20"
-									: "text-muted-foreground bg-muted/50 border-border/40",
-						)}
-					>
-						{statusNotice.text}
-					</span>
-				) : (
-					<span className="text-[11px] text-muted-foreground/70 group-hover:text-foreground transition-colors flex items-center gap-1.5 font-medium">
-						<BookOpenIcon className="size-3 text-muted-foreground/60" />
-						<span>Readme</span>
-					</span>
-				)}
+				<span
+					onClick={(e) => {
+						e.stopPropagation();
+						handleOpenReadme(mode);
+					}}
+					className="text-[11px] text-muted-foreground/70 hover:text-foreground transition-colors flex items-center gap-1.5 font-medium py-1 px-1.5 -ml-1.5 rounded-md hover:bg-muted/40 cursor-pointer"
+				>
+					<BookOpenIcon className="size-3 text-muted-foreground/60" />
+					<span>Readme</span>
+				</span>
 
 				<Button
 					variant="ghost"
@@ -349,15 +349,20 @@ function StudyHubModeCard({
 						handleLaunch(mode);
 					}}
 					disabled={isUnavailable || isLaunching}
-					aria-label={`Launch ${mode.name}`}
+					aria-label={statusNotice ? statusNotice.text : `Launch ${mode.name}`}
+					title={statusNotice?.title}
 					data-testid={`launch-mode-${modeKey}`}
 					className={cn(
-						"h-7 px-2.5 gap-1.5 cursor-pointer shrink-0 ml-auto text-xs font-medium rounded-lg transition-all duration-200 active:scale-[0.97]",
+						"h-7 px-2.5 gap-1.5 shrink-0 ml-auto text-xs font-medium rounded-lg transition-all duration-200",
 						isLaunching
 							? "bg-muted/50 text-foreground animate-pulse cursor-wait"
-							: isUnavailable
-								? "text-muted-foreground/40 opacity-50 pointer-events-none"
-								: "text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 group-hover:text-foreground group-hover:bg-muted/30"
+							: isPluginError
+								? "border border-destructive/30 bg-destructive/5 text-destructive cursor-not-allowed opacity-90"
+								: isPluginDisabled
+									? "border border-border/50 bg-muted/30 text-muted-foreground/70 cursor-not-allowed opacity-75"
+									: !hasRenderer
+										? "border border-border/50 bg-muted/30 text-muted-foreground/70 cursor-not-allowed opacity-75"
+										: "text-muted-foreground/80 hover:text-foreground hover:bg-muted/60 active:scale-[0.97] cursor-pointer"
 					)}
 				>
 					{isLaunching ? (
@@ -365,10 +370,25 @@ function StudyHubModeCard({
 							<Loader2Icon className="size-3 animate-spin text-muted-foreground" />
 							<span className="text-[11px] tracking-tight">Launching...</span>
 						</>
+					) : isPluginError ? (
+						<span data-testid="mode-plugin-error" className="inline-flex items-center gap-1.5">
+							<AlertCircleIcon className="size-3 text-destructive shrink-0" />
+							<span>Plugin Error</span>
+						</span>
+					) : isPluginDisabled ? (
+						<span data-testid="mode-plugin-disabled" className="inline-flex items-center gap-1.5">
+							<span className="size-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+							<span>Plugin Disabled</span>
+						</span>
+					) : !hasRenderer ? (
+						<span data-testid="mode-renderer-unavailable" className="inline-flex items-center gap-1.5">
+							<span className="size-1.5 rounded-full bg-muted-foreground/40 shrink-0" />
+							<span>Renderer Unavailable</span>
+						</span>
 					) : (
 						<>
 							<span>Launch</span>
-							<ArrowRightIcon className="size-3 text-muted-foreground/50 transition-all duration-200 ease-out group-hover:translate-x-0.5 group-hover:text-foreground" />
+							<ArrowRightIcon className="size-3 text-muted-foreground/50 transition-all duration-200 ease-out hover:translate-x-0.5 hover:text-foreground" />
 						</>
 					)}
 				</Button>
@@ -663,10 +683,10 @@ export function StudyHubCatalog({
 		}
 		const currentY = touch.clientY;
 		const diff = currentY - dragStartYRef.current;
-		if (diff > 0) {
+		if (diff > 8) {
 			setIsPulling(true);
-			if (diff > 6) wasPullingRef.current = true;
-			const distance = Math.min(80, diff * 0.7);
+			if (diff > 12) wasPullingRef.current = true;
+			const distance = Math.min(96, (diff - 8) * 0.45);
 			pullDistanceRef.current = distance;
 			setPullDistance(distance);
 		} else {
@@ -681,7 +701,7 @@ export function StudyHubCatalog({
 		isDraggingRef.current = false;
 		setIsPulling(false);
 		dragStartYRef.current = null;
-		const shouldRetry = pullDistanceRef.current >= 48 && !isRetrying && !isLoading;
+		const shouldRetry = pullDistanceRef.current >= 76 && !isRetrying && !isLoading;
 		pullDistanceRef.current = 0;
 		setPullDistance(0);
 		if (shouldRetry) {
@@ -695,8 +715,8 @@ export function StudyHubCatalog({
 	const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
 		const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
 		if (scrollTop <= 0 && e.deltaY < 0 && !isRetrying && !isLoading) {
-			const step = Math.min(80, Math.abs(e.deltaY) * 0.45);
-			const next = Math.min(80, pullDistanceRef.current + step);
+			const step = Math.min(80, Math.abs(e.deltaY) * 0.35);
+			const next = Math.min(96, pullDistanceRef.current + step);
 			pullDistanceRef.current = next;
 			setIsPulling(true);
 			setPullDistance(next);
@@ -705,9 +725,9 @@ export function StudyHubCatalog({
 				clearTimeout(wheelTimeoutRef.current);
 			}
 
-			if (next >= 48) {
+			if (next >= 76) {
 				wheelTimeoutRef.current = setTimeout(() => {
-					const shouldRetry = pullDistanceRef.current >= 48;
+					const shouldRetry = pullDistanceRef.current >= 76;
 					pullDistanceRef.current = 0;
 					setPullDistance(0);
 					setIsPulling(false);
@@ -720,7 +740,7 @@ export function StudyHubCatalog({
 					pullDistanceRef.current = 0;
 					setPullDistance(0);
 					setIsPulling(false);
-				}, 280);
+				}, 300);
 			}
 		} else if (e.deltaY > 0 && pullDistanceRef.current > 0) {
 			pullDistanceRef.current = 0;
@@ -745,10 +765,10 @@ export function StudyHubCatalog({
 				return;
 			}
 			const diff = e.clientY - dragStartYRef.current;
-			if (diff > 0) {
+			if (diff > 8) {
 				setIsPulling(true);
-				if (diff > 6) wasPullingRef.current = true;
-				const distance = Math.min(80, diff * 0.7);
+				if (diff > 12) wasPullingRef.current = true;
+				const distance = Math.min(96, (diff - 8) * 0.45);
 				pullDistanceRef.current = distance;
 				setPullDistance(distance);
 			} else {
@@ -763,7 +783,7 @@ export function StudyHubCatalog({
 			isDraggingRef.current = false;
 			setIsPulling(false);
 			dragStartYRef.current = null;
-			const shouldRetry = pullDistanceRef.current >= 48 && !isRetrying && !isLoading;
+			const shouldRetry = pullDistanceRef.current >= 76 && !isRetrying && !isLoading;
 			pullDistanceRef.current = 0;
 			setPullDistance(0);
 			if (shouldRetry) {
@@ -975,7 +995,7 @@ export function StudyHubCatalog({
 								fill="none"
 								className="text-primary transition-[stroke-dashoffset] duration-75"
 								strokeDasharray={56.55}
-								strokeDashoffset={56.55 * (1 - Math.min(1, pullDistance / 48))}
+								strokeDashoffset={56.55 * (1 - Math.min(1, pullDistance / 76))}
 								strokeLinecap="round"
 								transform="rotate(-90 12 12)"
 							/>
@@ -987,7 +1007,7 @@ export function StudyHubCatalog({
 								<ArrowDownIcon
 									className={cn(
 										"size-4 transition-transform duration-200",
-										pullDistance >= 48 ? "rotate-180 text-primary" : "rotate-0 text-muted-foreground"
+										pullDistance >= 76 ? "rotate-180 text-primary" : "rotate-0 text-muted-foreground"
 									)}
 								/>
 							)}
@@ -1212,7 +1232,7 @@ export function StudyHubCatalog({
 										<div
 											className={cn(
 												"absolute bottom-full mb-2 left-0 z-30 min-w-[220px] max-w-[300px] w-max rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-md",
-												!isTopicOpen && "hidden"
+												isTopicOpen ? "study-hub-popover-enter" : "hidden"
 											)}
 										>
 											<div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 flex items-center justify-between border-b border-border/40 mb-1">
@@ -1317,7 +1337,7 @@ export function StudyHubCatalog({
 										<div
 											className={cn(
 												"absolute bottom-full mb-2 left-0 z-30 min-w-[190px] rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-md",
-												!isDiffOpen && "hidden"
+												isDiffOpen ? "study-hub-popover-enter" : "hidden"
 											)}
 										>
 											<div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 flex items-center justify-between border-b border-border/40 mb-1">

@@ -1376,15 +1376,15 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(card, "Mode card rendered");
 		assert.ok(card.className.includes("study-hub-card-enter"), "Card has entrance animation class");
 
-		// 4. Verify pull-to-refresh indicator
+		// 4. Verify pull-to-refresh indicator and deliberate threshold
 		const pullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
 		assert.ok(pullIndicator, "Pull indicator is present in DOM");
 		assert.equal(pullIndicator.getAttribute("aria-hidden"), "true", "Initially hidden");
 
-		// Simulate mouse drag down on the scroll container
 		const scrollContainer = pullIndicator.parentElement as HTMLDivElement;
 		assert.ok(scrollContainer, "Scroll container is present");
 
+		// 4a. Shallow/accidental drag should NOT trigger reload (deliberate threshold requirement)
 		await act(async () => {
 			const downEvent = new dom.window.Event("mousedown", { bubbles: true });
 			Object.assign(downEvent, { clientY: 100, button: 0 });
@@ -1393,11 +1393,32 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		await act(async () => {
 			const moveEvent = new dom.window.Event("mousemove", { bubbles: true });
-			Object.assign(moveEvent, { clientY: 240 });
+			Object.assign(moveEvent, { clientY: 160 }); // diff = 60 -> (60 - 8) * 0.45 = 23.4 < 76
 			dom.window.dispatchEvent(moveEvent);
 		});
 
-		assert.equal(pullIndicator.getAttribute("aria-hidden"), "false", "Pull indicator becomes visible while pulling");
+		assert.equal(pullIndicator.getAttribute("aria-hidden"), "false", "Pull indicator visible while pulling");
+
+		await act(async () => {
+			const upEvent = new dom.window.Event("mouseup", { bubbles: true });
+			dom.window.dispatchEvent(upEvent);
+		});
+
+		assert.equal(retryInvoked, false, "Shallow pull did not trigger reload prematurely");
+
+		// 4b. Intentional pull past threshold (diff = 220 -> (220 - 8) * 0.45 = 95.4 >= 76)
+		await act(async () => {
+			const downEvent = new dom.window.Event("mousedown", { bubbles: true });
+			Object.assign(downEvent, { clientY: 100, button: 0 });
+			scrollContainer.dispatchEvent(downEvent);
+		});
+
+		await act(async () => {
+			const moveEvent = new dom.window.Event("mousemove", { bubbles: true });
+			Object.assign(moveEvent, { clientY: 320 });
+			dom.window.dispatchEvent(moveEvent);
+		});
+
 		assert.ok(pullIndicator.style.height !== "0px" && pullIndicator.style.height !== "", "Indicator has positive height");
 
 		// Release mouse to trigger reload
@@ -1406,9 +1427,9 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			dom.window.dispatchEvent(upEvent);
 		});
 
-		assert.equal(retryInvoked, true, "Pull-to-refresh triggered onRetry callback");
+		assert.equal(retryInvoked, true, "Deliberate pull-to-refresh triggered onRetry callback");
 
-		// Test mouse wheel / trackpad scroll pull-to-refresh
+		// 4c. Test mouse wheel / trackpad scroll pull-to-refresh with intentional flick
 		let wheelRetryInvoked = false;
 		await act(async () => {
 			root.render(
@@ -1427,7 +1448,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		const wheelPullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
 		const wheelScrollContainer = wheelPullIndicator.parentElement as HTMLDivElement;
 		const wheelEvent = new dom.window.Event("wheel", { bubbles: true });
-		Object.assign(wheelEvent, { deltaY: -120 });
+		Object.assign(wheelEvent, { deltaY: -250 });
 
 		await act(async () => {
 			wheelScrollContainer.dispatchEvent(wheelEvent);
@@ -1440,6 +1461,82 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		assert.equal(wheelRetryInvoked, true, "Wheel pull triggered onRetry callback");
+
+		// 5. Verify Popover animations when opening Topic and Difficulty
+		const sampleModesWithFilters: PluginModeMetadata[] = [
+			sampleMode,
+			{
+				id: "algo-lab",
+				pluginId: "quiz-plugin",
+				name: "Algo Lab",
+				description: "Algorithm practice",
+				category: "Algorithms",
+				difficulty: "intermediate",
+			},
+		];
+
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={sampleModesWithFilters}
+					plugins={[{ info: { id: "quiz-plugin", enabled: true }, phase: "active" }]}
+					modeRenderers={[
+						{ pluginId: "quiz-plugin", modeId: "interactive-quiz" },
+						{ pluginId: "quiz-plugin", modeId: "algo-lab" },
+					]}
+					isLoading={false}
+				/>
+			);
+		});
+
+		const topicBtn = dom.document.querySelector('[data-testid="study-hub-category-filters"] button') as HTMLButtonElement;
+		assert.ok(topicBtn, "Topic button exists");
+		const topicPopover = topicBtn.parentElement?.querySelector('.study-hub-popover-enter, .hidden') as HTMLDivElement;
+		assert.ok(topicPopover, "Topic popover exists");
+		assert.ok(topicPopover.className.includes("hidden"), "Topic popover initially hidden");
+
+		await act(async () => {
+			topicBtn.click();
+		});
+
+		assert.ok(topicPopover.className.includes("study-hub-popover-enter"), "Opening Topic adds study-hub-popover-enter animation class");
+		assert.ok(!topicPopover.className.includes("hidden"), "Topic popover is no longer hidden");
+
+		const diffBtn = dom.document.querySelector('[data-testid="study-hub-difficulty-filters"] button') as HTMLButtonElement;
+		assert.ok(diffBtn, "Difficulty button exists");
+		const diffPopover = diffBtn.parentElement?.querySelector('.study-hub-popover-enter, .hidden') as HTMLDivElement;
+		assert.ok(diffPopover, "Difficulty popover exists");
+
+		await act(async () => {
+			diffBtn.click();
+		});
+
+		assert.ok(diffPopover.className.includes("study-hub-popover-enter"), "Opening Difficulty adds study-hub-popover-enter animation class");
+
+		// 6. Verify isolated hover on options and unslop error plugin card
+		const normalCard = dom.document.querySelector('[data-testid="study-hub-mode-card-quiz-plugin:interactive-quiz"]') as HTMLDivElement;
+		assert.ok(normalCard, "Normal card exists");
+		const readmeOption = normalCard.querySelector('span:has(svg)') as HTMLElement;
+		assert.ok(readmeOption, "Readme option exists");
+		assert.ok(!readmeOption.className.includes("group-hover:text-foreground"), "Readme option does not highlight on whole-card group hover");
+
+		// Render with an error plugin to verify whole-card error styling and unslop launch button slot
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={[sampleMode]}
+					plugins={[{ info: { id: "quiz-plugin", enabled: true }, phase: "error" }]}
+					modeRenderers={[{ pluginId: "quiz-plugin", modeId: "interactive-quiz" }]}
+					isLoading={false}
+				/>
+			);
+		});
+
+		const errorCard = dom.document.querySelector('[data-testid="study-hub-mode-card-quiz-plugin:interactive-quiz"]') as HTMLDivElement;
+		assert.ok(errorCard, "Error card exists");
+		assert.ok(errorCard.className.includes("border-destructive/40"), "Error card has red border");
+		assert.ok(errorCard.className.includes("bg-destructive/[0.02]"), "Error card has red tinted background");
+		assert.ok(dom.document.querySelector('[data-testid="mode-plugin-error"]'), "Unslop plugin error badge rendered in action slot");
 	}));
 });
 

@@ -640,6 +640,28 @@ body {
 	}
 }
 
+@keyframes study-hub-popover-enter {
+	0% {
+		opacity: 0;
+		transform: translateY(6px) scale(0.96);
+	}
+	100% {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+.study-hub-popover-enter {
+	transform-origin: bottom left;
+	animation: study-hub-popover-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.study-hub-popover-enter {
+		animation: none;
+	}
+}
+
 /* Source-message arrival: a brief, static theme-colored spotlight. */
 .lh-source-passage {
 	scroll-margin-top: 1rem;
