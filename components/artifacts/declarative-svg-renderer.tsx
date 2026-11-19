@@ -72,7 +72,7 @@ function renderElement(el: DeclarativeSvgElement, key: number) {
 					y1={el.y1}
 					x2={el.x2}
 					y2={el.y2}
-					stroke={el.stroke ?? "#000000"}
+					stroke={el.stroke ?? "currentColor"}
 					strokeWidth={el.strokeWidth ?? 1}
 					opacity={el.opacity}
 				/>
@@ -83,7 +83,7 @@ function renderElement(el: DeclarativeSvgElement, key: number) {
 					key={key}
 					points={formatPoints(el.points)}
 					fill={el.fill ?? "none"}
-					stroke={el.stroke ?? "#000000"}
+					stroke={el.stroke ?? "currentColor"}
 					strokeWidth={el.strokeWidth ?? 1}
 					opacity={el.opacity}
 				/>
@@ -93,7 +93,7 @@ function renderElement(el: DeclarativeSvgElement, key: number) {
 				<polygon
 					key={key}
 					points={formatPoints(el.points)}
-					fill={el.fill ?? "#cccccc"}
+					fill={el.fill ?? "currentColor"}
 					stroke={el.stroke}
 					strokeWidth={el.strokeWidth}
 					opacity={el.opacity}
@@ -109,7 +109,7 @@ function renderElement(el: DeclarativeSvgElement, key: number) {
 					fontFamily={el.fontFamily ?? "system-ui, sans-serif"}
 					fontWeight={el.fontWeight}
 					textAnchor={el.textAnchor ?? el.anchor ?? "start"}
-					fill={el.fill ?? "#000000"}
+					fill={el.fill ?? "currentColor"}
 					opacity={el.opacity}
 				>
 					{el.text}
@@ -142,7 +142,7 @@ export function DeclarativeSvgRenderer({
 				className={className}
 				data-testid="declarative-svg-empty"
 			>
-				<text x="200" y="100" textAnchor="middle" fill="#6b7280" fontSize="13">
+				<text x="200" y="100" textAnchor="middle" fill="currentColor" opacity={0.6} fontSize="13">
 					No visualization elements available
 				</text>
 			</svg>

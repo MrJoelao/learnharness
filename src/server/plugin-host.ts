@@ -480,7 +480,6 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			recordJournal({ workspaceId: id, pluginId, stage: "started", startedAt: new Date().toISOString() });
 		}
 
-		// Phase 1: remove persistent plugin state
 		let stateRemoved = stage === "state-deleted" || stage === "metadata-deleted";
 		if (!stateRemoved) {
 			const dataDirectory = safePluginDataDirectory(directory, pluginId, coreData, false);
@@ -500,7 +499,6 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			}
 		}
 
-		// Phase 2: remove workspace metadata
 		let metadataRemoved = stage === "metadata-deleted";
 		if (!metadataRemoved) {
 			try {
@@ -515,7 +513,6 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			}
 		}
 
-		// Phase 3: remove directory placement
 		if (deps.onWorkspaceDeleted) {
 			try {
 				deps.onWorkspaceDeleted(id);
@@ -524,7 +521,6 @@ export function createPluginHost(deps: PluginHostDependencies) {
 			}
 		}
 
-		// All phases completed successfully: clear journal entry
 		clearJournal(id);
 	}
 
@@ -848,8 +844,10 @@ export function createPluginHost(deps: PluginHostDependencies) {
 					const reconciliation = deps.workspaces.inspect ? deps.workspaces.inspect() : { orphanIds: [], missingIds: [], invalidOrphanIds: [], invalidRecordIds: [], unreadableRecordIds: [] };
 					return { ok: true, message: `Interrupted deletion for workspace ${id} successfully completed`, reconciliation };
 				}
-				default:
-					throw new PluginHostError(400, `Unknown recovery action: ${(input as any).action}`);
+				default: {
+					const action = typeof input === "object" && input !== null && "action" in input ? String((input as { action: unknown }).action) : String(input);
+					throw new PluginHostError(400, `Unknown recovery action: ${action}`);
+				}
 			}
 		},
 		setEnabled(id: string, enabled: boolean): Promise<void> {

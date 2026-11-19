@@ -37,8 +37,6 @@ import type { WorkspaceAvailability, WorkspaceDirectoryIssue, WorkspaceRecord } 
 import type { OrganizationV2Store } from "../store/chat-organization.ts";
 import { stores } from "./stores.ts";
 
-// ─── Port ─────────────────────────────────────────────────────────────────────
-
 /** Resolve the availability of a workspace given the current plugin state. */
 export type WorkspaceAvailabilityResolver = (workspace: WorkspaceRecord) => WorkspaceAvailability;
 
@@ -50,8 +48,6 @@ export interface DirectoryServiceDeps {
 }
 
 export class DirectoryInputError extends Error {}
-
-// ─── Service ─────────────────────────────────────────────────────────────────
 
 export function createDirectoryService(deps: DirectoryServiceDeps) {
 	const freshFolder = () => ({
@@ -74,7 +70,6 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 		const folderIds = new Set(org.folders.map((f) => f.id));
 		const items: DirectoryEntry[] = [];
 
-		// ── Chats ──────────────────────────────────────────────────────────
 		const chatSummaries = deps.chatStore.listChats();
 		for (const s of chatSummaries) {
 			const key = chatKey(s.id);
@@ -103,7 +98,6 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 			items.push(entry);
 		}
 
-		// ── Workspaces ────────────────────────────────────────────────────
 		for (const ws of wsDir.workspaces) {
 			const key = workspaceKey(ws.id);
 			const placement = org.placements[key];
@@ -140,7 +134,6 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 		// excluded from items; WorkspaceStore.list() surfaces them as issues
 		// and never throws (R7).
 
-		// ── Sort ───────────────────────────────────────────────────────────
 		items.sort((a, b) => {
 			if (a.order !== undefined && b.order !== undefined) {
 				if (a.order !== b.order) return a.order - b.order;
@@ -237,8 +230,6 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 }
 
 export type DirectoryService = ReturnType<typeof createDirectoryService>;
-
-// ─── Availability wiring ─────────────────────────────────────────────────────
 
 /**
  * The live availability resolver, configured once the plugin host has

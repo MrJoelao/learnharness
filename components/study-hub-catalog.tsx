@@ -104,8 +104,7 @@ export function DefaultModeBanner({
 }) {
 	const Icon = getModeIcon(iconName ?? mode.icon);
 	return (
-		<div className={cn("relative w-full h-full bg-[#090c14] flex items-center justify-center overflow-hidden select-none", className)}>
-			{/* Faint subtle grid */}
+		<div className={cn("relative w-full h-full bg-muted/40 flex items-center justify-center overflow-hidden select-none", className)}>
 			<svg className="absolute inset-0 w-full h-full opacity-10 text-foreground" fill="none" aria-hidden="true">
 				<defs>
 					<pattern id={`quiet-grid-${mode.pluginId}-${mode.id}`} width="20" height="20" patternUnits="userSpaceOnUse">
@@ -115,7 +114,6 @@ export function DefaultModeBanner({
 				<rect width="100%" height="100%" fill={`url(#quiet-grid-${mode.pluginId}-${mode.id})`} />
 			</svg>
 
-			{/* Centered mode icon emblem */}
 			<div className="relative z-10 flex size-11 items-center justify-center rounded-xl border border-border/40 bg-card/80 text-foreground/80 shadow-xs backdrop-blur-xs">
 				<Icon className="size-5 stroke-[1.5]" />
 			</div>
@@ -127,7 +125,7 @@ function ReadmeModeBanner({ imageUrl, mode }: { imageUrl: string | null; mode: P
 	const [imageFailed, setImageFailed] = useState(false);
 	const hasImage = Boolean(imageUrl) && !imageFailed;
 	return (
-		<div className="relative w-full h-40 sm:h-48 overflow-hidden border-b border-border/40 bg-[#090c14] shrink-0 select-none">
+		<div className="relative w-full h-40 sm:h-48 overflow-hidden border-b border-border/40 bg-muted/40 shrink-0 select-none">
 			{hasImage ? (
 				/* eslint-disable-next-line @next/next/no-img-element */
 				<img
@@ -169,12 +167,10 @@ function StudyHubModeCard({
 	const isLaunching = launchingModeKeys.has(modeKey);
 	const [imageFailed, setImageFailed] = useState(false);
 
-	// Renderer check
 	const hasRenderer = activeModeRenderers.some(
 		r => r.pluginId === mode.pluginId && r.modeId === mode.id
 	) || (activeManager?.getModeRenderer?.(mode.pluginId, mode.id) !== undefined);
 
-	// Plugin check
 	const plugin = activePlugins.find(p => p.info.id === mode.pluginId);
 	const isPluginDisabled = plugin ? (!plugin.info.enabled || plugin.phase === "disabled") : false;
 	const isPluginError = plugin ? plugin.phase === "error" : false;
@@ -235,7 +231,6 @@ function StudyHubModeCard({
 						: "border-border/60 bg-card hover:border-border hover:shadow-xs hover:bg-card/95 cursor-pointer transition-colors duration-150",
 			)}
 		>
-			{/* Whole-card semi-transparent dark overlay for inactive / error / disabled state */}
 			{isUnavailable && (
 				<div
 					data-testid="study-hub-card-unavailable-overlay"
@@ -254,7 +249,7 @@ function StudyHubModeCard({
 					>
 						{statusNotice?.text}
 					</p>
-					<p className="text-[11px] text-muted-foreground/80 mt-1 max-w-[210px] line-clamp-2 leading-relaxed">
+					<p className="text-[11px] text-muted-foreground/80 mt-1 max-w-[208px] line-clamp-2 leading-relaxed">
 						{statusNotice?.title}
 					</p>
 					<button
@@ -271,13 +266,11 @@ function StudyHubModeCard({
 				</div>
 			)}
 
-			{/* Subtle launching progress accent at top edge */}
 			{isLaunching && (
-				<div className="absolute top-0 inset-x-0 h-0.5 z-20 bg-gradient-to-r from-transparent via-foreground/50 to-transparent animate-pulse" />
+				<div className="absolute top-0 inset-x-0 h-0.5 z-20 bg-foreground/30" />
 			)}
 
-			{/* Top Image Banner: Blueprint fallback or loaded image without overlay conflict */}
-			<div className="relative w-full h-24 overflow-hidden border-b border-border/40 shrink-0 bg-[#090c14]">
+			<div className="relative w-full h-24 overflow-hidden border-b border-border/40 shrink-0 bg-muted/40">
 				{hasImage ? (
 					/* eslint-disable-next-line @next/next/no-img-element */
 					<img
@@ -294,7 +287,6 @@ function StudyHubModeCard({
 
 			<div className="p-3.5 sm:p-4 flex-1 flex flex-col justify-between space-y-2.5">
 				<div className="space-y-1.5">
-					{/* Mode Header */}
 					<div className="flex items-start gap-2.5">
 						<div className="flex size-7 items-center justify-center rounded-lg border border-border/40 bg-muted/25 text-foreground shrink-0 transition-colors mt-0.5">
 							<IconComponent className="size-3.5 stroke-[1.5]" />
@@ -311,13 +303,11 @@ function StudyHubModeCard({
 						</div>
 					</div>
 
-					{/* Mode Description: Locked height to eliminate variance across plugins */}
 					<p className="text-xs text-muted-foreground/80 line-clamp-2 leading-relaxed h-10 overflow-hidden">
 						{mode.description}
 					</p>
 				</div>
 
-				{/* Metadata: Difficulty, Activity type, Tags in one single-line quiet row */}
 				<div className="h-5 overflow-hidden flex items-center gap-1.5 text-[11px]">
 					{mode.difficulty && (
 						<span
@@ -351,7 +341,6 @@ function StudyHubModeCard({
 				</div>
 			</div>
 
-			{/* Bottom Action Row: Uniform height pinned at bottom */}
 			<div className="h-10 px-3.5 sm:px-4 border-t border-border/40 flex items-center justify-between gap-2 mt-auto bg-muted/10 shrink-0">
 				<span
 					onClick={(e) => {
@@ -469,7 +458,6 @@ export function StudyHubCatalog({
 	const topicMenuRef = useRef<HTMLDivElement>(null);
 	const diffMenuRef = useRef<HTMLDivElement>(null);
 
-	// Pull-to-refresh state
 	const scrollContainerRef = useRef<HTMLDivElement>(null);
 	const [pullDistance, setPullDistance] = useState(0);
 	const pullDistanceRef = useRef(0);
@@ -485,6 +473,7 @@ export function StudyHubCatalog({
 		const handleKeyDown = (e: KeyboardEvent) => {
 			if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
 				e.preventDefault();
+				e.stopPropagation();
 				searchInputRef.current?.focus();
 			} else if (e.key === "Escape") {
 				setIsTopicOpen(false);
@@ -499,10 +488,10 @@ export function StudyHubCatalog({
 				setIsDiffOpen(false);
 			}
 		};
-		window.addEventListener("keydown", handleKeyDown);
+		window.addEventListener("keydown", handleKeyDown, true);
 		document.addEventListener("mousedown", handleMouseDown);
 		return () => {
-			window.removeEventListener("keydown", handleKeyDown);
+			window.removeEventListener("keydown", handleKeyDown, true);
 			document.removeEventListener("mousedown", handleMouseDown);
 			if (wheelTimeoutRef.current) {
 				clearTimeout(wheelTimeoutRef.current);
@@ -513,7 +502,6 @@ export function StudyHubCatalog({
 		};
 	}, []);
 
-	// Readme documentation dialog state
 	const [selectedReadmeMode, setSelectedReadmeMode] = useState<PluginModeMetadata | null>(null);
 	const [readmeContent, setReadmeContent] = useState<string | null>(null);
 	const [isLoadingReadme, setIsLoadingReadme] = useState(false);
@@ -522,13 +510,11 @@ export function StudyHubCatalog({
 	const handleReadmeScroll = (e: React.UIEvent<HTMLDivElement>) => {
 		const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
 
-		// If content fits without scrolling, keep visible
 		if (scrollHeight <= clientHeight + 20) {
 			setIsLaunchPillVisible(true);
 			return;
 		}
 
-		// Visible only at the beginning (top) or end (bottom) of document
 		const isAtTop = scrollTop <= 25;
 		const isAtBottom = scrollTop + clientHeight >= scrollHeight - 35;
 
@@ -555,7 +541,6 @@ export function StudyHubCatalog({
 				}
 			}
 		} catch {
-			// Fallback below
 		} finally {
 			setIsLoadingReadme(false);
 		}
@@ -578,18 +563,15 @@ export function StudyHubCatalog({
 		setReadmeContent(fallbackLines.join("\n"));
 	};
 
-	// Modes resolution
 	const activeModes = propModes ?? snapshot?.modes ?? [];
 	const activeModesRef = useRef(activeModes);
 	activeModesRef.current = activeModes;
 	const isLoading = propIsLoading ?? snapshot?.loading ?? false;
 	const errorMessage = retryError ?? propError ?? snapshot?.error;
 
-	// Registered mode renderers in the browser
 	const activeModeRenderers = propModeRenderers ?? snapshot?.modeRenderers ?? [];
 	const activePlugins = propPlugins ?? snapshot?.plugins ?? [];
 
-	// Extract unique categories and difficulties from available modes
 	const categories = useMemo(() => {
 		const set = new Set<string>();
 		for (const mode of activeModes) {
@@ -604,21 +586,17 @@ export function StudyHubCatalog({
 		return activeModes.some(m => !!m.difficulty);
 	}, [activeModes]);
 
-	// Filter modes based on search query, category, and difficulty
 	const filteredModes = useMemo(() => {
 		const query = searchQuery.trim();
 		return activeModes.filter(mode => {
-			// Category filter
 			if (selectedCategory !== "all" && mode.category !== selectedCategory) {
 				return false;
 			}
 
-			// Difficulty filter
 			if (selectedDifficulty !== "all" && mode.difficulty !== selectedDifficulty) {
 				return false;
 			}
 
-			// Text search
 			if (!query) return true;
 
 			const fields = [
@@ -670,10 +648,9 @@ export function StudyHubCatalog({
 		}, 750);
 	};
 
-	// Progressive pull-to-refresh handlers
 	const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
 		if (e.button !== 0) return;
-		if ((e.target as HTMLElement | null)?.closest?.("button, input, textarea, a")) {
+		if ((e.target as HTMLElement | null)?.closest?.("button, input, textarea, a, [data-testid^='study-hub-mode-card-']")) {
 			return;
 		}
 		const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
@@ -845,7 +822,6 @@ export function StudyHubCatalog({
 	const handleLaunch = async (mode: PluginModeMetadata) => {
 		const modeKey = getModeKey(mode.pluginId, mode.id);
 
-		// 1. Verify availability against latest modes
 		const isModeStillPresent = activeModesRef.current.some(
 			m => m.pluginId === mode.pluginId && m.id === mode.id
 		);
@@ -857,7 +833,6 @@ export function StudyHubCatalog({
 			return;
 		}
 
-		// 2. Verify plugin state
 		const owningPlugin = activePlugins.find(p => p.info.id === mode.pluginId);
 		if (owningPlugin) {
 			if (!owningPlugin.info.enabled || owningPlugin.phase === "disabled") {
@@ -876,7 +851,6 @@ export function StudyHubCatalog({
 			}
 		}
 
-		// 3. Verify frontend renderer
 		const hasRenderer = activeModeRenderers.some(
 			r => r.pluginId === mode.pluginId && r.modeId === mode.id
 		) || (activeManager?.getModeRenderer?.(mode.pluginId, mode.id) !== undefined);
@@ -889,7 +863,6 @@ export function StudyHubCatalog({
 			return;
 		}
 
-		// 4. Proceed with launch
 		setLaunchError(null);
 		setLaunchingModeKeys(prev => {
 			const next = new Set(prev);
@@ -943,7 +916,7 @@ export function StudyHubCatalog({
 		const modeKey = getModeKey(mode.pluginId, mode.id);
 		return (
 			<StudyHubModeCard
-				key={`${modeKey}-${searchQuery.trim().toLowerCase()}-${selectedCategory}-${selectedDifficulty}`}
+				key={modeKey}
 				style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
 				mode={mode}
 				activePlugins={activePlugins}
@@ -973,9 +946,10 @@ export function StudyHubCatalog({
 							aria-label="Refresh study modes"
 							title="Refresh study modes"
 							data-testid="study-hub-refresh-button"
-							className="sr-only"
+							className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer disabled:opacity-40"
 						>
-							Refresh
+							<RefreshCwIcon className={cn("size-3.5", (isRetrying || isLoading) && "animate-spin")} />
+							<span className="sr-only">Refresh</span>
 						</button>
 					</div>
 				</div>
@@ -990,12 +964,11 @@ export function StudyHubCatalog({
 				onWheel={handleWheel}
 				className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-6 pb-48 max-w-6xl w-full mx-auto overscroll-y-contain"
 			>
-				{/* Progressive Pull-To-Refresh Indicator */}
 				<div
 					data-testid="study-hub-pull-indicator"
 					aria-hidden={pullDistance === 0 && !isRetrying && !isPullRefreshing}
 					className={cn(
-						"w-full flex justify-center pointer-events-none select-none transition-all",
+						"w-full flex justify-center pointer-events-none select-none transition-[height,opacity,margin]",
 						isPulling ? "duration-75" : "duration-300 ease-out"
 					)}
 					style={{
@@ -1045,7 +1018,6 @@ export function StudyHubCatalog({
 				</div>
 
 				<div className="space-y-6">
-					{/* Error Notice */}
 				{errorMessage && (
 					<div
 						role="alert"
@@ -1069,7 +1041,6 @@ export function StudyHubCatalog({
 					</div>
 				)}
 
-				{/* Launch Error Notice */}
 				{launchError && (
 					<div
 						role="alert"
@@ -1094,7 +1065,6 @@ export function StudyHubCatalog({
 					</div>
 				)}
 
-				{/* Catalog Content States */}
 				{isLoading ? (
 					<div
 						data-testid="study-hub-loading"
@@ -1128,10 +1098,8 @@ export function StudyHubCatalog({
 						))}
 					</div>
 				) : errorMessage && activeModes.length === 0 ? (
-					/* Loading error when catalog is not available: do not show empty catalog */
 					null
 				) : activeModes.length === 0 ? (
-					/* Empty Catalog State */
 					<div
 						data-testid="study-hub-empty"
 						className="rounded-xl border border-border/50 bg-card p-10 sm:p-12 text-center max-w-md mx-auto space-y-4"
@@ -1158,7 +1126,6 @@ export function StudyHubCatalog({
 						</div>
 					</div>
 				) : filteredModes.length === 0 ? (
-					/* No Search Results State */
 					<div
 						data-testid="study-hub-no-results"
 						className="rounded-xl border border-border/50 bg-card p-10 sm:p-12 text-center max-w-md mx-auto space-y-4 study-hub-card-enter"
@@ -1185,7 +1152,6 @@ export function StudyHubCatalog({
 						</div>
 					</div>
 				) : (
-					/* Populated Catalog Grid: Continuous unified grid */
 					<div className="space-y-3">
 						{hasActiveFilters && (
 							<div className="flex items-center justify-between text-xs text-muted-foreground pb-0.5 study-hub-card-enter">
@@ -1210,14 +1176,11 @@ export function StudyHubCatalog({
 				</div>
 			</div>
 
-			{/* Floating Search & Filter Dock */}
 			{activeModes.length > 0 && (
 				<div className="pointer-events-none absolute inset-x-0 bottom-0 pb-5 z-20">
 					<div className="pointer-events-auto mx-auto w-full max-w-[46rem] px-4 space-y-2.5">
-						{/* Filter Pills Action Row (inspired by home.tsx ComposerActions) */}
 						{(categories.length > 1 || hasDifficulties) && (
 							<div className="flex flex-wrap items-center gap-2 text-xs mb-1">
-								{/* Topic Filter Pill & Popover */}
 								{categories.length > 1 && (
 									<div ref={topicMenuRef} data-testid="study-hub-category-filters" className="relative flex items-center gap-1.5">
 										<button
@@ -1244,7 +1207,6 @@ export function StudyHubCatalog({
 											<ChevronDownIcon className={cn("size-3 opacity-60 transition-transform duration-150", isTopicOpen && "rotate-180")} />
 										</button>
 
-										{/* Active Topic Chip (with quick clear) if filtered */}
 										{selectedCategory !== "all" && (
 											<button
 												type="button"
@@ -1257,14 +1219,13 @@ export function StudyHubCatalog({
 											</button>
 										)}
 
-										{/* Popover Menu: Anchored above, handles many options gracefully */}
 										<div
 											className={cn(
 												"absolute bottom-full mb-2 left-0 z-30 min-w-[220px] max-w-[300px] w-max rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-md",
 												isTopicOpen ? "study-hub-popover-enter" : "hidden"
 											)}
 										>
-											<div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 flex items-center justify-between border-b border-border/40 mb-1">
+											<div className="px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70 flex items-center justify-between border-b border-border/40 mb-1">
 												<span>Topics</span>
 												<span className="tabular-nums font-mono">{categories.length}</span>
 											</div>
@@ -1324,7 +1285,6 @@ export function StudyHubCatalog({
 									</div>
 								)}
 
-								{/* Difficulty Filter Pill & Popover */}
 								{hasDifficulties && (
 									<div ref={diffMenuRef} data-testid="study-hub-difficulty-filters" className="relative flex items-center gap-1.5">
 										<button
@@ -1349,7 +1309,6 @@ export function StudyHubCatalog({
 											<ChevronDownIcon className={cn("size-3 opacity-60 transition-transform duration-150", isDiffOpen && "rotate-180")} />
 										</button>
 
-										{/* Active Difficulty Chip (with quick clear) if filtered */}
 										{selectedDifficulty !== "all" && (
 											<button
 												type="button"
@@ -1362,14 +1321,13 @@ export function StudyHubCatalog({
 											</button>
 										)}
 
-										{/* Popover Menu */}
 										<div
 											className={cn(
-												"absolute bottom-full mb-2 left-0 z-30 min-w-[190px] rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-md",
+												"absolute bottom-full mb-2 left-0 z-30 min-w-[192px] rounded-xl border border-border/80 bg-card/95 p-1.5 shadow-xl backdrop-blur-md",
 												isDiffOpen ? "study-hub-popover-enter" : "hidden"
 											)}
 										>
-											<div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70 flex items-center justify-between border-b border-border/40 mb-1">
+											<div className="px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70 flex items-center justify-between border-b border-border/40 mb-1">
 												<span>Difficulty</span>
 											</div>
 											<div className="space-y-0.5">
@@ -1414,11 +1372,10 @@ export function StudyHubCatalog({
 							</div>
 						)}
 
-						{/* Search Bar Card */}
 						<div
 							onClick={() => searchInputRef.current?.focus()}
 							className={cn(
-								"group relative flex items-center rounded-2xl border bg-card/90 p-2 shadow-lg backdrop-blur transition-all duration-200 cursor-text",
+								"group relative flex items-center rounded-2xl border bg-card/90 p-2 shadow-lg backdrop-blur transition-[border-color,box-shadow,background-color] duration-200 cursor-text",
 								isSearchFocused
 									? "border-foreground/30 ring-1 ring-foreground/20 shadow-xl bg-card"
 									: "border-border/80 hover:border-border hover:shadow-xl"
@@ -1469,7 +1426,6 @@ export function StudyHubCatalog({
 				</div>
 			)}
 
-			{/* Readme Documentation Modal Dialog */}
 			{selectedReadmeMode && (() => {
 				const plugin = activePlugins.find(p => p.info.id === selectedReadmeMode.pluginId);
 				const rawImage = selectedReadmeMode.image || plugin?.info?.manifest?.image;
@@ -1509,7 +1465,6 @@ export function StudyHubCatalog({
 							/>
 						}
 					>
-						{/* Floating Round Close Button */}
 						<button
 							type="button"
 							onClick={() => setSelectedReadmeMode(null)}
@@ -1520,13 +1475,10 @@ export function StudyHubCatalog({
 							<XIcon className="size-4" />
 						</button>
 
-						{/* Modal Scrollable Content */}
 						<div onScroll={handleReadmeScroll} className="flex-1 overflow-y-auto">
-							{/* Full-bleed Banner */}
 							<ReadmeModeBanner imageUrl={imageUrl} mode={selectedReadmeMode} />
 
 							<div className="p-6 sm:p-7 space-y-5 pb-8">
-								{/* Quick Metadata Bar (unslopped) */}
 								{(selectedReadmeMode.difficulty || selectedReadmeMode.activityType || (selectedReadmeMode.tags && selectedReadmeMode.tags.length > 0)) && (
 									<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground/80 pb-3 border-b border-border/30">
 										{selectedReadmeMode.difficulty && (
@@ -1554,26 +1506,21 @@ export function StudyHubCatalog({
 									</div>
 								)}
 
-								{/* Markdown Body */}
 								{isLoadingReadme ? (
 									<div
 										data-testid="study-hub-readme-loading"
 										className="animate-pulse space-y-4 py-2 select-none"
 									>
-										{/* Title skeleton */}
 										<div className="h-6 w-3/5 bg-muted/60 rounded-md" />
 
-										{/* Paragraph 1 */}
 										<div className="space-y-2 pt-1">
 											<div className="h-3.5 w-full bg-muted/40 rounded" />
 											<div className="h-3.5 w-[92%] bg-muted/40 rounded" />
 											<div className="h-3.5 w-[75%] bg-muted/40 rounded" />
 										</div>
 
-										{/* Section Heading */}
 										<div className="h-5 w-2/5 bg-muted/50 rounded-md pt-2" />
 
-										{/* Bullet list */}
 										<div className="space-y-2.5 pt-1">
 											<div className="flex items-center gap-2">
 												<div className="size-1.5 rounded-full bg-muted/50 shrink-0" />
@@ -1589,7 +1536,6 @@ export function StudyHubCatalog({
 											</div>
 										</div>
 
-										{/* Paragraph 2 */}
 										<div className="space-y-2 pt-2">
 											<div className="h-3.5 w-[95%] bg-muted/40 rounded" />
 											<div className="h-3.5 w-[80%] bg-muted/40 rounded" />
@@ -1601,12 +1547,10 @@ export function StudyHubCatalog({
 									</div>
 								) : null}
 
-								{/* Bottom spacer so floating Launch pill never overlaps text at the end of the document */}
 								<div className="h-20 shrink-0 select-none pointer-events-none" aria-hidden="true" />
 							</div>
 						</div>
 
-						{/* Floating Animated Launch Pill */}
 						<div className="absolute bottom-5 inset-x-0 flex justify-center z-20 pointer-events-none">
 							<button
 								type="button"
@@ -1620,7 +1564,7 @@ export function StudyHubCatalog({
 								className={cn(
 									"pointer-events-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full text-xs sm:text-sm font-medium shadow-xl border border-foreground/10",
 									"bg-foreground text-background hover:bg-foreground/90 active:scale-[0.98]",
-									"transition-all duration-300 ease-out delay-[50ms] hover:delay-0 active:delay-0 active:duration-75 cursor-pointer select-none",
+									"transition-[transform,opacity,background-color] duration-300 ease-out delay-[50ms] hover:delay-0 active:delay-0 active:duration-75 cursor-pointer select-none",
 									"disabled:opacity-50 disabled:pointer-events-none",
 									isLaunchPillVisible
 										? "translate-y-0 opacity-100"

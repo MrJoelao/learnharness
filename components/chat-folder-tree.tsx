@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import {
 	canMoveChatFolder,
+	canMoveFolderV2,
 	fuzzyScore,
 	type ChatDirectoryItem,
 	type WorkspaceDirectoryEntry,
@@ -20,6 +21,7 @@ import {
 	type SiblingEntry,
 	type ChatFolder,
 	type ChatOrganization,
+	type OrganizationV2,
 } from "@/src/core";
 import { SessionRow, RenameRow } from "@/components/sidebar";
 import { WorkspaceRow, RenameWorkspaceRow } from "@/components/workspace-row";
@@ -53,7 +55,7 @@ export interface ChatFolderTreeProps {
 	renamingId?: string | null;
 	onCommitRename?: (id: string, next: string) => void;
 	onCancelRename?: () => void;
-	organization?: any;
+	organization?: ChatOrganization | OrganizationV2 | null;
 	renamingFolderId?: string | null;
 	onCommitFolderRename?: (id: string, next: string) => void;
 	onCancelFolderRename?: () => void;
@@ -534,10 +536,9 @@ export function ChatFolderTree({
 		const pos = calculateDropPosition(offsetY, rect.height, "folder");
 
 		if (draggedItem?.kind === "folder") {
-			// Check cycle / descendant prevention
 			const targetParent = pos === "inside" ? folder.id : folder.parentId;
 			const valid = organization
-				? canMoveChatFolder(organization, draggedItem.id, targetParent)
+				? canMoveFolderV2(organization, draggedItem.id, targetParent)
 				: folder.id !== draggedItem.id;
 
 			if (!valid) {
@@ -574,18 +575,16 @@ export function ChatFolderTree({
 		if (!target || target.id !== folder.id) return;
 
 		if (target.position === "inside") {
-			// Move inside folder
 			if (payload.kind === "folder") {
-				if (organization && !canMoveChatFolder(organization, payload.id, folder.id)) return;
+				if (organization && !canMoveFolderV2(organization, payload.id, folder.id)) return;
 			}
 			onMoveItem?.(payload.kind, payload.id, folder.id);
 			return;
 		}
 
-		// Reorder before or after folder among siblings
 		const parentId = folder.parentId;
 		if (payload.kind === "folder") {
-			if (organization && !canMoveChatFolder(organization, payload.id, parentId)) return;
+			if (organization && !canMoveFolderV2(organization, payload.id, parentId)) return;
 
 			const siblings = folders
 				.filter((f) => f.parentId === parentId)
@@ -779,7 +778,7 @@ export function ChatFolderTree({
 						onContextMenu={
 							onContextMenuWorkspace
 								? (e) => onContextMenuWorkspace(e, item as WorkspaceDirectoryEntry)
-								: (e) => onContextMenuChat?.(e, item as any)
+								: (e) => onContextMenuChat?.(e, item as unknown as ChatDirectoryItem)
 						}
 						folderPath={isSearch ? getFolderPathString(item.folderId, folders) : undefined}
 						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}

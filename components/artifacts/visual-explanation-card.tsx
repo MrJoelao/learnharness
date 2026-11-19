@@ -29,8 +29,6 @@ interface VisualExplanationCardProps extends ArtifactPartProps {
 	chatId?: string;
 }
 
-// ── Shared Visual Artifact Registry & State Store (Fix B & C) ───────────────
-
 type RegistryEntry = {
 	artifact: VisualArtifact;
 	listeners: Set<(art: VisualArtifact) => void>;
@@ -127,7 +125,7 @@ export function applyStepToSvg(source: string, currentStep: number): string {
     <style>
       [data-step] { transition: opacity 0.2s ease, stroke-width 0.2s ease; }
       [data-step]:not([data-step="${currentStep}"]) { opacity: 0.35; }
-      [data-step="${currentStep}"] { opacity: 1; filter: drop-shadow(0 0 3px rgba(37,99,235,0.4)); }
+      [data-step="${currentStep}"] { opacity: 1; }
     </style>
   `;
 	return source.replace(/<\/svg>/i, `${stepStyle}</svg>`);
@@ -183,7 +181,7 @@ export function applyStateToSvg(
 		? `
       [data-step] { transition: opacity 0.2s ease, stroke-width 0.2s ease; }
       [data-step]:not([data-step="${currentStep}"]) { opacity: 0.35; }
-      [data-step="${currentStep}"] { opacity: 1; filter: drop-shadow(0 0 3px rgba(37,99,235,0.4)); }
+      [data-step="${currentStep}"] { opacity: 1; }
     `
 		: "";
 
@@ -200,10 +198,6 @@ export function applyStateToSvg(
 	return source.replace(/<\/svg>/i, `${injectedStyle}</svg>`);
 }
 
-/**
- * Merges previous user state into new artifact state, preserving compatible
- * learner values (step index, button control state) without resets (Fix B).
- */
 export function preserveCompatibleState(
 	previousState: Record<string, unknown>,
 	newArtifact: VisualArtifact,
@@ -213,12 +207,10 @@ export function preserveCompatibleState(
 		...(newArtifact.initialState ?? {}),
 	};
 
-	// 1. Step preservation
 	if (typeof previousState.step === "number") {
 		next.step = Math.min(Math.max(0, previousState.step), newMaxSteps);
 	}
 
-	// 2. Declarative button controls preservation
 	if (newArtifact.controls) {
 		for (const ctrl of newArtifact.controls) {
 			const prevVal = previousState[ctrl.id];
@@ -322,7 +314,6 @@ export function VisualExplanationCard({
 		);
 	}
 
-	// Update action (Fix B & C): Publishes update to existing visual instance via useEffect
 	if (rawAction === "update") {
 		return <VisualExplanationUpdateNotice artifact={validatedArtifact} chatId={chatId} />;
 	}
@@ -348,7 +339,6 @@ export function VisualExplanationInstance({
 	className?: string;
 	initialExpanded?: boolean;
 }) {
-	// Complete artifact envelope & declarative SVG validation (RUN 3.2.1)
 	const validation = useMemo(
 		() => validateDeclarativeVisualArtifact(initialArtifact),
 		[initialArtifact],
@@ -393,7 +383,6 @@ function VisualExplanationInstanceInner({
 	className?: string;
 	initialExpanded?: boolean;
 }) {
-	// Active artifact (updated reactively when an update action arrives for this ID — Fix B)
 	const [artifact, setArtifact] = useState<VisualArtifact>(() => {
 		const registered = getRegisteredVisualArtifact(initialArtifact.id, chatId);
 		if (registered) {
@@ -405,7 +394,6 @@ function VisualExplanationInstanceInner({
 		return initialArtifact;
 	});
 
-	// Register initial artifact outside render phase with idempotency check
 	const lastRegisteredSignatureRef = useRef<string | null>(null);
 	useEffect(() => {
 		const sig = computeArtifactSignature(initialArtifact);
@@ -420,27 +408,23 @@ function VisualExplanationInstanceInner({
 	const expandButtonRef = useRef<HTMLButtonElement>(null);
 	const lastFocusedElementRef = useRef<HTMLElement | null>(null);
 
-	// Shared artifact simulation state
 	const [isExpanded, setIsExpanded] = useState(initialExpanded);
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [isPageVisible, setIsPageVisible] = useState(() => (typeof document !== "undefined" ? !document.hidden : true));
 	const [isIntersecting, setIsIntersecting] = useState(true);
 	const [reducedMotion, setReducedMotion] = useState(false);
 
-	// Parse declarative SVG document if schema is learnharness.visual.svg.v1
 	const declarativeDoc = useMemo(() => {
 		if (artifact.renderer !== "svg") return null;
 		return parseDeclarativeSvg(artifact.source);
 	}, [artifact]);
 
-	// Calculate maximum steps
 	const maxSteps = useMemo(() => {
 		if (declarativeDoc) return Math.max(0, declarativeDoc.steps.length - 1);
 		if (typeof artifact.initialState?.maxSteps === "number") return artifact.initialState.maxSteps as number;
 		return 0;
 	}, [artifact, declarativeDoc]);
 
-	// State dictionary initialized from initialState, with step strictly clamped to [0, maxSteps]
 	const rawInitialStep =
 		typeof artifact.initialState?.step === "number" ? Math.floor(artifact.initialState.step as number) : 0;
 	const initialStep = Math.max(0, Math.min(rawInitialStep, maxSteps));
@@ -450,14 +434,12 @@ function VisualExplanationInstanceInner({
 		...(artifact.initialState ?? {}),
 	}));
 
-	// Listen for artifact updates targeting this ID (Fix B: In-place update & state preservation)
 	useEffect(() => {
 		const unsubscribe = subscribeVisualArtifact(
 			artifact.id,
 			(updated) => {
 				const updateValidation = validateDeclarativeVisualArtifact(updated);
 				if (!updateValidation.valid || !updateValidation.sanitized) {
-					// Invalid update: discard to prevent corrupting local state
 					return;
 				}
 				const sanitizedUpdated = updateValidation.sanitized;
@@ -476,7 +458,6 @@ function VisualExplanationInstanceInner({
 		return unsubscribe;
 	}, [artifact.id, chatId]);
 
-	// Accessibility: Reduced motion check (prefers-reduced-motion is the sole source of truth)
 	useEffect(() => {
 		if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
 			setReducedMotion(false);
@@ -492,7 +473,6 @@ function VisualExplanationInstanceInner({
 		return () => mediaQuery.removeEventListener?.("change", handler);
 	}, []);
 
-	// Visibility observer (Fix F: Pauses when hidden/offscreen, resumes cleanly when returning)
 	useEffect(() => {
 		if (!containerRef.current || typeof IntersectionObserver === "undefined") return;
 		const observer = new IntersectionObserver(
@@ -515,7 +495,6 @@ function VisualExplanationInstanceInner({
 		};
 	}, []);
 
-	// Animation tick loop (paused when hidden, offscreen, collapsed or reduced motion — Fix F)
 	const shouldAnimate = isPlaying && isPageVisible && isIntersecting && !reducedMotion;
 	useEffect(() => {
 		if (!shouldAnimate) return;
@@ -531,7 +510,6 @@ function VisualExplanationInstanceInner({
 		return () => clearInterval(timer);
 	}, [shouldAnimate, maxSteps]);
 
-	// Action handlers for declarative controls
 	const handleStepForward = useCallback(() => {
 		setIsPlaying(false);
 		setCurrentStep((prev) => {
@@ -561,7 +539,6 @@ function VisualExplanationInstanceInner({
 		setIsPlaying((p) => !p);
 	}, [reducedMotion]);
 
-	// Button control action dispatcher (Fix A)
 	const handleButtonClick = useCallback(
 		(ctrl: VisualButtonControl) => {
 			switch (ctrl.action) {
@@ -585,7 +562,6 @@ function VisualExplanationInstanceInner({
 		[reducedMotion, handleReset, handleStepForward, handleStepBackward],
 	);
 
-	// Panel focus management & accessibility (Fix D)
 	const handleOpenPanel = () => {
 		lastFocusedElementRef.current = (document.activeElement as HTMLElement) ?? null;
 		setIsExpanded(true);
@@ -602,7 +578,6 @@ function VisualExplanationInstanceInner({
 		}, 30);
 	}, []);
 
-	// Focus trap when modal opens (Fix D)
 	useEffect(() => {
 		if (!isExpanded || !dialogRef.current) return;
 
@@ -619,7 +594,6 @@ function VisualExplanationInstanceInner({
 		}
 	}, [isExpanded]);
 
-	// Tab key focus trap and Escape handler (Fix D)
 	useEffect(() => {
 		if (!isExpanded) return;
 
@@ -663,7 +637,6 @@ function VisualExplanationInstanceInner({
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [isExpanded, handleClosePanel]);
 
-	// Outside focus trap: keeps focus within the dialog if user tries to focus outside (Fix D)
 	useEffect(() => {
 		if (!isExpanded) return;
 
@@ -686,7 +659,6 @@ function VisualExplanationInstanceInner({
 		return () => document.removeEventListener("focusin", onFocusIn);
 	}, [isExpanded]);
 
-	// Render the inner visual frame (Zero iframes, strictly declarative SVG renderer)
 	const renderVisualContent = (expanded: boolean) => {
 		if (declarativeDoc) {
 			return (
@@ -704,7 +676,6 @@ function VisualExplanationInstanceInner({
 			);
 		}
 
-		// Strictly reject rendering non-declarative or null documents; never mount SvgImage
 		return (
 			<div
 				className="flex items-center justify-center rounded-md border border-destructive/20 bg-destructive/5 p-4 text-xs text-destructive"
@@ -716,14 +687,12 @@ function VisualExplanationInstanceInner({
 		);
 	};
 
-	// Controls toolbar (Fix A: renders step controls and declarative button controls)
 	const renderControls = () => {
 		const hasStepControls = maxSteps > 0;
 
 		return (
 			<div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 text-xs">
 				<div className="flex flex-wrap items-center gap-1.5">
-					{/* Standard Step Controls */}
 					{hasStepControls && (
 						<>
 							<button
@@ -857,7 +826,7 @@ function VisualExplanationInstanceInner({
 			<div className="mb-2 flex items-start justify-between gap-3">
 				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-2">
-						<span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+						<span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
 							Visual Explanation
 						</span>
 						<h4 className="truncate text-sm font-semibold text-foreground" title={artifact.title}>
@@ -868,14 +837,12 @@ function VisualExplanationInstanceInner({
 				</div>
 			</div>
 
-			{/* Accessibility text description if available */}
 			{artifact.accessibility?.description && (
 				<p className="sr-only" aria-live="polite">
 					{artifact.accessibility.description}
 				</p>
 			)}
 
-			{/* Inline Visual View or Expanded Placeholder (Fix C: Single active view) */}
 			{isExpanded ? (
 				<div
 					className="flex h-36 w-full items-center justify-center rounded-md border border-dashed border-border/60 bg-muted/20 text-xs text-muted-foreground"

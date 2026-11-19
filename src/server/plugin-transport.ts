@@ -77,7 +77,8 @@ export function createPluginTransport(deps: { getHost(): Promise<PluginTransport
 			}
 			const host = await deps.getHost();
 			if (!host.recoverWorkspace) throw new InputError("Workspace recovery is not supported");
-			const result = await host.recoverWorkspace({ id: body.id, action: body.action as any });
+			const action = body.action as "recover-orphan" | "remove-missing-reference" | "resume-deletion";
+			const result = await host.recoverWorkspace({ id: body.id, action });
 			return json(result);
 		}),
 		workspaceState: (id: string, key: string, request: Request, operation: "get" | "set" | "delete") => guarded(async () => {

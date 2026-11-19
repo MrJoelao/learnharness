@@ -1289,7 +1289,6 @@ export function SessionsSidebar({
 		if (!deletingFolder) return;
 		const folderId = deletingFolder.id;
 		setDeletingFolder(null);
-		// Permanent deletion - no undo
 		void executeAction({ action: "delete-folder", id: folderId });
 	}, [deletingFolder, executeAction]);
 
@@ -1300,7 +1299,7 @@ export function SessionsSidebar({
 		try {
 			const target = chats?.find((c) => c.id === id);
 			const isWs = target && "kind" in target && target.kind === "workspace";
-			const res = await fetch(isWs ? `/api/workspaces/${id}` : `/api/chats/${id}`, {
+			const res = await fetch(isWs ? `/api/workspaces/${encodeURIComponent(id)}` : `/api/chats/${encodeURIComponent(id)}`, {
 				method: "PUT",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ title: t }),
@@ -2404,7 +2403,6 @@ export function SessionsSidebar({
 				onDeleted={onDeleted}
 			/>
 
-			{/* Delete Workspace Dialog */}
 			<DeleteWorkspaceDialog
 				workspace={deletingWorkspace}
 				onClose={() => setDeletingWorkspace(null)}

@@ -10,8 +10,6 @@
 
 import type { ChatFolder } from "./chat-organization.ts";
 
-// ─── Item identity ───────────────────────────────────────────────────────────
-
 export type ChatItemKey = `chat:${string}`;
 export type WorkspaceItemKey = `workspace:${string}`;
 export type ItemKey = ChatItemKey | WorkspaceItemKey;
@@ -45,8 +43,6 @@ export function itemKeyId(key: ItemKey): string {
 	return key.startsWith("chat:") ? key.slice(5) : key.slice(10);
 }
 
-// ─── Schema ──────────────────────────────────────────────────────────────────
-
 export interface ItemPlacement {
 	folderId: string | null;
 	archivedAt?: string | null;
@@ -69,8 +65,6 @@ export const emptyOrganizationV2 = (): OrganizationV2 => ({
 	folders: [],
 	placements: {},
 });
-
-// ─── Action types ─────────────────────────────────────────────────────────────
 
 export type OrganizationItemKind = "chat" | "workspace" | "folder";
 
@@ -120,8 +114,6 @@ export type OrganizationAction =
 			id: string;
 			targetParentId?: string | null;
 	  };
-
-// ─── Parsing and validation ───────────────────────────────────────────────────
 
 export function parseOrganizationV2(raw: unknown): OrganizationV2 {
 	const fail = (reason?: string): never => {
@@ -409,8 +401,6 @@ export function parseOrganizationAction(raw: unknown): OrganizationAction {
 	}
 }
 
-// ─── Migration v1 → v2 ───────────────────────────────────────────────────────
-
 /**
  * Migrate a v1 ChatOrganization to OrganizationV2.
  * All existing placement keys get the "chat:" prefix.
@@ -457,8 +447,6 @@ export function migrateV1toV2(v1: {
 		placements,
 	};
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 export function placementOf(state: OrganizationV2, key: ItemKey): ItemPlacement | undefined {
 	return Object.hasOwn(state.placements, key) ? state.placements[key] : undefined;
@@ -550,8 +538,6 @@ function unarchiveFolderChainV2(state: OrganizationV2, folderId: string): void {
 	}
 }
 
-// ─── Apply action ─────────────────────────────────────────────────────────────
-
 /**
  * Apply a validated OrganizationAction to the state.
  * Returns a new cloned state with the changes applied.
@@ -575,8 +561,6 @@ export function applyOrganizationAction(
 			throw new Error("Cannot add or move items into an archived folder.");
 		}
 	}
-
-	// ── Folder actions ──────────────────────────────────────────────────────
 
 	if (action.action === "create-folder") {
 		const order = action.order ?? nextSiblingOrderV2(next, action.parentId, "folder");
@@ -606,8 +590,6 @@ export function applyOrganizationAction(
 		next.folders = next.folders.filter((f) => f.id !== action.id);
 		return next;
 	}
-
-	// ── Item + folder move/reorder ──────────────────────────────────────────
 
 	if (action.action === "move") {
 		if (action.kind === "folder") {
@@ -724,8 +706,6 @@ export function applyOrganizationAction(
 		return next;
 	}
 
-	// ── Archive ─────────────────────────────────────────────────────────────
-
 	if (action.action === "archive") {
 		const now = new Date().toISOString();
 
@@ -761,8 +741,6 @@ export function applyOrganizationAction(
 		}
 		return next;
 	}
-
-	// ── Restore ──────────────────────────────────────────────────────────────
 
 	if (action.action === "restore") {
 		if (action.kind === "chat" || action.kind === "workspace") {
@@ -850,8 +828,6 @@ export function applyOrganizationAction(
 
 	return next;
 }
-
-// ─── V1-compat wire format helpers ───────────────────────────────────────────
 
 /**
  * Extract only chat placements from a v2 state and return them with bare IDs

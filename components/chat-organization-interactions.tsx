@@ -251,7 +251,6 @@ export function computeUndoAction(
 		}
 		case "delete-folder":
 		default:
-			// Permanent deletions cannot be undone!
 			return null;
 	}
 }
@@ -261,22 +260,22 @@ export function getSiblingMoveAction(
 	kind: "chat" | "workspace" | "folder",
 	id: string,
 	direction: "up" | "down",
-	organization: any,
-	chats: any[],
-): any | null {
+	organization: OrganizationV2 | ChatOrganization,
+	chats: readonly (ChatDirectoryItem | WorkspaceDirectoryEntry)[],
+): OrganizationAction | ChatOrganizationAction | null {
 	if (kind === "folder") {
-		const target = organization.folders.find((f: any) => f.id === id);
+		const target = organization.folders.find((f: ChatFolder) => f.id === id);
 		if (!target) return null;
 		const parentId = target.parentId;
 		const siblings = organization.folders
-			.filter((f: any) => f.parentId === parentId)
-			.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
-		const idx = siblings.findIndex((f: any) => f.id === id);
+			.filter((f: ChatFolder) => f.parentId === parentId)
+			.sort((a: ChatFolder, b: ChatFolder) => (a.order ?? 0) - (b.order ?? 0));
+		const idx = siblings.findIndex((f: ChatFolder) => f.id === id);
 		if (idx === -1) return null;
 		const targetIdx = direction === "up" ? idx - 1 : idx + 1;
 		if (targetIdx < 0 || targetIdx >= siblings.length) return null;
 
-		const ids = siblings.map((s: any) => s.id);
+		const ids = siblings.map((s: ChatFolder) => s.id);
 		const temp = ids[idx]!;
 		ids[idx] = ids[targetIdx]!;
 		ids[targetIdx] = temp;
@@ -288,26 +287,26 @@ export function getSiblingMoveAction(
 		};
 	}
 
-	const targetItem = chats.find((c: any) => c.id === id);
+	const targetItem = chats.find((c) => c.id === id);
 	if (!targetItem) return null;
 	const parentId = targetItem.folderId;
 	const siblings = chats
-		.filter((c: any) => c.folderId === parentId)
-		.sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0));
-	const idx = siblings.findIndex((c: any) => c.id === id);
+		.filter((c) => c.folderId === parentId)
+		.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+	const idx = siblings.findIndex((c) => c.id === id);
 	if (idx === -1) return null;
 	const targetIdx = direction === "up" ? idx - 1 : idx + 1;
 	if (targetIdx < 0 || targetIdx >= siblings.length) return null;
 
-	const entries = siblings.map((s: any) => ({
-		kind: (s.kind === "workspace" ? "workspace" : "chat") as "chat" | "workspace",
+	const entries: SiblingEntry[] = siblings.map((s) => ({
+		kind: ("kind" in s && s.kind === "workspace" ? "workspace" : "chat") as "chat" | "workspace",
 		id: s.id,
 	}));
 	const temp = entries[idx]!;
 	entries[idx] = entries[targetIdx]!;
 	entries[targetIdx] = temp;
 
-	const hasWorkspace = entries.some((e: any) => e.kind === "workspace");
+	const hasWorkspace = entries.some((e) => e.kind === "workspace");
 	if (hasWorkspace) {
 		return {
 			action: "reorder-siblings",
@@ -320,7 +319,7 @@ export function getSiblingMoveAction(
 		action: "reorder-siblings",
 		parentId,
 		kind: "chat",
-		ids: entries.map((e: any) => e.id),
+		ids: entries.map((e) => e.id),
 	};
 }
 
@@ -363,7 +362,6 @@ export function MoveDestinationBody({
 	onClose: () => void;
 	onMove: (targetParentId: string | null) => void;
 }) {
-	// Destination selector must list only active valid destination folders (never archived)
 	const activeFolders = folders.filter((f) => !f.archivedAt);
 
 	const getFolderDepth = (folderId: string): number => {
@@ -418,7 +416,6 @@ export function MoveDestinationBody({
 				data-testid="move-destination-list"
 				className="mt-4 max-h-60 overflow-y-auto rounded-lg border border-border/60 p-1 flex flex-col gap-0.5"
 			>
-				{/* Root destination option */}
 				<button
 					type="button"
 					data-testid="move-destination-root"
@@ -444,7 +441,6 @@ export function MoveDestinationBody({
 					)}
 				</button>
 
-				{/* Folder destinations */}
 				{sortedFolders.map((folder) => {
 					const depth = getFolderDepth(folder.id);
 					const valid = isValidDestination(folder.id);
