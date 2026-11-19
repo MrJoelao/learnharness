@@ -145,7 +145,9 @@ interface StudyHubModeCardProps {
 	mode: PluginModeMetadata;
 	activePlugins: readonly { info: { id: string; enabled: boolean; manifest?: import("@/src/core").PluginManifest }; phase: string; error?: string }[];
 	activeModeRenderers: readonly { pluginId: string; modeId: string }[];
-	activeManager?: any;
+	activeManager?: {
+		getModeRenderer?(pluginId: string, modeId: string): unknown;
+	} | null;
 	launchingModeKeys: Set<string>;
 	handleOpenReadme: (mode: PluginModeMetadata) => void;
 	handleLaunch: (mode: PluginModeMetadata) => void;
@@ -400,16 +402,14 @@ export interface StudyHubCatalogProps {
 	/** Optional plugin manager override (for direct testing or custom host). */
 	manager?: {
 		createWorkspace(pluginId: string, modeId: string, title?: string): Promise<import("@/src/core").WorkspaceRecord>;
-		getModeRenderer?(pluginId: string, modeId: string): any;
+		getModeRenderer?(pluginId: string, modeId: string): unknown;
 		reload?(): Promise<void>;
 		refresh?(): Promise<void>;
-		[key: string]: any;
 	} | null;
 	/** Optional router override (for testing navigation destinations). */
 	router?: {
 		push: (url: string) => void;
 		back?: () => void;
-		[key: string]: any;
 	};
 	/** Explicit loading override. */
 	isLoading?: boolean;

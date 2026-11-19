@@ -718,26 +718,28 @@ export function ChatFolderTree({
 		depth?: number,
 	): ReactNode => {
 		const isDrop = dropTarget?.id === item.id;
-		const isWorkspace = item.kind === "workspace";
-		const isActive = isWorkspace
+		const isActive = item.kind === "workspace"
 			? activeWorkspaceId === item.id
 			: activeChatId === item.id;
 		const isKbd = kbdChatId === item.id;
 
 		if (renamingId === item.id) {
-			return isWorkspace ? (
-				<div key={item.id} className="w-full">
-					<RenameWorkspaceRow
-						workspace={item}
-						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
-						onCommit={(next) => onCommitRename?.(item.id, next)}
-						onCancel={() => onCancelRename?.()}
-					/>
-				</div>
-			) : (
+			if (item.kind === "workspace") {
+				return (
+					<div key={item.id} className="w-full">
+						<RenameWorkspaceRow
+							workspace={item}
+							style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
+							onCommit={(next) => onCommitRename?.(item.id, next)}
+							onCancel={() => onCancelRename?.()}
+						/>
+					</div>
+				);
+			}
+			return (
 				<div key={item.id} className="w-full">
 					<RenameRow
-						chat={item as ChatDirectoryItem}
+						chat={item}
 						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
 						onCommit={(next) => onCommitRename?.(item.id, next)}
 						onCancel={() => onCancelRename?.()}
@@ -750,11 +752,11 @@ export function ChatFolderTree({
 			<div
 				key={item.id}
 				data-chat-drag-row={item.id}
-				data-workspace-drag-row={isWorkspace ? item.id : undefined}
+				data-workspace-drag-row={item.kind === "workspace" ? item.id : undefined}
 				data-drop-position={isDrop ? dropTarget?.position : undefined}
 				draggable={true}
 				onDragStart={(e) =>
-					handleDragStart(e, isWorkspace ? "workspace" : "chat", item.id, item.folderId, item.title)
+					handleDragStart(e, item.kind === "workspace" ? "workspace" : "chat", item.id, item.folderId, item.title)
 				}
 				onDragEnd={handleDragEnd}
 				onDragOver={(e) => handleItemDragOver(e, item)}
@@ -769,27 +771,27 @@ export function ChatFolderTree({
 					isDrop && dropTarget?.position === "after" && "border-b-2 border-primary -mb-0.5",
 				)}
 			>
-				{isWorkspace ? (
+				{item.kind === "workspace" ? (
 					<WorkspaceRow
-						workspace={item as WorkspaceDirectoryEntry}
+						workspace={item}
 						active={isActive}
 						kbdSelected={isKbd}
 						onOpen={() => (onSelectWorkspace ? onSelectWorkspace(item.id) : onSelectChat(item.id))}
 						onContextMenu={
 							onContextMenuWorkspace
-								? (e) => onContextMenuWorkspace(e, item as WorkspaceDirectoryEntry)
-								: (e) => onContextMenuChat?.(e, item as unknown as ChatDirectoryItem)
+								? (e) => onContextMenuWorkspace(e, item)
+								: undefined
 						}
 						folderPath={isSearch ? getFolderPathString(item.folderId, folders) : undefined}
 						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
 					/>
 				) : (
 					<SessionRow
-						chat={item as ChatDirectoryItem}
+						chat={item}
 						active={isActive}
 						kbdSelected={isKbd}
 						onOpen={() => onSelectChat(item.id)}
-						onContextMenu={onContextMenuChat ? (e) => onContextMenuChat(e, item as ChatDirectoryItem) : undefined}
+						onContextMenu={onContextMenuChat ? (e) => onContextMenuChat(e, item) : undefined}
 						folderPath={isSearch ? getFolderPathString(item.folderId, folders) : undefined}
 						style={depth !== undefined ? { paddingLeft: `${chatPaddingLeft(depth)}px` } : undefined}
 					/>

@@ -44,7 +44,11 @@ export function canNavigateBack(): boolean {
 
 	// 1. In Next.js App Router, window.history.state?.idx tracks in-app history index.
 	// If idx > 0, the user has navigated internally within this SPA session.
-	const historyIdx = (window.history.state as { idx?: number } | null)?.idx;
+	const historyState: unknown = window.history.state;
+	const historyIdx =
+		typeof historyState === "object" && historyState !== null && "idx" in historyState
+			? (historyState as { idx: unknown }).idx
+			: undefined;
 	if (typeof historyIdx === "number" && historyIdx > 0) {
 		return true;
 	}

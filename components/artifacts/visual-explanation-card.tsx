@@ -30,7 +30,7 @@ interface VisualExplanationCardProps extends ArtifactPartProps {
 }
 
 type RegistryEntry = {
-	artifact: VisualArtifact;
+	artifact?: VisualArtifact;
 	listeners: Set<(art: VisualArtifact) => void>;
 };
 
@@ -81,7 +81,6 @@ export function subscribeVisualArtifact(
 	let entry = artifactRegistry.get(key);
 	if (!entry) {
 		entry = {
-			artifact: undefined as unknown as VisualArtifact,
 			listeners: new Set(),
 		};
 		artifactRegistry.set(key, entry);
@@ -421,12 +420,13 @@ function VisualExplanationInstanceInner({
 
 	const maxSteps = useMemo(() => {
 		if (declarativeDoc) return Math.max(0, declarativeDoc.steps.length - 1);
-		if (typeof artifact.initialState?.maxSteps === "number") return artifact.initialState.maxSteps as number;
+		const rawMax = artifact.initialState?.maxSteps;
+		if (typeof rawMax === "number") return rawMax;
 		return 0;
 	}, [artifact, declarativeDoc]);
 
-	const rawInitialStep =
-		typeof artifact.initialState?.step === "number" ? Math.floor(artifact.initialState.step as number) : 0;
+	const rawStep = artifact.initialState?.step;
+	const rawInitialStep = typeof rawStep === "number" ? Math.floor(rawStep) : 0;
 	const initialStep = Math.max(0, Math.min(rawInitialStep, maxSteps));
 	const [currentStep, setCurrentStep] = useState(initialStep);
 	const [stateValues, setStateValues] = useState<Record<string, unknown>>(() => ({
@@ -445,10 +445,11 @@ function VisualExplanationInstanceInner({
 				const sanitizedUpdated = updateValidation.sanitized;
 				setArtifact(sanitizedUpdated);
 				const updatedDecl = parseDeclarativeSvg(sanitizedUpdated.source);
+				const updateMax = sanitizedUpdated.initialState?.maxSteps;
 				const newMax = updatedDecl
 					? Math.max(0, updatedDecl.steps.length - 1)
-					: typeof sanitizedUpdated.initialState?.maxSteps === "number"
-						? (sanitizedUpdated.initialState.maxSteps as number)
+					: typeof updateMax === "number"
+						? updateMax
 						: 0;
 				setStateValues((prev) => preserveCompatibleState(prev, sanitizedUpdated, newMax));
 				setCurrentStep((prev) => Math.min(prev, newMax));

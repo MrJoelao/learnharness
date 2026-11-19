@@ -187,7 +187,7 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 		try {
 			action = parseOrganizationAction(raw);
 		} catch (error) {
-			throw new DirectoryInputError((error as Error).message);
+			throw new DirectoryInputError(error instanceof Error ? error.message : String(error));
 		}
 
 		const org = readOrganization();
@@ -204,7 +204,7 @@ export function createDirectoryService(deps: DirectoryServiceDeps) {
 		try {
 			next = applyOrganizationAction(org, action, itemKeys, fresh);
 		} catch (error) {
-			throw new DirectoryInputError((error as Error).message);
+			throw new DirectoryInputError(error instanceof Error ? error.message : String(error));
 		}
 
 		deps.organizationStore.write(next);
@@ -238,6 +238,11 @@ export type DirectoryService = ReturnType<typeof createDirectoryService>;
  */
 interface DirectoryGlobal {
 	__lhWorkspaceAvailabilityResolver?: WorkspaceAvailabilityResolver;
+	__lhPlugins?: {
+		host?: {
+			workspaceAvailability?: (workspace: WorkspaceRecord) => WorkspaceAvailability;
+		};
+	};
 }
 
 let availabilityResolver: WorkspaceAvailabilityResolver = () => "plugin-missing";
@@ -255,7 +260,7 @@ function resolveCurrentAvailability(workspace: WorkspaceRecord): WorkspaceAvaila
 	if (globalResolver) {
 		return globalResolver(workspace);
 	}
-	const host = (globalThis as any).__lhPlugins?.host;
+	const host = (globalThis as typeof globalThis & DirectoryGlobal).__lhPlugins?.host;
 	if (host && typeof host.workspaceAvailability === "function") {
 		return host.workspaceAvailability(workspace);
 	}

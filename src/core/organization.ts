@@ -24,14 +24,25 @@ export function workspaceKey(id: string): WorkspaceItemKey {
 	return `workspace:${id}`;
 }
 
+export function isChatItemKey(value: unknown): value is ChatItemKey {
+	return typeof value === "string" && value.startsWith("chat:") && value.length > 5;
+}
+
+export function isWorkspaceItemKey(value: unknown): value is WorkspaceItemKey {
+	return typeof value === "string" && value.startsWith("workspace:") && value.length > 10;
+}
+
+export function isItemKey(value: unknown): value is ItemKey {
+	return isChatItemKey(value) || isWorkspaceItemKey(value);
+}
+
 /**
  * Parse a raw string as an ItemKey.
  * Returns the typed key or null if the string is not a valid ItemKey.
  */
 export function parseItemKey(raw: string): ItemKey | null {
-	if (typeof raw !== "string") return null;
-	if (raw.startsWith("chat:") && raw.length > 5) return raw as ChatItemKey;
-	if (raw.startsWith("workspace:") && raw.length > 10) return raw as WorkspaceItemKey;
+	if (isChatItemKey(raw)) return raw;
+	if (isWorkspaceItemKey(raw)) return raw;
 	return null;
 }
 
@@ -562,271 +573,308 @@ export function applyOrganizationAction(
 		}
 	}
 
-	if (action.action === "create-folder") {
-		const order = action.order ?? nextSiblingOrderV2(next, action.parentId, "folder");
-		next.folders.push({
-			...newFolder,
-			name: action.name,
-			parentId: action.parentId,
-			order,
-		});
-		return next;
-	}
-
-	if (action.action === "rename-folder") {
-		const folder = next.folders.find((f) => f.id === action.id);
-		if (!folder) throw new Error("Folder no longer exists.");
-		folder.name = action.name;
-		folder.updatedAt = new Date().toISOString();
-		return next;
-	}
-
-	if (action.action === "delete-folder") {
-		const folder = next.folders.find((f) => f.id === action.id);
-		if (!folder) throw new Error("Folder no longer exists.");
-		if (!folderIsEmpty(next, action.id, itemKeys)) {
-			throw new Error("Cannot delete a folder that still contains items.");
+	switch (action.action) {
+		case "create-folder": {
+			const order = action.order ?? nextSiblingOrderV2(next, action.parentId, "folder");
+			next.folders.push({
+				...newFolder,
+				name: action.name,
+				parentId: action.parentId,
+				order,
+			});
+			return next;
 		}
-		next.folders = next.folders.filter((f) => f.id !== action.id);
-		return next;
-	}
 
-	if (action.action === "move") {
-		if (action.kind === "folder") {
+		case "rename-folder": {
 			const folder = next.folders.find((f) => f.id === action.id);
 			if (!folder) throw new Error("Folder no longer exists.");
-			if (!canMoveFolderV2(next, action.id, action.parentId)) {
-				throw new Error("A folder cannot be moved into itself or its descendants.");
-			}
-			folder.parentId = action.parentId;
-			if (action.targetOrder !== undefined) folder.order = action.targetOrder;
+			folder.name = action.name;
 			folder.updatedAt = new Date().toISOString();
 			return next;
 		}
 
-		// kind === "chat" | "workspace"
-		const key = action.kind === "chat" ? chatKey(action.id) : workspaceKey(action.id);
-		if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
-			throw new Error(`${action.kind === "chat" ? "Chat" : "Workspace"} no longer exists.`);
-		}
-		const existing = placementOf(next, key);
-		const order =
-			action.targetOrder ?? existing?.order ?? nextSiblingOrderV2(next, action.parentId, "item");
-		next.placements = {
-			...next.placements,
-			[key]: { ...existing, folderId: action.parentId, order },
-		};
-		return next;
-	}
-
-	if (action.action === "reorder") {
-		const targetOrder = action.targetOrder ?? action.targetIndex ?? 0;
-		if (action.kind === "folder") {
+		case "delete-folder": {
 			const folder = next.folders.find((f) => f.id === action.id);
 			if (!folder) throw new Error("Folder no longer exists.");
-			folder.order = targetOrder;
-			folder.updatedAt = new Date().toISOString();
+			if (!folderIsEmpty(next, action.id, itemKeys)) {
+				throw new Error("Cannot delete a folder that still contains items.");
+			}
+			next.folders = next.folders.filter((f) => f.id !== action.id);
 			return next;
 		}
-		const key = action.kind === "chat" ? chatKey(action.id) : workspaceKey(action.id);
-		if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
-			throw new Error(`${action.kind === "chat" ? "Chat" : "Workspace"} no longer exists.`);
-		}
-		const existing = placementOf(next, key);
-		next.placements = {
-			...next.placements,
-			[key]: { ...existing, folderId: existing?.folderId ?? null, order: targetOrder },
-		};
-		return next;
-	}
 
-	if (
-		action.action === "reorder-mixed-siblings" ||
-		(action.action === "reorder-siblings" && "entries" in action)
-	) {
-		const seenKeys = new Set<ItemKey>();
-		for (const entry of action.entries) {
-			const key = entry.kind === "chat" ? chatKey(entry.id) : workspaceKey(entry.id);
-			if (seenKeys.has(key)) {
-				throw new Error(`Duplicate entry in reorder: ${entry.kind} ${entry.id}.`);
+		case "move": {
+			if (action.kind === "folder") {
+				const folder = next.folders.find((f) => f.id === action.id);
+				if (!folder) throw new Error("Folder no longer exists.");
+				if (!canMoveFolderV2(next, action.id, action.parentId)) {
+					throw new Error("A folder cannot be moved into itself or its descendants.");
+				}
+				folder.parentId = action.parentId;
+				if (action.targetOrder !== undefined) folder.order = action.targetOrder;
+				folder.updatedAt = new Date().toISOString();
+				return next;
 			}
-			seenKeys.add(key);
 
+			// kind === "chat" | "workspace"
+			const key = action.kind === "chat" ? chatKey(action.id) : workspaceKey(action.id);
 			if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
-				throw new Error(`${entry.kind === "chat" ? "Chat" : "Workspace"} no longer exists: ${entry.id}.`);
+				throw new Error(`${action.kind === "chat" ? "Chat" : "Workspace"} no longer exists.`);
 			}
-
 			const existing = placementOf(next, key);
-			const currentParent = existing?.folderId ?? null;
-			if (currentParent !== action.parentId) {
-				throw new Error(
-					`${entry.kind === "chat" ? "Chat" : "Workspace"} ${entry.id} does not belong to parent ${action.parentId ?? "root"}.`,
-				);
-			}
+			const order =
+				action.targetOrder ?? existing?.order ?? nextSiblingOrderV2(next, action.parentId, "item");
+			next.placements = {
+				...next.placements,
+				[key]: { ...existing, folderId: action.parentId, order },
+			};
+			return next;
 		}
 
-		action.entries.forEach((entry, index) => {
-			const key = entry.kind === "chat" ? chatKey(entry.id) : workspaceKey(entry.id);
+		case "reorder": {
+			const targetOrder = action.targetOrder ?? action.targetIndex ?? 0;
+			if (action.kind === "folder") {
+				const folder = next.folders.find((f) => f.id === action.id);
+				if (!folder) throw new Error("Folder no longer exists.");
+				folder.order = targetOrder;
+				folder.updatedAt = new Date().toISOString();
+				return next;
+			}
+			const key = action.kind === "chat" ? chatKey(action.id) : workspaceKey(action.id);
+			if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
+				throw new Error(`${action.kind === "chat" ? "Chat" : "Workspace"} no longer exists.`);
+			}
 			const existing = placementOf(next, key);
-			next.placements[key] = {
-				...existing,
-				folderId: action.parentId,
-				order: index,
+			next.placements = {
+				...next.placements,
+				[key]: { ...existing, folderId: existing?.folderId ?? null, order: targetOrder },
 			};
-		});
+			return next;
+		}
 
-		return next;
-	}
+		case "reorder-mixed-siblings": {
+			const seenKeys = new Set<ItemKey>();
+			for (const entry of action.entries) {
+				const key = entry.kind === "chat" ? chatKey(entry.id) : workspaceKey(entry.id);
+				if (seenKeys.has(key)) {
+					throw new Error(`Duplicate entry in reorder: ${entry.kind} ${entry.id}.`);
+				}
+				seenKeys.add(key);
 
-	if (action.action === "reorder-siblings") {
-		if (action.kind === "folder") {
-			action.ids.forEach((folderId, index) => {
-				const folder = next.folders.find((f) => f.id === folderId);
-				if (folder && folder.parentId === action.parentId) {
-					folder.order = index;
-					folder.updatedAt = new Date().toISOString();
+				if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
+					throw new Error(`${entry.kind === "chat" ? "Chat" : "Workspace"} no longer exists: ${entry.id}.`);
+				}
+
+				const existing = placementOf(next, key);
+				const currentParent = existing?.folderId ?? null;
+				if (currentParent !== action.parentId) {
+					throw new Error(
+						`${entry.kind === "chat" ? "Chat" : "Workspace"} ${entry.id} does not belong to parent ${action.parentId ?? "root"}.`,
+					);
+				}
+			}
+
+			action.entries.forEach((entry, index) => {
+				const key = entry.kind === "chat" ? chatKey(entry.id) : workspaceKey(entry.id);
+				const existing = placementOf(next, key);
+				next.placements[key] = {
+					...existing,
+					folderId: action.parentId,
+					order: index,
+				};
+			});
+
+			return next;
+		}
+
+		case "reorder-siblings": {
+			if ("entries" in action) {
+				const seenKeys = new Set<ItemKey>();
+				for (const entry of action.entries) {
+					const key = entry.kind === "chat" ? chatKey(entry.id) : workspaceKey(entry.id);
+					if (seenKeys.has(key)) {
+						throw new Error(`Duplicate entry in reorder: ${entry.kind} ${entry.id}.`);
+					}
+					seenKeys.add(key);
+
+					if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
+						throw new Error(`${entry.kind === "chat" ? "Chat" : "Workspace"} no longer exists: ${entry.id}.`);
+					}
+
+					const existing = placementOf(next, key);
+					const currentParent = existing?.folderId ?? null;
+					if (currentParent !== action.parentId) {
+						throw new Error(
+							`${entry.kind === "chat" ? "Chat" : "Workspace"} ${entry.id} does not belong to parent ${action.parentId ?? "root"}.`,
+						);
+					}
+				}
+
+				action.entries.forEach((entry, index) => {
+					const key = entry.kind === "chat" ? chatKey(entry.id) : workspaceKey(entry.id);
+					const existing = placementOf(next, key);
+					next.placements[key] = {
+						...existing,
+						folderId: action.parentId,
+						order: index,
+					};
+				});
+
+				return next;
+			}
+
+			if (action.kind === "folder") {
+				action.ids.forEach((folderId, index) => {
+					const folder = next.folders.find((f) => f.id === folderId);
+					if (folder && folder.parentId === action.parentId) {
+						folder.order = index;
+						folder.updatedAt = new Date().toISOString();
+					}
+				});
+				return next;
+			}
+			// kind === "chat" | "workspace"
+			action.ids.forEach((rawId, index) => {
+				const key = action.kind === "chat" ? chatKey(rawId) : workspaceKey(rawId);
+				if (itemKeys.has(key) || Object.hasOwn(next.placements, key)) {
+					const existing = placementOf(next, key);
+					// Scoped to the requested sibling group only
+					if ((existing?.folderId ?? null) !== action.parentId) return;
+					next.placements[key] = {
+						...existing,
+						folderId: existing?.folderId ?? null,
+						order: index,
+					};
 				}
 			});
 			return next;
 		}
-		// kind === "chat" | "workspace"
-		action.ids.forEach((rawId, index) => {
-			const key = action.kind === "chat" ? chatKey(rawId) : workspaceKey(rawId);
-			if (itemKeys.has(key) || Object.hasOwn(next.placements, key)) {
+
+		case "archive": {
+			const now = new Date().toISOString();
+
+			if (action.kind === "chat" || action.kind === "workspace") {
+				const key = action.kind === "chat" ? chatKey(action.id) : workspaceKey(action.id);
+				if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
+					throw new Error(`${action.kind === "chat" ? "Chat" : "Workspace"} no longer exists.`);
+				}
 				const existing = placementOf(next, key);
-				// Scoped to the requested sibling group only
-				if ((existing?.folderId ?? null) !== action.parentId) return;
-				next.placements[key] = {
-					...existing,
-					folderId: existing?.folderId ?? null,
-					order: index,
+				next.placements = {
+					...next.placements,
+					[key]: { ...existing, folderId: existing?.folderId ?? null, archivedAt: now },
 				};
+				return next;
 			}
-		});
-		return next;
-	}
 
-	if (action.action === "archive") {
-		const now = new Date().toISOString();
+			// kind === "folder": archive the whole subtree
+			const targetFolder = next.folders.find((f) => f.id === action.id);
+			if (!targetFolder) throw new Error("Folder no longer exists.");
+			const descendantFolderIds = getFolderDescendantIdsV2(next, action.id, true);
 
-		if (action.kind === "chat" || action.kind === "workspace") {
-			const key = action.kind === "chat" ? chatKey(action.id) : workspaceKey(action.id);
-			if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
-				throw new Error(`${action.kind === "chat" ? "Chat" : "Workspace"} no longer exists.`);
+			for (const folder of next.folders) {
+				if (descendantFolderIds.has(folder.id)) {
+					folder.archivedAt = now;
+					folder.updatedAt = now;
+				}
 			}
-			const existing = placementOf(next, key);
-			next.placements = {
-				...next.placements,
-				[key]: { ...existing, folderId: existing?.folderId ?? null, archivedAt: now },
-			};
+			// Archive all items in those folders (all kinds)
+			for (const [key, p] of Object.entries(next.placements)) {
+				if (p.folderId && descendantFolderIds.has(p.folderId)) {
+					next.placements[key] = { ...p, archivedAt: now };
+				}
+			}
 			return next;
 		}
 
-		// kind === "folder": archive the whole subtree
-		const targetFolder = next.folders.find((f) => f.id === action.id);
-		if (!targetFolder) throw new Error("Folder no longer exists.");
-		const descendantFolderIds = getFolderDescendantIdsV2(next, action.id, true);
-
-		for (const folder of next.folders) {
-			if (descendantFolderIds.has(folder.id)) {
-				folder.archivedAt = now;
-				folder.updatedAt = now;
-			}
-		}
-		// Archive all items in those folders (all kinds)
-		for (const [key, p] of Object.entries(next.placements)) {
-			if (p.folderId && descendantFolderIds.has(p.folderId)) {
-				next.placements[key] = { ...p, archivedAt: now };
-			}
-		}
-		return next;
-	}
-
-	if (action.action === "restore") {
-		if (action.kind === "chat" || action.kind === "workspace") {
-			const key = action.kind === "chat" ? chatKey(action.id) : workspaceKey(action.id);
-			if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
-				throw new Error(`${action.kind === "chat" ? "Chat" : "Workspace"} no longer exists.`);
-			}
-			const existing = placementOf(next, key);
-			let targetFolderId: string | null = null;
-
-			if (action.targetParentId !== undefined) {
-				if (action.targetParentId === null) {
-					targetFolderId = null;
-				} else {
-					const destFolder = next.folders.find((f) => f.id === action.targetParentId);
-					if (!destFolder) throw new Error("Destination folder no longer exists.");
-					if (destFolder.archivedAt) throw new Error("Cannot restore into an archived folder.");
-					targetFolderId = destFolder.id;
+		case "restore": {
+			if (action.kind === "chat" || action.kind === "workspace") {
+				const key = action.kind === "chat" ? chatKey(action.id) : workspaceKey(action.id);
+				if (!itemKeys.has(key) && !Object.hasOwn(next.placements, key)) {
+					throw new Error(`${action.kind === "chat" ? "Chat" : "Workspace"} no longer exists.`);
 				}
-			} else {
-				const originalFolderId = existing?.folderId ?? null;
-				if (originalFolderId === null) {
-					targetFolderId = null;
-				} else {
-					const originalFolder = next.folders.find((f) => f.id === originalFolderId);
-					if (!originalFolder) {
+				const existing = placementOf(next, key);
+				let targetFolderId: string | null = null;
+
+				if (action.targetParentId !== undefined) {
+					if (action.targetParentId === null) {
 						targetFolderId = null;
 					} else {
-						targetFolderId = originalFolder.id;
-						if (originalFolder.archivedAt) {
-							unarchiveFolderChainV2(next, originalFolder.id);
+						const destFolder = next.folders.find((f) => f.id === action.targetParentId);
+						if (!destFolder) throw new Error("Destination folder no longer exists.");
+						if (destFolder.archivedAt) throw new Error("Cannot restore into an archived folder.");
+						targetFolderId = destFolder.id;
+					}
+				} else {
+					const originalFolderId = existing?.folderId ?? null;
+					if (originalFolderId === null) {
+						targetFolderId = null;
+					} else {
+						const originalFolder = next.folders.find((f) => f.id === originalFolderId);
+						if (!originalFolder) {
+							targetFolderId = null;
+						} else {
+							targetFolderId = originalFolder.id;
+							if (originalFolder.archivedAt) {
+								unarchiveFolderChainV2(next, originalFolder.id);
+							}
 						}
 					}
 				}
+
+				next.placements = {
+					...next.placements,
+					[key]: { ...existing, folderId: targetFolderId, archivedAt: null },
+				};
+				return next;
 			}
 
-			next.placements = {
-				...next.placements,
-				[key]: { ...existing, folderId: targetFolderId, archivedAt: null },
-			};
+			// kind === "folder"
+			const folder = next.folders.find((f) => f.id === action.id);
+			if (!folder) throw new Error("Folder no longer exists.");
+
+			if (action.targetParentId !== undefined) {
+				if (action.targetParentId === null) {
+					folder.parentId = null;
+				} else {
+					const dest = next.folders.find((f) => f.id === action.targetParentId);
+					if (!dest) throw new Error("Destination folder no longer exists.");
+					if (!canMoveFolderV2(next, folder.id, dest.id)) {
+						throw new Error("A folder cannot be restored into itself or its descendants.");
+					}
+					if (dest.archivedAt) throw new Error("Cannot restore into an archived folder.");
+					folder.parentId = dest.id;
+				}
+			} else if (folder.parentId !== null) {
+				const parentFolder = next.folders.find((f) => f.id === folder.parentId);
+				if (!parentFolder) {
+					folder.parentId = null;
+				} else if (parentFolder.archivedAt) {
+					unarchiveFolderChainV2(next, parentFolder.id);
+				}
+			}
+
+			const descendantFolderIds = getFolderDescendantIdsV2(next, folder.id, true);
+			for (const f of next.folders) {
+				if (descendantFolderIds.has(f.id)) {
+					f.archivedAt = null;
+					f.updatedAt = new Date().toISOString();
+				}
+			}
+			// Unarchive all items in restored folders (all kinds)
+			for (const [key, p] of Object.entries(next.placements)) {
+				if (p.folderId && descendantFolderIds.has(p.folderId) && p.archivedAt) {
+					next.placements[key] = { ...p, archivedAt: null };
+				}
+			}
+
 			return next;
 		}
 
-		// kind === "folder"
-		const folder = next.folders.find((f) => f.id === action.id);
-		if (!folder) throw new Error("Folder no longer exists.");
-
-		if (action.targetParentId !== undefined) {
-			if (action.targetParentId === null) {
-				folder.parentId = null;
-			} else {
-				const dest = next.folders.find((f) => f.id === action.targetParentId);
-				if (!dest) throw new Error("Destination folder no longer exists.");
-				if (!canMoveFolderV2(next, folder.id, dest.id)) {
-					throw new Error("A folder cannot be restored into itself or its descendants.");
-				}
-				if (dest.archivedAt) throw new Error("Cannot restore into an archived folder.");
-				folder.parentId = dest.id;
-			}
-		} else if (folder.parentId !== null) {
-			const parentFolder = next.folders.find((f) => f.id === folder.parentId);
-			if (!parentFolder) {
-				folder.parentId = null;
-			} else if (parentFolder.archivedAt) {
-				unarchiveFolderChainV2(next, parentFolder.id);
-			}
+		default: {
+			const _exhaustive: never = action;
+			return _exhaustive;
 		}
-
-		const descendantFolderIds = getFolderDescendantIdsV2(next, folder.id, true);
-		for (const f of next.folders) {
-			if (descendantFolderIds.has(f.id)) {
-				f.archivedAt = null;
-				f.updatedAt = new Date().toISOString();
-			}
-		}
-		// Unarchive all items in restored folders (all kinds)
-		for (const [key, p] of Object.entries(next.placements)) {
-			if (p.folderId && descendantFolderIds.has(p.folderId) && p.archivedAt) {
-				next.placements[key] = { ...p, archivedAt: null };
-			}
-		}
-
-		return next;
 	}
-
-	return next;
 }
 
 /**

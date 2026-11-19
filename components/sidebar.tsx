@@ -961,8 +961,8 @@ export function SessionsSidebar({
 							if (c.kind === "workspace") return c;
 							return {
 								...c,
-								busy: busyMap.get(c.id) ?? ("busy" in c ? Boolean((c as { busy?: boolean }).busy) : false),
-								compacting: compactingMap.get(c.id) ?? ("compacting" in c ? Boolean((c as { compacting?: boolean }).compacting) : false),
+								busy: busyMap.get(c.id) ?? Boolean(c.busy),
+								compacting: compactingMap.get(c.id) ?? Boolean(c.compacting),
 							};
 						});
 					} catch {
@@ -1697,7 +1697,7 @@ export function SessionsSidebar({
 					) : (
 						<ChatFolderTree
 							folders={activeFolders}
-							chats={shown ? (shown.filter((item) => item.kind !== "workspace") as ChatDirectoryItem[]) : []}
+							chats={shown ? shown.filter((item): item is ChatDirectoryItem => item.kind !== "workspace") : []}
 							items={shown ?? []}
 							activeChatId={pathname?.startsWith("/chat/") ? pathname.replace("/chat/", "") : null}
 							activeWorkspaceId={pathname?.startsWith("/workspaces/") ? pathname.replace("/workspaces/", "").split("/")[0] : null}
@@ -2155,8 +2155,8 @@ export function SessionsSidebar({
 						type="button"
 						data-testid="ctx-delete"
 						onClick={() => {
-							const target = chats?.find((c) => c.id === ctxWorkspaceId) as WorkspaceDirectoryEntry | undefined;
-							if (target) setDeletingWorkspace(target);
+							const target = chats?.find((c) => c.id === ctxWorkspaceId);
+							if (target && target.kind === "workspace") setDeletingWorkspace(target);
 							closeContextMenus();
 						}}
 						className="flex items-center rounded-lg px-2.5 py-1.5 text-left text-destructive transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer"
@@ -2335,23 +2335,20 @@ export function SessionsSidebar({
 									Archive folder
 								</button>
 								{(() => {
-									const isFolderEmpty = organization
-										? organization.version === 2
-											? folderIsEmpty(
-													organization as OrganizationV2,
-													ctxFolderId,
-													new Set<ItemKey>(
-														chats?.map((c) =>
-															c.kind === "workspace" ? workspaceKey(c.id) : chatKey(c.id),
-														) ?? [],
-													),
-											  )
-											: chatFolderIsEmpty(
-													organization as ChatOrganization,
-													ctxFolderId,
-													new Set(chats?.map((c) => c.id) ?? []),
-											  )
-										: false;
+									let isFolderEmpty = false;
+									if (organization) {
+										if (organization.version === 2) {
+											const itemKeys = new Set<ItemKey>(
+												chats?.map((c) =>
+													c.kind === "workspace" ? workspaceKey(c.id) : chatKey(c.id),
+												) ?? [],
+											);
+											isFolderEmpty = folderIsEmpty(organization, ctxFolderId, itemKeys);
+										} else {
+											const chatIds = new Set(chats?.map((c) => c.id) ?? []);
+											isFolderEmpty = chatFolderIsEmpty(organization, ctxFolderId, chatIds);
+										}
+									}
 									return (
 										<button
 											type="button"

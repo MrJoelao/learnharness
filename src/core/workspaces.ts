@@ -78,11 +78,15 @@ export interface WorkspacePluginSnapshot {
 	modeIds: readonly string[];
 }
 
+export function isWorkspaceId(value: unknown): value is WorkspaceId {
+	return typeof value === "string" && WORKSPACE_ID_PATTERN.test(value);
+}
+
 export function parseWorkspaceId(value: unknown): WorkspaceId {
-	if (typeof value !== "string" || !WORKSPACE_ID_PATTERN.test(value)) {
+	if (!isWorkspaceId(value)) {
 		throw new Error("Invalid workspace ID.");
 	}
-	return value as WorkspaceId;
+	return value;
 }
 
 export function parseWorkspaceTitle(value: unknown): string {

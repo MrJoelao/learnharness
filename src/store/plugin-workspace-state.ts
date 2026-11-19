@@ -7,6 +7,14 @@ import { writeFileAtomicSync } from "./atomic-write.ts";
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_BYTES = 1_048_576;
 
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+	return typeof error === "object" && error !== null && "code" in error;
+}
+
+function isEnoent(error: unknown): boolean {
+	return isErrnoException(error) && error.code === "ENOENT";
+}
+
 /** Plugin-owned JSON values, physically scoped to one workspace instance. */
 export function createPluginWorkspaceState(directory: string, workspaceIdValue: WorkspaceId) {
 	const workspaceId = parseWorkspaceId(workspaceIdValue);
@@ -19,7 +27,7 @@ export function createPluginWorkspaceState(directory: string, workspaceIdValue: 
 				const stat = fs.lstatSync(/* turbopackIgnore: true */ parent);
 				if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state parent directory");
 			} catch (error) {
-				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+				if (!isEnoent(error)) throw error;
 				if (!create) return false;
 				fs.mkdirSync(/* turbopackIgnore: true */ parent, { recursive: true });
 				const stat = fs.lstatSync(/* turbopackIgnore: true */ parent);
@@ -29,7 +37,7 @@ export function createPluginWorkspaceState(directory: string, workspaceIdValue: 
 		let stat: fs.Stats;
 		try { stat = fs.lstatSync(/* turbopackIgnore: true */ root); }
 		catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			if (!isEnoent(error)) throw error;
 			if (!create) return false;
 			fs.mkdirSync(/* turbopackIgnore: true */ root, { recursive: true }); stat = fs.lstatSync(/* turbopackIgnore: true */ root);
 		}
@@ -46,7 +54,7 @@ export function createPluginWorkspaceState(directory: string, workspaceIdValue: 
 			if (!ensureRoot(false)) return undefined;
 			let stat: fs.Stats;
 			try { stat = fs.lstatSync(/* turbopackIgnore: true */ file); }
-			catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+			catch (error) { if (isEnoent(error)) return undefined; throw error; }
 			if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state record");
 			return JSON.parse(fs.readFileSync(/* turbopackIgnore: true */ file, "utf8")) as T;
 		},
@@ -59,7 +67,7 @@ export function createPluginWorkspaceState(directory: string, workspaceIdValue: 
 			try {
 				const stat = fs.lstatSync(/* turbopackIgnore: true */ file);
 				if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state record");
-			} catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+			} catch (error) { if (!isEnoent(error)) throw error; }
 			writeFileAtomicSync(file, `${text}\n`);
 		},
 		delete(key: string): void {
@@ -69,7 +77,7 @@ export function createPluginWorkspaceState(directory: string, workspaceIdValue: 
 				const stat = fs.lstatSync(/* turbopackIgnore: true */ file);
 				if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state record");
 				fs.unlinkSync(/* turbopackIgnore: true */ file);
-			} catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+			} catch (error) { if (!isEnoent(error)) throw error; }
 		},
 	};
 }
@@ -85,10 +93,10 @@ export function createPluginWorkspaceStateStore(): PluginWorkspaceStateStore {
 			const root = path.join(/* turbopackIgnore: true */ workspaces, id);
 			for (const parent of [dataRoot, workspaces]) {
 				try { const stat = fs.lstatSync(/* turbopackIgnore: true */ parent); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state parent directory"); }
-				catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+				catch (error) { if (isEnoent(error)) return; throw error; }
 			}
 			try { const stat = fs.lstatSync(/* turbopackIgnore: true */ root); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Unsafe workspace state directory"); }
-			catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return; throw error; }
+			catch (error) { if (isEnoent(error)) return; throw error; }
 			fs.rmSync(/* turbopackIgnore: true */ root, { recursive: true });
 		},
 	};

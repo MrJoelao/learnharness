@@ -27,6 +27,27 @@ type RecordRead =
 	| { kind: "invalid" }
 	| { kind: "unreadable" };
 
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+	return typeof error === "object" && error !== null && "code" in error;
+}
+
+function isEnoent(error: unknown): boolean {
+	return isErrnoException(error) && error.code === "ENOENT";
+}
+
+function isWorkspaceDeletionJournalEntry(e: unknown): e is WorkspaceDeletionJournalEntry {
+	if (!e || typeof e !== "object" || Array.isArray(e)) return false;
+	const obj = e as Record<string, unknown>;
+	return (
+		typeof obj.workspaceId === "string" &&
+		WORKSPACE_ID_PATTERN.test(obj.workspaceId) &&
+		typeof obj.pluginId === "string" &&
+		obj.pluginId.trim().length > 0 &&
+		(obj.stage === "started" || obj.stage === "state-deleted" || obj.stage === "metadata-deleted") &&
+		typeof obj.startedAt === "string"
+	);
+}
+
 /** host metadata store. The index controls membership; each record owns its metadata. */
 export function createWorkspaceStore(directory: string): WorkspaceStore {
 	const root = path.resolve(/* turbopackIgnore: true */ directory);
@@ -37,7 +58,7 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 		try {
 			stat = fs.lstatSync(/* turbopackIgnore: true */ root);
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			if (!isEnoent(error)) throw error;
 			if (!create) return false;
 			fs.mkdirSync(/* turbopackIgnore: true */ root, { recursive: true });
 			stat = fs.lstatSync(/* turbopackIgnore: true */ root);
@@ -58,7 +79,7 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 		try {
 			text = fs.readFileSync(/* turbopackIgnore: true */ indexFile, "utf8");
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return emptyWorkspaceIndex();
+			if (isEnoent(error)) return emptyWorkspaceIndex();
 			throw error;
 		}
 		try {
@@ -76,7 +97,7 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 			const stat = fs.lstatSync(/* turbopackIgnore: true */ file);
 			if (!stat.isFile() || stat.isSymbolicLink()) return { kind: "unreadable" };
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return { kind: "missing" };
+			if (isEnoent(error)) return { kind: "missing" };
 			return { kind: "unreadable" };
 		}
 
@@ -190,7 +211,7 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 		try {
 			stat = fs.lstatSync(/* turbopackIgnore: true */ journalFile);
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+			if (isEnoent(error)) return [];
 			throw new DeletionJournalUnreadableError("Could not stat deletion journal.", { cause: error });
 		}
 		if (!stat.isFile() || stat.isSymbolicLink()) {
@@ -200,7 +221,7 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 		try {
 			text = fs.readFileSync(/* turbopackIgnore: true */ journalFile, "utf8");
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+			if (isEnoent(error)) return [];
 			throw new DeletionJournalUnreadableError("Could not read deletion journal file.", { cause: error });
 		}
 		let parsed: unknown;
@@ -213,21 +234,11 @@ export function createWorkspaceStore(directory: string): WorkspaceStore {
 			throw new DeletionJournalCorruptError("Deletion journal must be an array.");
 		}
 		for (const e of parsed) {
-			if (
-				!e ||
-				typeof e !== "object" ||
-				Array.isArray(e) ||
-				typeof e.workspaceId !== "string" ||
-				!WORKSPACE_ID_PATTERN.test(e.workspaceId) ||
-				typeof e.pluginId !== "string" ||
-				!e.pluginId.trim() ||
-				(e.stage !== "started" && e.stage !== "state-deleted" && e.stage !== "metadata-deleted") ||
-				typeof e.startedAt !== "string"
-			) {
+			if (!isWorkspaceDeletionJournalEntry(e)) {
 				throw new DeletionJournalCorruptError("Deletion journal contains invalid entries.");
 			}
 		}
-		return parsed as WorkspaceDeletionJournalEntry[];
+		return parsed;
 	}
 
 	function writeDeletionJournal(entries: WorkspaceDeletionJournalEntry[]): void {
@@ -337,7 +348,7 @@ function fileExists(file: string): boolean {
 		fs.lstatSync(/* turbopackIgnore: true */ file);
 		return true;
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		if (isEnoent(error)) return false;
 		throw error;
 	}
 }
@@ -347,7 +358,7 @@ function assertRegularFile(file: string, label: string): void {
 		const stat = fs.lstatSync(/* turbopackIgnore: true */ file);
 		if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`Unsafe ${label.toLowerCase()} path.`);
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+		if (isEnoent(error)) return;
 		throw error;
 	}
 }

@@ -657,7 +657,7 @@ export function ArchivePage({
 
 	const renderChatRow = (chat: ChatDirectoryItem | WorkspaceDirectoryEntry, depth = 0): ReactNode => {
 		const isWorkspace = chat.kind === "workspace";
-		const isPractice = !isWorkspace && (chat as ChatDirectoryItem).kind === "practice";
+		const isPractice = chat.kind !== "workspace" && chat.kind === "practice";
 		const folderPath = getFolderPathString(chat.folderId, allKnownFolders);
 
 		let chatHref = isWorkspace ? `/workspaces/${chat.id}` : `/chat/${chat.id}?from=archive`;
@@ -680,7 +680,7 @@ export function ArchivePage({
 				onContextMenu={(e) => openChatContext(e, chat)}
 			>
 				<span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground/80">
-					{isWorkspace ? (
+					{chat.kind === "workspace" ? (
 						<BoxIcon className="size-3.5" />
 					) : isPractice ? (
 						<DumbbellIcon className="size-3.5" />
@@ -699,9 +699,9 @@ export function ArchivePage({
 								Practice
 							</span>
 						)}
-						{isWorkspace && (chat as WorkspaceDirectoryEntry).availability !== "available" && (
+						{chat.kind === "workspace" && chat.availability !== "available" && (
 							<span className="rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.2 text-[9px] font-mono uppercase tracking-wider">
-								{(chat as WorkspaceDirectoryEntry).availability}
+								{chat.availability}
 							</span>
 						)}
 					</div>
@@ -1236,10 +1236,10 @@ export function ArchivePage({
 							data-testid="ctx-delete-chat"
 							onClick={() => {
 								if (target) {
-									if (isWorkspace) {
-										setDeletingWorkspace(target as WorkspaceDirectoryEntry);
+									if (target.kind === "workspace") {
+										setDeletingWorkspace(target);
 									} else {
-										setDeletingChat(target as ChatDirectoryItem);
+										setDeletingChat(target);
 									}
 								}
 								closeContextMenus();
