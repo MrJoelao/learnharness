@@ -247,6 +247,8 @@ export interface JobStore {
 	updateJob(id: string, patch: JobPatch): JobRecord | null;
 	/** All jobs for a chat, newest activity first. */
 	listJobs(chatId: string): JobRecord[];
+	/** All jobs across every chat, newest activity first. */
+	listAllJobs?(): JobRecord[];
 	/** The job fulfilling a given tool part, if any (spawn-hook dedup). */
 	findJobByToolCallId(chatId: string, toolCallId: string): JobRecord | null;
 	/** Delete every job record for a chat — running or finished (session-
