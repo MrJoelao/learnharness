@@ -32,7 +32,6 @@ import {
 	NetworkIcon,
 	PuzzleIcon,
 	RefreshCwIcon,
-	RotateCcwIcon,
 	SearchIcon,
 	SlidersHorizontalIcon,
 	TargetIcon,
@@ -248,7 +247,8 @@ function StudyHubModeCard({
 					<img
 						src={imageUrl!}
 						alt={mode.name}
-						className="w-full h-full object-cover"
+						draggable={false}
+						className="w-full h-full object-cover select-none pointer-events-none"
 						onError={() => setImageFailed(true)}
 					/>
 				) : (
@@ -449,6 +449,7 @@ export function StudyHubCatalog({
 	const dragStartYRef = useRef<number | null>(null);
 	const isDraggingRef = useRef(false);
 	const wasPullingRef = useRef(false);
+	const wheelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
@@ -625,7 +626,7 @@ export function StudyHubCatalog({
 	// Progressive pull-to-refresh handlers
 	const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
 		if (e.button !== 0) return;
-		if ((e.target as HTMLElement).closest("button, input, textarea, a")) {
+		if ((e.target as HTMLElement | null)?.closest?.("button, input, textarea, a")) {
 			return;
 		}
 		const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
@@ -664,8 +665,8 @@ export function StudyHubCatalog({
 		const diff = currentY - dragStartYRef.current;
 		if (diff > 0) {
 			setIsPulling(true);
-			if (diff > 8) wasPullingRef.current = true;
-			const distance = Math.min(75, diff * 0.45);
+			if (diff > 6) wasPullingRef.current = true;
+			const distance = Math.min(80, diff * 0.7);
 			pullDistanceRef.current = distance;
 			setPullDistance(distance);
 		} else {
@@ -680,7 +681,7 @@ export function StudyHubCatalog({
 		isDraggingRef.current = false;
 		setIsPulling(false);
 		dragStartYRef.current = null;
-		const shouldRetry = pullDistanceRef.current >= 50 && !isRetrying && !isLoading;
+		const shouldRetry = pullDistanceRef.current >= 48 && !isRetrying && !isLoading;
 		pullDistanceRef.current = 0;
 		setPullDistance(0);
 		if (shouldRetry) {
@@ -689,6 +690,46 @@ export function StudyHubCatalog({
 		setTimeout(() => {
 			wasPullingRef.current = false;
 		}, 100);
+	};
+
+	const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+		const scrollTop = scrollContainerRef.current?.scrollTop ?? 0;
+		if (scrollTop <= 0 && e.deltaY < 0 && !isRetrying && !isLoading) {
+			const step = Math.min(80, Math.abs(e.deltaY) * 0.45);
+			const next = Math.min(80, pullDistanceRef.current + step);
+			pullDistanceRef.current = next;
+			setIsPulling(true);
+			setPullDistance(next);
+
+			if (wheelTimeoutRef.current) {
+				clearTimeout(wheelTimeoutRef.current);
+			}
+
+			if (next >= 48) {
+				wheelTimeoutRef.current = setTimeout(() => {
+					const shouldRetry = pullDistanceRef.current >= 48;
+					pullDistanceRef.current = 0;
+					setPullDistance(0);
+					setIsPulling(false);
+					if (shouldRetry) {
+						handleRetry();
+					}
+				}, 220);
+			} else {
+				wheelTimeoutRef.current = setTimeout(() => {
+					pullDistanceRef.current = 0;
+					setPullDistance(0);
+					setIsPulling(false);
+				}, 280);
+			}
+		} else if (e.deltaY > 0 && pullDistanceRef.current > 0) {
+			pullDistanceRef.current = 0;
+			setPullDistance(0);
+			setIsPulling(false);
+			if (wheelTimeoutRef.current) {
+				clearTimeout(wheelTimeoutRef.current);
+			}
+		}
 	};
 
 	useEffect(() => {
@@ -706,8 +747,8 @@ export function StudyHubCatalog({
 			const diff = e.clientY - dragStartYRef.current;
 			if (diff > 0) {
 				setIsPulling(true);
-				if (diff > 8) wasPullingRef.current = true;
-				const distance = Math.min(75, diff * 0.45);
+				if (diff > 6) wasPullingRef.current = true;
+				const distance = Math.min(80, diff * 0.7);
 				pullDistanceRef.current = distance;
 				setPullDistance(distance);
 			} else {
@@ -722,7 +763,7 @@ export function StudyHubCatalog({
 			isDraggingRef.current = false;
 			setIsPulling(false);
 			dragStartYRef.current = null;
-			const shouldRetry = pullDistanceRef.current >= 50 && !isRetrying && !isLoading;
+			const shouldRetry = pullDistanceRef.current >= 48 && !isRetrying && !isLoading;
 			pullDistanceRef.current = 0;
 			setPullDistance(0);
 			if (shouldRetry) {
@@ -733,11 +774,22 @@ export function StudyHubCatalog({
 			}, 100);
 		};
 
+		const handleDragStart = (e: DragEvent) => {
+			if (isDraggingRef.current) {
+				e.preventDefault();
+			}
+		};
+
 		window.addEventListener("mousemove", handleWindowMouseMove);
 		window.addEventListener("mouseup", handleWindowMouseUp);
+		window.addEventListener("dragstart", handleDragStart);
 		return () => {
 			window.removeEventListener("mousemove", handleWindowMouseMove);
 			window.removeEventListener("mouseup", handleWindowMouseUp);
+			window.removeEventListener("dragstart", handleDragStart);
+			if (wheelTimeoutRef.current) {
+				clearTimeout(wheelTimeoutRef.current);
+			}
 		};
 	}, [isRetrying, isLoading]);
 
@@ -843,7 +895,7 @@ export function StudyHubCatalog({
 		return (
 			<StudyHubModeCard
 				key={`${modeKey}-${searchQuery.trim().toLowerCase()}-${selectedCategory}-${selectedDifficulty}`}
-				style={{ animationDelay: `${Math.min(index * 25, 150)}ms` }}
+				style={{ animationDelay: `${Math.min(index * 40, 240)}ms` }}
 				mode={mode}
 				activePlugins={activePlugins}
 				activeModeRenderers={activeModeRenderers}
@@ -886,23 +938,32 @@ export function StudyHubCatalog({
 				onTouchStart={handleTouchStart}
 				onTouchMove={handleTouchMove}
 				onTouchEnd={handleTouchEnd}
-				className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-6 pb-48 max-w-6xl w-full mx-auto"
+				onWheel={handleWheel}
+				className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-6 pb-48 max-w-6xl w-full mx-auto overscroll-y-contain"
 			>
 				{/* Progressive Pull-To-Refresh Indicator */}
 				<div
 					data-testid="study-hub-pull-indicator"
 					aria-hidden={pullDistance === 0 && !isRetrying}
 					className={cn(
-						"flex justify-center transition-all overflow-hidden pointer-events-none select-none",
-						isPulling ? "duration-0" : "duration-200 ease-out"
+						"w-full flex justify-center pointer-events-none select-none transition-all",
+						isPulling ? "duration-75" : "duration-300 ease-out"
 					)}
 					style={{
-						height: isRetrying ? 46 : pullDistance,
-						opacity: isRetrying ? 1 : Math.min(1, pullDistance / 16),
-						marginBottom: isRetrying || pullDistance > 0 ? 12 : 0,
+						height: isRetrying ? 52 : pullDistance > 0 ? pullDistance : 0,
+						opacity: isRetrying ? 1 : pullDistance > 0 ? Math.min(1, pullDistance / 10) : 0,
+						marginBottom: isRetrying ? 12 : pullDistance > 0 ? 8 : 0,
 					}}
 				>
-					<div className="flex items-center justify-center size-9 rounded-full bg-card border border-border/80 shadow-md my-auto relative">
+					<div
+						className={cn(
+							"flex items-center justify-center size-10 rounded-full bg-card border border-border shadow-lg relative transition-transform",
+							isPulling ? "duration-0" : "duration-200 ease-out"
+						)}
+						style={{
+							transform: `scale(${isRetrying ? 1 : Math.min(1, Math.max(0.6, pullDistance / 28))})`,
+						}}
+					>
 						<svg className="size-6 text-muted-foreground/25" viewBox="0 0 24 24">
 							<circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2.5" fill="none" />
 							<circle
@@ -912,21 +973,21 @@ export function StudyHubCatalog({
 								stroke="currentColor"
 								strokeWidth="2.5"
 								fill="none"
-								className="text-foreground transition-[stroke-dashoffset] duration-75"
+								className="text-primary transition-[stroke-dashoffset] duration-75"
 								strokeDasharray={56.55}
-								strokeDashoffset={56.55 * (1 - Math.min(1, pullDistance / 50))}
+								strokeDashoffset={56.55 * (1 - Math.min(1, pullDistance / 48))}
 								strokeLinecap="round"
 								transform="rotate(-90 12 12)"
 							/>
 						</svg>
 						<div className="absolute inset-0 flex items-center justify-center">
 							{isRetrying ? (
-								<RefreshCwIcon className="size-3.5 text-foreground animate-spin" />
+								<RefreshCwIcon className="size-4 text-primary animate-spin" />
 							) : (
 								<ArrowDownIcon
 									className={cn(
-										"size-3.5 text-foreground transition-transform duration-200",
-										pullDistance >= 50 ? "rotate-180 text-primary" : "rotate-0 text-muted-foreground"
+										"size-4 transition-transform duration-200",
+										pullDistance >= 48 ? "rotate-180 text-primary" : "rotate-0 text-muted-foreground"
 									)}
 								/>
 							)}
@@ -1300,19 +1361,6 @@ export function StudyHubCatalog({
 											</div>
 										</div>
 									</div>
-								)}
-
-								{/* Reset filters pill when any filter is active */}
-								{hasActiveFilters && (
-									<button
-										type="button"
-										onClick={clearFilters}
-										data-testid="study-hub-clear-filters"
-										className="flex cursor-pointer items-center gap-1.5 rounded-full border border-border/60 bg-card/85 px-3 py-1.5 font-ui text-xs text-muted-foreground hover:bg-destructive/10 hover:border-destructive/30 hover:text-destructive transition-colors ml-auto shadow-2xs backdrop-blur-xs"
-									>
-										<RotateCcwIcon className="size-3" />
-										<span>Reset filters</span>
-									</button>
 								)}
 							</div>
 						)}

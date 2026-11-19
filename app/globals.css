@@ -620,18 +620,18 @@ body {
 }
 
 @keyframes study-hub-card-enter {
-	from {
+	0% {
 		opacity: 0;
-		transform: translateY(8px) scale(0.985);
+		transform: translateY(14px) scale(0.975);
 	}
-	to {
+	100% {
 		opacity: 1;
 		transform: translateY(0) scale(1);
 	}
 }
 
 .study-hub-card-enter {
-	animation: study-hub-card-enter 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+	animation: study-hub-card-enter 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

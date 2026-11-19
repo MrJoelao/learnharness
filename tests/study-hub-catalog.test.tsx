@@ -1369,6 +1369,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(searchCard, "Search card container present");
 		assert.ok(!searchCard.className.includes("scale-[1.01]"), "Search card has no scale collision");
 		assert.ok(!searchCard.className.includes("-translate-y-0.5"), "Search card has no translate-y collision");
+		assert.equal(dom.document.querySelector('[data-testid="study-hub-clear-filters"]'), null, "Redundant reset filters button is removed");
 
 		// 3. Verify card entrance animation class
 		const card = dom.document.querySelector('[data-testid="study-hub-mode-card-quiz-plugin:interactive-quiz"]');
@@ -1406,6 +1407,39 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		});
 
 		assert.equal(retryInvoked, true, "Pull-to-refresh triggered onRetry callback");
+
+		// Test mouse wheel / trackpad scroll pull-to-refresh
+		let wheelRetryInvoked = false;
+		await act(async () => {
+			root.render(
+				<StudyHubCatalog
+					modes={[sampleMode]}
+					plugins={[{ info: { id: "quiz-plugin", enabled: true }, phase: "active" }]}
+					modeRenderers={[{ pluginId: "quiz-plugin", modeId: "interactive-quiz" }]}
+					isLoading={false}
+					onRetry={async () => {
+						wheelRetryInvoked = true;
+					}}
+				/>
+			);
+		});
+
+		const wheelPullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
+		const wheelScrollContainer = wheelPullIndicator.parentElement as HTMLDivElement;
+		const wheelEvent = new dom.window.Event("wheel", { bubbles: true });
+		Object.assign(wheelEvent, { deltaY: -120 });
+
+		await act(async () => {
+			wheelScrollContainer.dispatchEvent(wheelEvent);
+		});
+
+		assert.equal(wheelPullIndicator.getAttribute("aria-hidden"), "false", "Pull indicator visible via wheel pull");
+
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 260));
+		});
+
+		assert.equal(wheelRetryInvoked, true, "Wheel pull triggered onRetry callback");
 	}));
 });
 
