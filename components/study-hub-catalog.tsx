@@ -12,7 +12,7 @@ import { HostDialog } from "@/components/host-dialog";
 import { HostMarkdown } from "@/components/host-markdown";
 import { InteractionLayersProvider, useOptionalInteractionLayers } from "@/components/interaction-layers";
 import { cn } from "@/lib/utils";
-import { fuzzyScore, type PluginModeMetadata } from "@/src/core";
+import { formatBinding, fuzzyScore, type PluginModeMetadata } from "@/src/core";
 import {
 	AlertCircleIcon,
 	ArrowDownIcon,
@@ -364,9 +364,8 @@ function StudyHubModeCard({
 					<span>Readme</span>
 				</span>
 
-				<Button
-					variant="ghost"
-					size="sm"
+				<button
+					type="button"
 					onClick={(e) => {
 						if (typeof e?.stopPropagation === "function") {
 							e.stopPropagation();
@@ -377,7 +376,7 @@ function StudyHubModeCard({
 					aria-label={`Launch ${mode.name}`}
 					data-testid={`launch-mode-${modeKey}`}
 					className={cn(
-						"h-auto py-1 px-1.5 -mr-1.5 gap-1.5 shrink-0 ml-auto text-[11px] font-medium rounded-md transition-colors",
+						"text-[11px] font-medium py-1 px-1.5 -mr-1.5 rounded-md transition-colors flex items-center gap-1.5 border-0 bg-transparent shadow-none hover:shadow-none focus:outline-none shrink-0 ml-auto select-none",
 						isLaunching
 							? "text-muted-foreground cursor-wait"
 							: isUnavailable
@@ -396,7 +395,7 @@ function StudyHubModeCard({
 							<ArrowRightIcon className="size-3 text-muted-foreground/60" />
 						</>
 					)}
-				</Button>
+				</button>
 			</div>
 		</div>
 	);
@@ -505,6 +504,12 @@ export function StudyHubCatalog({
 		return () => {
 			window.removeEventListener("keydown", handleKeyDown);
 			document.removeEventListener("mousedown", handleMouseDown);
+			if (wheelTimeoutRef.current) {
+				clearTimeout(wheelTimeoutRef.current);
+			}
+			if (pullRefreshTimeoutRef.current) {
+				clearTimeout(pullRefreshTimeoutRef.current);
+			}
 		};
 	}, []);
 
@@ -662,7 +667,7 @@ export function StudyHubCatalog({
 		}
 		pullRefreshTimeoutRef.current = setTimeout(() => {
 			setIsPullRefreshing(false);
-		}, 650);
+		}, 750);
 	};
 
 	// Progressive pull-to-refresh handlers
@@ -747,9 +752,6 @@ export function StudyHubCatalog({
 			if (wheelTimeoutRef.current) {
 				clearTimeout(wheelTimeoutRef.current);
 			}
-			if (pullRefreshTimeoutRef.current) {
-				clearTimeout(pullRefreshTimeoutRef.current);
-			}
 
 			if (next >= PULL_THRESHOLD) {
 				wheelTimeoutRef.current = setTimeout(() => {
@@ -774,9 +776,6 @@ export function StudyHubCatalog({
 			setIsPulling(false);
 			if (wheelTimeoutRef.current) {
 				clearTimeout(wheelTimeoutRef.current);
-			}
-			if (pullRefreshTimeoutRef.current) {
-				clearTimeout(pullRefreshTimeoutRef.current);
 			}
 		}
 	};
@@ -839,9 +838,6 @@ export function StudyHubCatalog({
 			window.removeEventListener("dragstart", handleDragStart);
 			if (wheelTimeoutRef.current) {
 				clearTimeout(wheelTimeoutRef.current);
-			}
-			if (pullRefreshTimeoutRef.current) {
-				clearTimeout(pullRefreshTimeoutRef.current);
 			}
 		};
 	}, [isRetrying, isLoading]);
@@ -1460,10 +1456,13 @@ export function StudyHubCatalog({
 									<XIcon className="size-3.5" />
 								</button>
 							) : (
-								<div className="hidden sm:flex items-center gap-1 rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground shrink-0 mr-1 select-none pointer-events-none">
-									<kbd>⌘</kbd>
-									<kbd>K</kbd>
-								</div>
+								<kbd
+									suppressHydrationWarning
+									data-testid="study-hub-search-shortcut"
+									className="hidden sm:inline-flex items-center rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground shrink-0 mr-1 select-none pointer-events-none"
+								>
+									{formatBinding("mod+k")}
+								</kbd>
 							)}
 						</div>
 					</div>

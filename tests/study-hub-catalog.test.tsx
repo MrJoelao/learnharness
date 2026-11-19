@@ -11,7 +11,7 @@ import { StudyHubCatalog, getModeIcon, getModeKey } from "../components/study-hu
 import { SettingsDialogProvider } from "../components/settings/settings-dialog.tsx";
 import { InteractionLayersProvider } from "../components/interaction-layers.tsx";
 import { installModalDom } from "./modal-dom.ts";
-import type { PluginModeMetadata } from "../src/core";
+import { formatBinding, type PluginModeMetadata } from "../src/core";
 import {
 	BookOpenIcon,
 	BrainIcon,
@@ -1370,11 +1370,18 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.ok(!searchCard.className.includes("scale-[1.01]"), "Search card has no scale collision");
 		assert.ok(!searchCard.className.includes("-translate-y-0.5"), "Search card has no translate-y collision");
 		assert.equal(dom.document.querySelector('[data-testid="study-hub-clear-filters"]'), null, "Redundant reset filters button is removed");
+		const shortcutBadge = dom.document.querySelector('[data-testid="study-hub-search-shortcut"]');
+		assert.ok(shortcutBadge, "Search shortcut badge rendered");
+		assert.equal(shortcutBadge.textContent?.trim(), formatBinding("mod+k"), "Shortcut matches OS binding format");
 
-		// 3. Verify card entrance animation class
+		// 3. Verify card entrance animation class and launch button hover style
 		const card = dom.document.querySelector('[data-testid="study-hub-mode-card-quiz-plugin:interactive-quiz"]');
 		assert.ok(card, "Mode card rendered");
 		assert.ok(card.className.includes("study-hub-card-enter"), "Card has entrance animation class");
+		const activeLaunchBtn = dom.document.querySelector('[data-testid="launch-mode-quiz-plugin:interactive-quiz"]') as HTMLButtonElement;
+		assert.ok(activeLaunchBtn, "Launch button rendered");
+		assert.ok(activeLaunchBtn.className.includes("shadow-none"), "Launch button has no shadow");
+		assert.ok(activeLaunchBtn.className.includes("hover:bg-muted/40"), "Launch button matches Readme hover styling");
 
 		// 4. Verify pull-to-refresh indicator and deliberate threshold
 		const pullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
@@ -1479,7 +1486,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.equal(wheelRetryInvoked, true, "Sustained wheel pull triggered onRetry callback");
 
 		await act(async () => {
-			await new Promise((r) => setTimeout(r, 700));
+			await new Promise((r) => setTimeout(r, 800));
 		});
 
 		// 5. Verify Popover animations when opening Topic and Difficulty
