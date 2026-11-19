@@ -932,26 +932,10 @@ export function StudyHubCatalog({
 	return (
 		<main data-testid="study-hub-page" className="relative flex h-dvh flex-col bg-background overflow-hidden">
 			<TopBar>
-				<div className="flex flex-1 items-center justify-between min-w-0 pr-1">
-					<div className="flex items-center gap-2 min-w-0">
-						<h1 data-testid="study-hub-title" className="font-title text-3xl tracking-tight text-foreground truncate">
-							Study Hub
-						</h1>
-					</div>
-					<div className="flex items-center gap-2 shrink-0">
-						<button
-							type="button"
-							onClick={handleRetry}
-							disabled={isRetrying || isLoading}
-							aria-label="Refresh study modes"
-							title="Refresh study modes"
-							data-testid="study-hub-refresh-button"
-							className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer disabled:opacity-40"
-						>
-							<RefreshCwIcon className={cn("size-3.5", (isRetrying || isLoading) && "animate-spin")} />
-							<span className="sr-only">Refresh</span>
-						</button>
-					</div>
+				<div className="flex items-center gap-2 min-w-0">
+					<h1 data-testid="study-hub-title" className="font-title text-3xl tracking-tight text-foreground truncate">
+						Study Hub
+					</h1>
 				</div>
 			</TopBar>
 

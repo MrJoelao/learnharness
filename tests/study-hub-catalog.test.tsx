@@ -476,7 +476,7 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 		assert.equal(launchTreeBtn.disabled, false, "Button is re-enabled so user can retry");
 	}));
 
-	it("13. Refresh button invokes reload/retry callback", withDom(async (dom) => {
+	it("13. Pull-to-refresh gesture invokes reload/retry callback and top-right refresh button is removed", withDom(async (dom) => {
 		const root = createRoot(dom.document.getElementById("root")!);
 		let refreshCalled = false;
 
@@ -494,14 +494,31 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			);
 		});
 
-		const refreshBtn = dom.document.querySelector('[data-testid="study-hub-refresh-button"]') as HTMLButtonElement;
-		assert.ok(refreshBtn, "Refresh button rendered");
+		assert.equal(dom.document.querySelector('[data-testid="study-hub-refresh-button"]'), null, "Top-right refresh button is removed");
+
+		const pullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
+		assert.ok(pullIndicator, "Pull indicator is present");
+		const scrollContainer = pullIndicator.parentElement as HTMLDivElement;
+		assert.ok(scrollContainer, "Scroll container is present");
 
 		await act(async () => {
-			refreshBtn.click();
+			const downEvent = new dom.window.Event("mousedown", { bubbles: true });
+			Object.assign(downEvent, { clientY: 100, button: 0 });
+			scrollContainer.dispatchEvent(downEvent);
 		});
 
-		assert.equal(refreshCalled, true, "Refresh callback executed");
+		await act(async () => {
+			const moveEvent = new dom.window.Event("mousemove", { bubbles: true });
+			Object.assign(moveEvent, { clientY: 450 });
+			dom.window.dispatchEvent(moveEvent);
+		});
+
+		await act(async () => {
+			const upEvent = new dom.window.Event("mouseup", { bubbles: true });
+			dom.window.dispatchEvent(upEvent);
+		});
+
+		assert.equal(refreshCalled, true, "Pull-to-refresh callback executed");
 	}));
 
 	it("14. Attempting to launch an unavailable or removed mode definition shows a clear recoverable error", withDom(async (dom) => {
@@ -957,31 +974,46 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			);
 		});
 
-		const refreshBtn = dom.document.querySelector('[data-testid="study-hub-refresh-button"]') as HTMLButtonElement;
-		assert.ok(refreshBtn, "Refresh button rendered");
-		assert.equal(refreshBtn.disabled, false, "Initially enabled");
+		const pullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
+		const scrollContainer = pullIndicator.parentElement as HTMLDivElement;
+
+		const triggerPull = async () => {
+			await act(async () => {
+				const downEvent = new dom.window.Event("mousedown", { bubbles: true });
+				Object.assign(downEvent, { clientY: 100, button: 0 });
+				scrollContainer.dispatchEvent(downEvent);
+			});
+			await act(async () => {
+				const moveEvent = new dom.window.Event("mousemove", { bubbles: true });
+				Object.assign(moveEvent, { clientY: 450 });
+				dom.window.dispatchEvent(moveEvent);
+			});
+			await act(async () => {
+				const upEvent = new dom.window.Event("mouseup", { bubbles: true });
+				dom.window.dispatchEvent(upEvent);
+			});
+		};
 
 		// 1. First attempt fails
-		await act(async () => {
-			refreshBtn.click();
-		});
+		await triggerPull();
 
 		assert.equal(refreshAttempts, 1);
 		// Error notice must be visible with message
 		const errorNotice = dom.document.querySelector('[data-testid="study-hub-error"]');
 		assert.ok(errorNotice, "Error banner rendered on retry failure");
 		assert.ok(errorNotice.textContent?.includes("Network timeout during catalog refresh"), "Error message displayed to user");
-		// Interface is NOT stuck and button is usable again
-		assert.equal(refreshBtn.disabled, false, "Refresh button re-enabled after failure");
 
-		// 2. Second attempt succeeds
+		// 2. Second attempt succeeds (via banner retry button)
+		const bannerRetryBtn = dom.document.querySelector('[data-testid="study-hub-retry-button"]') as HTMLButtonElement;
+		assert.ok(bannerRetryBtn, "Error banner retry button rendered");
+		assert.equal(bannerRetryBtn.disabled, false, "Retry button enabled");
+
 		await act(async () => {
-			refreshBtn.click();
+			bannerRetryBtn.click();
 		});
 
 		assert.equal(refreshAttempts, 2);
 		assert.ok(!dom.document.querySelector('[data-testid="study-hub-error"]'), "Error banner cleared after successful retry");
-		assert.equal(refreshBtn.disabled, false, "Refresh button re-enabled after success");
 	}));
 
 	it("21. Filters: difficulty filtering, category + difficulty combination, reset, and no-results message", withDom(async (dom) => {
@@ -1061,18 +1093,28 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 			);
 		});
 
-		const refreshBtn = dom.document.querySelector('[data-testid="study-hub-refresh-button"]') as HTMLButtonElement;
-		assert.ok(refreshBtn);
+		const pullIndicator = dom.document.querySelector('[data-testid="study-hub-pull-indicator"]') as HTMLDivElement;
+		const scrollContainer = pullIndicator.parentElement as HTMLDivElement;
 
 		await act(async () => {
-			refreshBtn.click();
+			const downEvent = new dom.window.Event("mousedown", { bubbles: true });
+			Object.assign(downEvent, { clientY: 100, button: 0 });
+			scrollContainer.dispatchEvent(downEvent);
+		});
+		await act(async () => {
+			const moveEvent = new dom.window.Event("mousemove", { bubbles: true });
+			Object.assign(moveEvent, { clientY: 450 });
+			dom.window.dispatchEvent(moveEvent);
+		});
+		await act(async () => {
+			const upEvent = new dom.window.Event("mouseup", { bubbles: true });
+			dom.window.dispatchEvent(upEvent);
 		});
 
 		assert.equal(attempts, 1);
 		const errorAlert = dom.document.querySelector('[data-testid="study-hub-error"]');
 		assert.ok(errorAlert, "Error alert rendered on propOnRetry failure");
 		assert.ok(errorAlert.textContent?.includes("Custom refresh handler failed"), "Error text rendered in alert");
-		assert.equal(refreshBtn.disabled, false, "Header refresh button remains usable");
 
 		const bannerRetryBtn = dom.document.querySelector('[data-testid="study-hub-retry-button"]') as HTMLButtonElement;
 		assert.ok(bannerRetryBtn, "Banner retry button rendered");
@@ -1083,7 +1125,6 @@ describe("Study Hub Phase 5: Catalog and Mode Launcher", () => {
 
 		assert.equal(attempts, 2);
 		assert.ok(!dom.document.querySelector('[data-testid="study-hub-error"]'), "Error cleared on successful recovery");
-		assert.equal(refreshBtn.disabled, false, "Refresh button still usable");
 	}));
 
 	it("23. Empty state: clicking Browse Community Plugins opens Settings Dialog on plugins section without navigation", withDom(async (dom) => {
