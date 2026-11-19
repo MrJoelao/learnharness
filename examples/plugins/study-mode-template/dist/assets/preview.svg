@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 450" width="100%" height="100%">
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="currentColor" stroke-opacity="0.04" stroke-width="1" />
+    </pattern>
+  </defs>
+  <!-- Background -->
+  <rect width="800" height="450" fill="currentColor" fill-opacity="0.02" />
+  <rect width="800" height="450" fill="url(#grid)" />
+
+  <!-- Central concept canvas workbench preview -->
+  <g transform="translate(160, 85)">
+    <!-- Main Card -->
+    <rect width="480" height="280" rx="16" fill="currentColor" fill-opacity="0.04" stroke="currentColor" stroke-opacity="0.12" stroke-width="1.5" />
+    
+    <!-- Top Bar inside Card -->
+    <rect x="24" y="24" width="140" height="12" rx="4" fill="currentColor" fill-opacity="0.25" />
+    <rect x="24" y="46" width="220" height="8" rx="3" fill="currentColor" fill-opacity="0.1" />
+
+    <!-- Action Pill -->
+    <rect x="376" y="24" width="80" height="28" rx="6" fill="currentColor" fill-opacity="0.15" />
+
+    <!-- Sub Nodes / Visual mapping -->
+    <rect x="24" y="80" width="200" height="70" rx="10" fill="currentColor" fill-opacity="0.06" stroke="currentColor" stroke-opacity="0.1" stroke-width="1" />
+    <rect x="40" y="96" width="90" height="10" rx="3" fill="currentColor" fill-opacity="0.3" />
+    <rect x="40" y="116" width="140" height="6" rx="2" fill="currentColor" fill-opacity="0.15" />
+
+    <rect x="256" y="80" width="200" height="70" rx="10" fill="currentColor" fill-opacity="0.06" stroke="currentColor" stroke-opacity="0.1" stroke-width="1" />
+    <rect x="272" y="96" width="100" height="10" rx="3" fill="currentColor" fill-opacity="0.3" />
+    <rect x="272" y="116" width="150" height="6" rx="2" fill="currentColor" fill-opacity="0.15" />
+
+    <!-- Connector line -->
+    <path d="M 224 115 L 256 115" stroke="currentColor" stroke-opacity="0.2" stroke-width="2" stroke-dasharray="4 4" />
+
+    <!-- Bottom summary row -->
+    <rect x="24" y="170" width="432" height="86" rx="10" fill="currentColor" fill-opacity="0.03" stroke="currentColor" stroke-opacity="0.08" stroke-width="1" />
+    <circle cx="56" cy="213" r="16" fill="currentColor" fill-opacity="0.1" />
+    <rect x="88" y="202" width="120" height="10" rx="3" fill="currentColor" fill-opacity="0.25" />
+    <rect x="88" y="220" width="180" height="6" rx="2" fill="currentColor" fill-opacity="0.12" />
+  </g>
+</svg>

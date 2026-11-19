@@ -24,6 +24,7 @@ these are separate numbers, not interchangeable compatibility guarantees.
 | Current session snapshots and drafts | [View context](plugin-view-context.md) |
 | Controlled trees | [Tree contract](plugin-tree-contract.md) |
 | Backend-owned learning modes and workspaces | [Mode/workspace contract](plugin-mode-contract.md) |
+| UI/UX design and anti-slop guidelines | [UI/UX design guide](plugin-ui-ux-guide.md) |
 | Modal, menu, focus and Escape rules | [Interaction contract](dialog-overlay-contract.md) |
 | Host ownership and implementation boundaries | [Architecture](plugin-architecture.md) |
 

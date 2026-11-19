@@ -1,0 +1,20 @@
+/**
+ * Scoped styles for Study Mode Starter
+ * Uses LearnHarness host CSS variables exclusively.
+ */
+.concept-canvas-workspace {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: inherit;
+}
+
+.concept-canvas-card {
+  background-color: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.concept-canvas-card:hover {
+  border-color: var(--accent-foreground);
+}

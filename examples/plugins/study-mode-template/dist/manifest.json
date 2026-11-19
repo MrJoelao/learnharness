@@ -1,0 +1,11 @@
+{
+	"apiVersion": 1,
+	"id": "study-mode-template",
+	"name": "Study Mode Starter",
+	"version": "1.0.0",
+	"minAppVersion": "0.7.0",
+	"description": "Clean, un-slopped starter template for authoring LearnHarness Study Hub workspace modes.",
+	"main": "main.js",
+	"backend": "backend.cjs",
+	"styles.css": "styles.css"
+}

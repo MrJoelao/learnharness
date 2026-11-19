@@ -10,8 +10,9 @@ export const AUTHORING_DOCS = [
 	"plugin-authoring.md", "plugin-architecture.md", "plugin-question-contract.md",
 	"plugin-problem-contract.md", "plugin-session-extension-contract.md", "plugin-tree-contract.md",
 	"plugin-view-context.md", "dialog-overlay-contract.md", "plugin-examples.md", "plugin-mode-contract.md",
+	"plugin-ui-ux-guide.md",
 ];
-export const AUTHORING_EXAMPLES = ["hello-plugin", "managed-agent", "teaching-extension", "multi-mode"];
+export const AUTHORING_EXAMPLES = ["hello-plugin", "managed-agent", "teaching-extension", "multi-mode", "study-mode-template"];
 export const AUTHORING_PROJECTS = ["flashcards", "coding-questions", "drawing-pad", "rich-code-blocks", "ui-showcase"];
 const PROJECT_FILES = [".gitignore", "README.md", "LICENSE", "THIRD-PARTY.md", "FSRS-LICENSE.txt", "manifest.json", "package.json", "package-lock.json", "tsconfig.json"];
 const PROJECT_DIRECTORIES = ["src", "scripts", "tests", "licenses"];
@@ -110,6 +111,9 @@ export function buildPluginAuthoring({ root = path.resolve(import.meta.dirname, 
 	try {
 		copyFile(root, path.join(root, "LICENSE"), path.join(stage, "LICENSE"));
 		copyFile(root, path.join(root, "scripts", "install-plugin-local.mjs"), path.join(stage, "tools", "install-plugin-local.mjs"));
+		if (fs.existsSync(path.join(root, "scripts", "validate-plugin.mjs"))) {
+			copyFile(root, path.join(root, "scripts", "validate-plugin.mjs"), path.join(stage, "tools", "validate-plugin.mjs"));
+		}
 		for (const filename of AUTHORING_DOCS) copyFile(root, path.join(root, "docs", filename), path.join(stage, "docs", filename));
 		for (const id of AUTHORING_EXAMPLES) {
 			const source = path.join(root, "examples", "plugins", id), destination = path.join(stage, "examples", "plugins", id);

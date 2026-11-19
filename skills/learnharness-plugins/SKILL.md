@@ -15,6 +15,8 @@ to the task:
 | Area | Reference |
 | --- | --- |
 | Host boundaries and implementation map | [Architecture](../../docs/plugin-architecture.md) |
+| Workspace modes and Study Hub catalog | [Mode contract](../../docs/plugin-mode-contract.md) |
+| UI/UX design and anti-slop guidelines | [UI/UX design guide](../../docs/plugin-ui-ux-guide.md) |
 | Teaching questions/editors/grading | [Question contract](../../docs/plugin-question-contract.md) |
 | Practice problems/editors/processing | [Problem contract](../../docs/plugin-problem-contract.md) |
 | Submission interception, images, surfaces | [Session extensions](../../docs/plugin-session-extension-contract.md) |
@@ -38,7 +40,10 @@ official source manifests remain unchanged. Older targets need capability verifi
 ## Choose a starting point
 
 Begin with [Hello](../../examples/plugins/hello-plugin/README.md) for the smallest
-view/settings plugin. The [example reading routes](../../docs/plugin-examples.md)
+view/settings plugin. For Study Hub workspace modes, start with
+[Study Mode Template](../../examples/plugins/study-mode-template/README.md) for a single
+focused mode, or [Multi Mode](../../examples/plugins/multi-mode/README.md) for declaring
+multiple modes from one plugin backend. The [example reading routes](../../docs/plugin-examples.md)
 lead to the canonical UI Showcase, Drawing Pad, Coding Questions, Flashcards and Rich
 Code Blocks source projects included in the skill. Use them as real-world public-API
 references, not private host APIs. Core project IDs are reserved: do not install unchanged
@@ -121,6 +126,13 @@ The included no-build examples can be copied directly; they do not need npm setu
   Disable/restart interrupts unfinished work; recovery never replays arbitrary tools.
 - Notifications are live hints, not durable logs: use `onResync` plus current snapshots,
   and release observers rather than polling hidden views.
+- Workspace modes pair `ctx.registerMode(def)` in the backend with `ctx.registerModeRenderer(pluginId, modeId, renderer)`
+  in the frontend using identical IDs. State must be scoped to workspace ID using the provided `storage` facade.
+  Renderers must respect `signal.aborted`, cleaning up all listeners, intervals, observers and unmounting any roots.
+- Follow the [UI/UX design guide](../../docs/plugin-ui-ux-guide.md). Keep chrome quiet and put richness into content.
+  Always use host CSS variables (`--background`, `--foreground`, `--card`, `--border`, `--primary`, `--muted`). Never
+  hardcode hex colors or emit AI vibecoding slop (purple gradients, glowing neon boxes, emoji buttons, marketing fluff).
+  Adhere to a 4px spacing grid, Lucide icons, and smooth non-choppy transitions (`transition-all duration-200 ease-out`).
 
 ## Test without disturbing the installation
 
