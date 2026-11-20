@@ -84,7 +84,7 @@ function asRecord(body: unknown): Record<string, unknown> | null {
 	return body as Record<string, unknown>;
 }
 
-/** general: { autoUpdate?: boolean } */
+/** general: { autoUpdate?: boolean; studyHub?: boolean; notes?: boolean } */
 export function parseGeneralSettingsBody(body: unknown): SettingsBodyResult<GeneralSettings> {
 	const raw = asRecord(body);
 	if (!raw) return { ok: false, error: "Invalid JSON body" };
@@ -94,6 +94,18 @@ export function parseGeneralSettingsBody(body: unknown): SettingsBodyResult<Gene
 			return { ok: false, error: "autoUpdate must be a boolean" };
 		}
 		settings.autoUpdate = raw.autoUpdate;
+	}
+	if (raw.studyHub !== undefined) {
+		if (typeof raw.studyHub !== "boolean") {
+			return { ok: false, error: "studyHub must be a boolean" };
+		}
+		settings.studyHub = raw.studyHub;
+	}
+	if (raw.notes !== undefined) {
+		if (typeof raw.notes !== "boolean") {
+			return { ok: false, error: "notes must be a boolean" };
+		}
+		settings.notes = raw.notes;
 	}
 	return { ok: true, settings };
 }
@@ -481,13 +493,22 @@ export function parseStudyTimeSettingsBody(body: unknown): SettingsBodyResult<St
 	return { ok: true, settings };
 }
 
-/** dictation: { language?: one of Nova-3's supported language codes } */
+/** dictation: { language?: one of Nova-3's supported language codes; provider?: "deepgram" | "codex" } */
 export function parseDictationSettingsBody(body: unknown): SettingsBodyResult<DictationSettings> {
 	const raw = asRecord(body);
 	if (!raw) return { ok: false, error: "Invalid JSON body" };
-	if (raw.language === undefined) return { ok: true, settings: {} };
-	if (!isDictationLanguage(raw.language)) return { ok: false, error: "Unsupported dictation language" };
-	return { ok: true, settings: { language: raw.language } };
+	const settings: DictationSettings = {};
+	if (raw.language !== undefined) {
+		if (!isDictationLanguage(raw.language)) return { ok: false, error: "Unsupported dictation language" };
+		settings.language = raw.language;
+	}
+	if (raw.provider !== undefined) {
+		if (raw.provider !== "deepgram" && raw.provider !== "codex") {
+			return { ok: false, error: 'provider must be "deepgram" or "codex"' };
+		}
+		settings.provider = raw.provider;
+	}
+	return { ok: true, settings };
 }
 
 /** The custom endpoint's per-model pins (PATCH /api/custom-provider): the

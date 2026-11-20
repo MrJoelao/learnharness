@@ -19,6 +19,7 @@ export async function mountPluginChrome(frontend: PluginFrontendModule, children
 	const dom = parseHTML("<html><head></head><body><div id='root'></div></body></html>");
 	const globals = {
 		window: dom.window, self: dom.window, document: dom.document, innerWidth: 900, innerHeight: 700,
+		Window: class {},
 		HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, Node: dom.window.Node,
 		HTMLInputElement: dom.window.HTMLInputElement, HTMLTextAreaElement: dom.window.HTMLTextAreaElement,
 		MutationObserver: dom.window.MutationObserver, CustomEvent: dom.window.CustomEvent,
@@ -34,6 +35,9 @@ export async function mountPluginChrome(frontend: PluginFrontendModule, children
 	};
 	const saved = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
 	Object.assign(globalThis, globals);
+	const noSelection = () => ({ rangeCount: 0, anchorNode: null, focusNode: null, anchorOffset: 0, focusOffset: 0, addRange() {}, removeAllRanges() {}, collapse() {}, extend() {}, getRangeAt: () => null });
+	Object.assign(dom.document, { getSelection: noSelection, hasFocus: () => false, compatMode: "CSS1Compat" });
+	Object.assign(dom.window, { getSelection: noSelection });
 	const restoreModalDom = installModalDom(dom);
 	// Chrome measurement keeps its fixture-specific geometry; modal shims
 	// still supply focus, legacy-input, traversal and event support.

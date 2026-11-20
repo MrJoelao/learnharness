@@ -47,7 +47,7 @@ import {
 	type StudyTimeSettings,
 } from "@/src/core";
 import { useAppearance } from "./appearance.tsx";
-import { SettingsSection } from "./controls.tsx";
+import { SettingsRow, SettingsSection, Toggle } from "./controls.tsx";
 import { UpdateSettings } from "./update-settings.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
@@ -458,6 +458,32 @@ export function SettingsDialogBody({
 											void write("general", { ...record.general, autoUpdate: on })
 										}
 									/>
+									<SettingsRow
+										label="Study Hub"
+										hint="Show Study Hub in the sidebar and navigation"
+										testid="row-study-hub"
+									>
+										<Toggle
+											checked={record.general?.studyHub ?? true}
+											label="Study Hub"
+											onChange={(on) =>
+												void write("general", { ...record.general, studyHub: on })
+											}
+										/>
+									</SettingsRow>
+									<SettingsRow
+										label="Notes"
+										hint="Show the session notes panel in chat"
+										testid="row-notes"
+									>
+										<Toggle
+											checked={record.general?.notes ?? true}
+											label="Notes"
+											onChange={(on) =>
+												void write("general", { ...record.general, notes: on })
+											}
+										/>
+									</SettingsRow>
 								</SettingsSection>
 							)}
 							{active === "keys" && (

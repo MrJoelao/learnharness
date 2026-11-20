@@ -20,18 +20,20 @@ import {
 } from "../src/server/settings-body.ts";
 
 describe("parseGeneralSettingsBody", () => {
-	it("parses {} and {autoUpdate} replace-whole", () => {
+	it("parses {}, {autoUpdate}, {studyHub}, and {notes} replace-whole", () => {
 		const empty = parseGeneralSettingsBody({});
 		assert.ok(empty.ok);
 		assert.deepEqual(empty.settings, {});
-		const on = parseGeneralSettingsBody({ autoUpdate: true });
+		const on = parseGeneralSettingsBody({ autoUpdate: true, studyHub: false, notes: false });
 		assert.ok(on.ok);
-		assert.deepEqual(on.settings, { autoUpdate: true });
+		assert.deepEqual(on.settings, { autoUpdate: true, studyHub: false, notes: false });
 	});
 
-	it("rejects non-objects and non-boolean autoUpdate", () => {
+	it("rejects non-objects and non-boolean fields", () => {
 		assert.equal(parseGeneralSettingsBody("x").ok, false);
 		assert.equal(parseGeneralSettingsBody({ autoUpdate: "yes" }).ok, false);
+		assert.equal(parseGeneralSettingsBody({ studyHub: "no" }).ok, false);
+		assert.equal(parseGeneralSettingsBody({ notes: 123 }).ok, false);
 	});
 });
 

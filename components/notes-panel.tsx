@@ -13,9 +13,11 @@ import {
 	NOTES_MIN_WIDTH,
 } from "@/components/notes-layout";
 import { useNotesController, useNotesSnapshot } from "@/components/notes-state";
+import { useGeneralSettings } from "@/components/settings/general-settings";
 
 /** Always mounted so the editor (and its undo history) survives folding. */
 export function NotesPanel() {
+	const { notes: notesEnabled } = useGeneralSettings();
 	const controller = useNotesController();
 	const { visible, width: savedWidth, saveError } = useNotesSnapshot();
 	const [mounted, setMounted] = useState(false);
@@ -23,7 +25,7 @@ export function NotesPanel() {
 	const drag = useRef<{ x: number; width: number } | null>(null);
 	// transitions gated on mount: no slide-in flash on page load
 	useEffect(() => setMounted(true), []);
-	if (!controller) return null;
+	if (!notesEnabled || !controller) return null;
 	const width = dragWidth ?? savedWidth;
 	const step = (delta: number) => controller.setWidth(width + delta);
 	return (
@@ -86,8 +88,10 @@ export function NotesPanel() {
 import { Hint } from "@/components/ui/hint";
 
 export function NotesChip() {
+	const { notes: notesEnabled } = useGeneralSettings();
 	const controller = useNotesController();
 	const { visible } = useNotesSnapshot();
+	if (!notesEnabled) return null;
 	return (
 		<div
 			className={cn(

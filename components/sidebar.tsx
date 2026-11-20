@@ -29,6 +29,7 @@ import { LhMark } from "@/components/lh-mark";
 import { BrailleSpinner } from "@/components/braille-spinner";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 import { SettingsDialogProvider, useSettingsDialog } from "@/components/settings/settings-dialog.tsx";
+import { useGeneralSettings } from "@/components/settings/general-settings";
 import { Hint } from "@/components/ui/hint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,7 +102,7 @@ import { FilePathDropZone } from "@/components/file-path-drop-zone";
 const SIDEBAR_AUTOCLOSE = 928;
 
 // Module scope, guarded for SSR (the server has no navigator).
-const IS_ELECTRON = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron");
+const IS_ELECTRON = typeof navigator !== "undefined" && typeof navigator.userAgent === "string" && navigator.userAgent.includes("Electron");
 
 declare global {
 	interface Window {
@@ -625,6 +626,7 @@ export function SessionsSidebar({
 	initialFolders?: ChatFolder[];
 } = {}) {
 	const { open, toggle } = useSidebar();
+	const { studyHub: studyHubEnabled } = useGeneralSettings();
 	const { feed: activityFeed } = useActivity();
 	const hasActiveJobs = (activityFeed?.jobs?.length ?? 0) > 0 || (activityFeed?.extractions?.length ?? 0) > 0;
 	const [organization, setOrganization] = useState<ChatOrganization | OrganizationV2 | null>(null);
@@ -1354,6 +1356,7 @@ export function SessionsSidebar({
 			}
 		};
 		const onToggleStudyHub = () => {
+			if (!studyHubEnabled) return;
 			if (pathname?.startsWith("/study-hub")) {
 				router.push("/");
 			} else {
@@ -1856,22 +1859,24 @@ export function SessionsSidebar({
 					)}
 				</div>
 
-				<div className="px-2 py-0.5">
-					<Hint label="Study Hub" action="toggle-study-hub" side="right">
-						<Link
-							href="/study-hub"
-							data-testid="study-hub-nav-button"
-							aria-label="Study Hub"
-							className={cn(
-								"inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer",
-								pathname?.startsWith("/study-hub") && "bg-accent text-foreground font-semibold",
-							)}
-						>
-							<LayoutGridIcon className="size-3" />
-							<span>Study Hub</span>
-						</Link>
-					</Hint>
-				</div>
+				{studyHubEnabled && (
+					<div className="px-2 py-0.5">
+						<Hint label="Study Hub" action="toggle-study-hub" side="right">
+							<Link
+								href="/study-hub"
+								data-testid="study-hub-nav-button"
+								aria-label="Study Hub"
+								className={cn(
+									"inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer",
+									pathname?.startsWith("/study-hub") && "bg-accent text-foreground font-semibold",
+								)}
+							>
+								<LayoutGridIcon className="size-3" />
+								<span>Study Hub</span>
+							</Link>
+						</Hint>
+					</div>
+				)}
 				</PluginSidebarActions>
 
 				{/* Divider above Archive / Settings */}

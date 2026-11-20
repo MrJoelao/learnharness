@@ -198,9 +198,12 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 	return {
 		general: {
 			autoUpdate: record?.general?.autoUpdate ?? FACTORY_SETTINGS.general.autoUpdate,
+			studyHub: record?.general?.studyHub ?? FACTORY_SETTINGS.general.studyHub,
+			notes: record?.general?.notes ?? FACTORY_SETTINGS.general.notes,
 		},
 		dictation: {
 			language: record?.dictation?.language ?? FACTORY_SETTINGS.dictation.language,
+			provider: record?.dictation?.provider ?? FACTORY_SETTINGS.dictation.provider,
 		},
 		agent: {
 			workerRequestConcurrency: agent.workerRequestConcurrency ?? FACTORY_SETTINGS.agent.workerRequestConcurrency,

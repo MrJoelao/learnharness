@@ -51,7 +51,6 @@ const nextConfig: NextConfig = {
 	// stay intact, and the script guards against leaked data/keys.
 	outputFileTracingExcludes: {
 		"*": [
-			"data/**/*",
 			"**/data/**/*",
 			"auth.json",
 			"chatgpt-credentials.json*",

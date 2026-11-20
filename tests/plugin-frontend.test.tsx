@@ -603,7 +603,8 @@ describe("plugin frontend surface and native importer", () => {
 			ctx.registerAction({ id: "run", name: "Run fixture", run() { actions.push("run"); } });
 			ctx.registerSettings(child => { settingsMounts++; child.textContent = "Fixture custom settings"; return () => { settingsCleanups++; }; });
 			ctx.onAppEvent(event => { events.push(event); });
-		} }, { fetch: async (_url, init) => {
+		} }, { fetch: async (url, init) => {
+			if (String(url).includes("/modes")) return Response.json({ modes: [] });
 			if (init?.method === "POST") { refreshPosts++; if (pendingRefresh) return pendingRefresh.promise; }
 			if (init?.method === "PUT") enabled = JSON.parse(String(init.body)).enabled;
 			return Response.json({ plugins: [info("fixture", { enabled, status: enabled ? "active" : "disabled" })], directory: "/fixture/writable/plugins" });
@@ -645,7 +646,7 @@ describe("plugin frontend surface and native importer", () => {
 			assert.ok(document.querySelector('[data-testid="section-plugins"] [role="alert"]')?.textContent?.includes("Synthetic refresh failure"));
 			pendingRefresh = undefined;
 			await click(refresh); assert.equal(refreshPosts, 2);
-			assert.equal(document.querySelector('[data-testid="section-plugins"] [role="alert"]'), null);
+			assert.equal(document.querySelector('[data-testid="section-plugins"] [role="alert"]')?.textContent ?? null, null);
 			assert.equal(document.querySelector('nav[aria-label="Plugin views"]'), null, "enabled plugin views do not create automatic navigation");
 			const gear = document.querySelector<HTMLButtonElement>('[aria-label="Settings for Plugin fixture"]')!;
 			assert.ok(gear);

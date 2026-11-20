@@ -70,6 +70,7 @@ async function fixture(options: { strict?: boolean; activity?: boolean; withSess
 			if (url === "/api/settings") return Response.json({ settings: { version: 1, appearance: { background: "#141414" } } });
 			assert.equal(init?.method, undefined, "opening/selecting must never mutate data");
 			if (url === "/api/graph") return Response.json(graph);
+			if (url === "/api/graph/topics") return Response.json({ topics: [] });
 			assert.equal(url, "/api/graph/sources");
 			return Response.json(directory);
 		}) as typeof fetch,
@@ -307,7 +308,7 @@ it("lazily loads the real Chains interface as one nonmodal main-pane view, prese
 		assert.equal(f.requests.length, 0);
 		assert.equal(f.target.querySelector('[data-testid="practice-props-chip"]')?.textContent, "Pick nodes");
 		await click(f, "practice-props-chip");
-		assert.deepEqual(f.requests.map((r) => r.url), ["/api/graph", "/api/graph/sources"]);
+		assert.deepEqual(f.requests.map((r) => r.url), ["/api/graph", "/api/graph/sources", "/api/graph/topics"]);
 		const pane = overlay()!.closest<HTMLElement>('[data-plugin-knowledge-picker-pane]'); assert.ok(pane);
 		assert.equal(pane.parentElement, f.content);
 		assert.equal(overlay()!.closest('[role="dialog"]'), null);
@@ -492,7 +493,7 @@ it("source notify/resync refreshes only the open directory, never the cached gra
 		assert.equal(f.requests.filter((r) => r.url === "/api/graph").length, 1);
 		await click(f, "chain-table-close");
 		await act(async () => { f.notify("sources-changed"); f.notify("chats-changed"); f.resync(); });
-		assert.equal(f.requests.length, 5);
+		assert.equal(f.requests.length, 7);
 	} finally { await f.dispose(); }
 });
 
@@ -500,11 +501,12 @@ for (const stale of ["response", "error"] as const) it(`source reads abort on cl
 	const reads: ReturnType<typeof deferred<Response>>[] = [];
 	const f = await fixture({ fetch: async (url) => {
 		if (url === "/api/graph") return Response.json(graph);
+		if (url === "/api/graph/topics") return Response.json({ topics: [] });
 		const read = deferred<Response>(); reads.push(read); return read.promise;
 	} });
 	try {
 		await click(f, "practice-props-chip");
-		const first = f.requests[1]!.init!.signal!;
+		const first = f.requests.find((r) => r.url === "/api/graph/sources")!.init!.signal!;
 		await click(f, "chain-table-close"); assert.equal(first.aborted, true);
 		await click(f, "practice-props-chip");
 		await act(async () => {
@@ -515,7 +517,7 @@ for (const stale of ["response", "error"] as const) it(`source reads abort on cl
 		assert.equal(overlay()!.textContent?.includes("Stale label"), false);
 		assert.equal(overlay()!.querySelector('[role="alert"]'), null);
 		assert.ok(overlay()!.querySelector('[data-testid="add-source-folder"]'));
-		const second = f.requests[2]!.init!.signal!;
+		const second = f.requests.filter((r) => r.url === "/api/graph/sources")[1]!.init!.signal!;
 		await act(async () => { f.lifetime.abort(); });
 		assert.equal(second.aborted, true); assert.equal(overlay(), null);
 		assert.deepEqual(f.errors, []);
@@ -802,7 +804,7 @@ it("route expiry closes an active pane picker without disposing its retained wid
 		assert.equal(overlay(), null); assert.equal(sourceRead.aborted, true);
 		assert.match(f.target.textContent!, /1 node selected/);
 		await click(f, "practice-props-chip");
-		assert.equal(overlay(), null); assert.equal(f.requests.length, 2, "expired source never falls back to a body modal");
+		assert.equal(overlay(), null); assert.equal(f.requests.length, 3, "expired source never falls back to a body modal");
 	} finally { await f.dispose(); }
 });
 

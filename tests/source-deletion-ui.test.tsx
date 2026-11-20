@@ -20,6 +20,13 @@ const nativeClick = dom.window.HTMLInputElement.prototype.click;
 dom.window.HTMLInputElement.prototype.click = function () { if (this.type === "checkbox") this.checked = !this.checked; nativeClick.call(this); };
 let root: Root | undefined, host: HTMLDivElement | undefined;
 const originalFetch = globalThis.fetch;
+const setMockFetch = (handler: (url: string, init?: RequestInit) => Promise<Response>) => {
+	globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+		const url = typeof input === "string" ? input : input instanceof URL ? input.pathname : input.url;
+		if (url.includes("/topics")) return Promise.resolve(Response.json({ topics: [] }));
+		return handler(url, init);
+	}) as typeof fetch;
+};
 afterEach(async () => {
 	await act(async () => { root?.unmount(); }); root = undefined;
 	// FocusScope dispatches its unmount event after React cleanup.
@@ -41,7 +48,7 @@ async function click(id: string) {
 it("a failed deletion keeps its original confirmation targets for retry even after refresh prunes removed sources", async () => {
 	let current = directory(), revisions = 0;
 	const requests: { sourceIds: string[]; folderIds: string[]; deleteSessions: boolean }[] = [];
-	globalThis.fetch = async (_url, init) => {
+	setMockFetch(async (_url, init) => {
 		if (init?.method === "DELETE") {
 			requests.push(JSON.parse(init.body as string));
 			current = { ...current, sources: current.sources.filter((s) => s.id !== "a") };
@@ -49,7 +56,7 @@ it("a failed deletion keeps its original confirmation targets for retry even aft
 			return Response.json({ ...current, graphRevision: 1 });
 		}
 		return Response.json(current);
-	};
+	});
 	const onRevision = () => { revisions++; }; window.addEventListener("lh:graph-revision", onRevision);
 	try {
 		await mount(<ChainTableOverlay open nodes={[]} chains={[]} sessions={{}} fileSources={{}} onClose={() => {}} />);
@@ -65,7 +72,7 @@ it("a failed deletion keeps its original confirmation targets for retry even aft
 	} finally { window.removeEventListener("lh:graph-revision", onRevision); }
 });
 it("clearing ordinary source selection does not clear the caller's independent practice node picks", async () => {
-	let changes = 0; globalThis.fetch = async () => Response.json(directory());
+	let changes = 0; setMockFetch(async () => Response.json(directory()));
 	await mount(<ChainTableOverlay open nodes={[]} chains={[]} sessions={{}} fileSources={{}} controlledSelection={new Set(["practice-node"])} onSelectionChange={() => { changes++; }} onClose={() => {}} />);
 	await click("cluster-checkbox-a"); assert.match(document.querySelector('[data-testid="chain-selected-summary"]')!.textContent!, /1 source/);
 	await click("chain-clear"); assert.equal(document.querySelector('[data-testid="chain-selection-bar"]'), null); assert.equal(changes, 0);
@@ -77,7 +84,7 @@ const practiceDirectory = (): SourceDirectory => ({
 const sourceNode = (id: string, source: string): GraphNode => ({ id, name: id, statement: id, aliases: [], createdAt: "now", provenance: [{ chatId: source, messageId: "m" }] });
 it("practice provenance rows never flash before the source inventory arrives", async () => {
 	let respond!: (response: Response) => void;
-	globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
+	setMockFetch(() => new Promise((resolve) => { respond = resolve; }));
 	await mount(<ChainTableOverlay open nodes={[sourceNode("historical", "practice")]} chains={[]} sessions={{ practice: "Hidden practice" }} fileSources={{}} onClose={() => {}} />);
 	assert.equal(document.querySelector('[data-testid="cluster-group-practice"]'), null);
 	await act(async () => { respond(Response.json(practiceDirectory())); });
@@ -85,7 +92,7 @@ it("practice provenance rows never flash before the source inventory arrives", a
 	assert.ok(document.querySelector('[data-testid="folder-checkbox-f"]'));
 });
 for (const selectMode of [false, true]) it(`reopening ${selectMode ? "practice picking" : "chains browsing"} waits for fresh source kinds before showing cached/provenance groups`, async () => {
-	globalThis.fetch = async () => Response.json(directory());
+	setMockFetch(async () => Response.json(directory()));
 	const changes: string[][] = [];
 	const visible = sourceNode("visible", "a"), historical = sourceNode("historical", "practice"), unknown = sourceNode("legacy-unknown", "unknown");
 	const overlay = (open: boolean, nodes = [visible]) => <ChainTableOverlay open={open} selectMode={selectMode} nodes={nodes} chains={[]} sessions={{ practice: "New practice" }} fileSources={{}} controlledSelection={new Set(["visible"])} onSelectionChange={(next) => changes.push([...next])} onClose={() => {}} />;
@@ -93,7 +100,7 @@ for (const selectMode of [false, true]) it(`reopening ${selectMode ? "practice p
 	assert.ok(document.querySelector('[data-testid="cluster-group-a"]'), "first opening loads and caches the inventory");
 	await update(overlay(false));
 	let respond!: (response: Response) => void;
-	globalThis.fetch = () => new Promise((resolve) => { respond = resolve; });
+	setMockFetch(() => new Promise((resolve) => { respond = resolve; }));
 	await update(overlay(true, [visible, historical, unknown]));
 	assert.equal(document.querySelector('[data-testid="cluster-group-practice"]') === null, true, "a new practice source cannot flash through the old inventory");
 	assert.equal(document.querySelector('[data-testid="cluster-checkbox-practice"]') === null, true, "the stale source cannot be selected while the refresh is delayed");
@@ -108,12 +115,12 @@ for (const selectMode of [false, true]) it(`reopening ${selectMode ? "practice p
 
 it("an older opening's late mutation reply cannot unlock a reopened tree with stale source kinds", async () => {
 	let finishDelete!: (response: Response) => void;
-	globalThis.fetch = (_url, init) => init?.method === "DELETE" ? new Promise((resolve) => { finishDelete = resolve; }) : Promise.resolve(Response.json(directory()));
+	setMockFetch((_url, init) => init?.method === "DELETE" ? new Promise((resolve) => { finishDelete = resolve; }) : Promise.resolve(Response.json(directory())));
 	const overlay = (open: boolean, nodes: GraphNode[] = []) => <ChainTableOverlay open={open} nodes={nodes} chains={[]} sessions={{ practice: "New practice" }} fileSources={{}} onClose={() => {}} />;
 	await mount(overlay(true)); await click("cluster-checkbox-a"); await click("chain-delete"); await click("source-delete-confirm");
 	await update(overlay(false));
 	const reads: ((response: Response) => void)[] = [];
-	globalThis.fetch = () => new Promise((resolve) => { reads.push(resolve); });
+	setMockFetch(() => new Promise((resolve) => { reads.push(resolve); }));
 	await update(overlay(true, [sourceNode("historical", "practice")]));
 	await act(async () => { finishDelete(Response.json({ ...directory(), graphRevision: 1 })); });
 	assert.equal(document.querySelector('[data-testid="cluster-group-practice"]') === null, true, "the old response cannot reinstall stale visible groups");
@@ -126,10 +133,10 @@ it("an older opening's late mutation reply cannot unlock a reopened tree with st
 it("folder selection, counts and confirmed source deletion exclude hidden practice sessions", async () => {
 	let current = practiceDirectory();
 	const requests: { sourceIds: string[]; folderIds: string[]; deleteSessions: boolean }[] = [];
-	globalThis.fetch = async (_url, init) => {
+	setMockFetch(async (_url, init) => {
 		if (init?.method === "DELETE") { requests.push(JSON.parse(init.body as string)); current = { ...current, sources: current.sources.filter((s) => s.chatKind === "practice") }; }
 		return Response.json(current);
-	};
+	});
 	await mount(<ChainTableOverlay open nodes={[sourceNode("historical", "practice")]} chains={[]} sessions={{ practice: "Hidden practice" }} fileSources={{}} onClose={() => {}} />);
 	await click("folder-checkbox-f");
 	assert.equal(document.querySelector('[data-testid="chain-selected-summary"]')!.textContent, "2 sources · 1 folder");
@@ -143,7 +150,7 @@ it("folder selection, counts and confirmed source deletion exclude hidden practi
 	assert.ok(document.querySelector('[data-testid="folder-checkbox-f"]'), "the container for a kept hidden session survives");
 });
 it("practice folder picking omits practice-born groups and retains caller-owned picks", async () => {
-	globalThis.fetch = async () => Response.json(practiceDirectory());
+	setMockFetch(async () => Response.json(practiceDirectory()));
 	const changes: string[][] = [];
 	await mount(<ChainTableOverlay open selectMode nodes={[sourceNode("visible", "a"), sourceNode("historical", "practice")]} chains={[]} sessions={{ practice: "Hidden practice" }} fileSources={{}} controlledSelection={new Set(["already-picked"])} onSelectionChange={(next) => changes.push([...next])} onClose={() => {}} />);
 	assert.deepEqual(changes, [], "rendering does not mutate existing practice picks");

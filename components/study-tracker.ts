@@ -83,6 +83,9 @@ export function createStudyTracker(deps: StudyTrackerDeps) {
 		if (!deps.hasFocus()) return;
 		if (retry || inputSince) sendActive();
 	}, STUDY_PING_MS);
+	if (typeof (timer as { unref?: () => void })?.unref === "function") {
+		(timer as { unref: () => void }).unref();
+	}
 
 	return {
 		windowId,

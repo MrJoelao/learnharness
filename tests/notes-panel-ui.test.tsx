@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NotesChip, NotesPanel } from "../components/notes-panel";
 import { NotesController, NotesProvider } from "../components/notes-state";
+import { _resetGeneralSettingsForTest, _setGeneralSettingsForTest } from "../components/settings/general-settings";
 
 function memoryStorage() {
 	const store = new Map<string, string>();
@@ -11,6 +12,7 @@ function memoryStorage() {
 
 describe("notes panel", () => {
 	it("chip always; panel folded until opened", () => {
+		_resetGeneralSettingsForTest();
 		const closed = new NotesController("c1", "", { storage: memoryStorage() });
 		let html = renderToStaticMarkup(<NotesProvider controller={closed}><NotesChip /><NotesPanel /></NotesProvider>);
 		assert.match(html, /data-testid="notes-chip"/); assert.match(html, /aria-pressed="false"/);
@@ -21,10 +23,19 @@ describe("notes panel", () => {
 	});
 
 	it("panel renders the resize handle and the stored width", () => {
+		_resetGeneralSettingsForTest();
 		const c = new NotesController("c1", "", { storage: memoryStorage() }); c.setOpen(true); c.setWidth(420);
 		const html = renderToStaticMarkup(<NotesProvider controller={c}><NotesPanel /></NotesProvider>);
 		assert.match(html, /role="separator"[^>]*aria-label="Resize notes"/);
 		assert.match(html, /width:420px/);
+	});
+
+	it("renders nothing when notes setting is disabled", () => {
+		_setGeneralSettingsForTest({ autoUpdate: true, studyHub: true, notes: false });
+		const c = new NotesController("c1", "", { storage: memoryStorage() }); c.setOpen(true);
+		const html = renderToStaticMarkup(<NotesProvider controller={c}><NotesChip /><NotesPanel /></NotesProvider>);
+		assert.equal(html, "");
+		_resetGeneralSettingsForTest();
 	});
 
 });

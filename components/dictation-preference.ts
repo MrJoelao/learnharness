@@ -2,12 +2,23 @@
 
 import { useSyncExternalStore } from "react";
 import {
-	FACTORY_SETTINGS, isDictationLanguage, sanitizeUserSettings,
-	type DictationLanguage, type UserSettings,
+	FACTORY_SETTINGS,
+	isDictationLanguage,
+	sanitizeUserSettings,
+	type DictationLanguage,
+	type DictationProvider,
+	type UserSettings,
 } from "@/src/core";
 import { notifySettingsSaved, onSettingsSaved } from "@/components/settings-signal";
 
-const INITIAL = { language: undefined as DictationLanguage | undefined, saving: false, error: null as string | null };
+export type { DictationProvider };
+
+const INITIAL = {
+	provider: undefined as DictationProvider | undefined,
+	language: undefined as DictationLanguage | undefined,
+	saving: false,
+	error: null as string | null,
+};
 
 /** One confirmed preference and one write in flight, shared by every surface.
  * The factory keeps transport tests isolated without a second persistence path.
@@ -34,14 +45,15 @@ export function createDictationLanguageStore(request: typeof fetch, saved: () =>
 			try {
 				const res = await request("/api/settings");
 				if (!res.ok) throw new Error();
-				const body = await res.json() as { settings: UserSettings | null };
+				const body = (await res.json()) as { settings: UserSettings | null };
 				if (!("settings" in body)) throw new Error();
 				const record = sanitizeUserSettings(body.settings);
 				if (body.settings !== null && record === null) throw new Error();
 				if (version !== revision) return getLanguage();
 				const language = record?.dictation?.language ?? FACTORY_SETTINGS.dictation.language;
+				const provider = record?.dictation?.provider ?? FACTORY_SETTINGS.dictation.provider;
 				needsRead = false;
-				publish({ language, error: null });
+				publish({ language, provider, error: null });
 				return language;
 			} catch {
 				if (version !== revision) return getLanguage();
@@ -55,27 +67,28 @@ export function createDictationLanguageStore(request: typeof fetch, saved: () =>
 		return reading;
 	}
 
-	function save(language: DictationLanguage): Promise<boolean> {
-		// A different selection must never inherit the previous write's success.
+	function saveSelection(language: DictationLanguage, provider: DictationProvider): Promise<boolean> {
 		if (writing || snapshot.language === undefined) return Promise.resolve(false);
 		revision++;
 		reading = null;
 		writing = Promise.resolve().then(async () => {
 			try {
 				const res = await request("/api/settings/dictation", {
-					method: "PUT", headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ language }),
+					method: "PUT",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(provider === "deepgram" ? { language } : { language, provider }),
 				});
 				if (!res.ok) throw new Error();
-				const body = await res.json() as { settings: UserSettings };
-				const confirmed = body.settings?.dictation?.language;
-				if (!isDictationLanguage(confirmed)) throw new Error();
+				const body = (await res.json()) as { settings: UserSettings };
+				const confirmedLang = body.settings?.dictation?.language;
+				const confirmedProvider = body.settings?.dictation?.provider ?? "deepgram";
+				if (!isDictationLanguage(confirmedLang) || confirmedProvider !== provider) throw new Error();
 				needsRead = false;
-				publish({ language: confirmed, error: null });
+				publish({ language: confirmedLang, provider: confirmedProvider, error: null });
 				saved();
 				return true;
 			} catch {
-				publish({ error: "Could not save dictation language. Try again." });
+				publish({ error: "Could not save dictation settings. Try again." });
 				return false;
 			} finally {
 				writing = null;
@@ -84,6 +97,15 @@ export function createDictationLanguageStore(request: typeof fetch, saved: () =>
 		});
 		publish({ saving: true, error: null });
 		return writing;
+	}
+
+	function save(language: DictationLanguage): Promise<boolean> {
+		return saveSelection(language, snapshot.provider ?? "deepgram");
+	}
+
+	function saveProvider(provider: DictationProvider): Promise<boolean> {
+		if (snapshot.language === undefined) return Promise.resolve(false);
+		return saveSelection(snapshot.language, provider);
 	}
 
 	async function getLanguage(): Promise<DictationLanguage> {
@@ -96,20 +118,33 @@ export function createDictationLanguageStore(request: typeof fetch, saved: () =>
 	}
 
 	return {
-		load, save, getLanguage,
+		load,
+		save,
+		saveProvider,
+		getLanguage,
 		getSnapshot: () => snapshot,
 		getServerSnapshot: () => INITIAL,
-		subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+		subscribe(listener: () => void) {
+			listeners.add(listener);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
 	};
 }
 
 let announcingSave = false;
-const store = createDictationLanguageStore((...args) => fetch(...args), () => {
-	// All our readers already received the confirmed PUT response. Keep the
-	// repo's notification contract without depending on a redundant GET.
-	announcingSave = true;
-	try { notifySettingsSaved("dictation"); } finally { announcingSave = false; }
-});
+const store = createDictationLanguageStore(
+	(...args) => fetch(...args),
+	() => {
+		announcingSave = true;
+		try {
+			notifySettingsSaved("dictation");
+		} finally {
+			announcingSave = false;
+		}
+	},
+);
 let readers = 0;
 let stopSignals: (() => void) | undefined;
 
@@ -119,14 +154,25 @@ function subscribe(listener: () => void) {
 		stopSignals = onSettingsSaved((section) => {
 			if (section === "dictation" && !announcingSave) void store.load(true).catch(() => {});
 		});
-		// A confirmed preference lives for the window, not the page. Navigation
-		// and reopening Settings must not add a new network failure point.
 		void store.getLanguage().catch(() => {});
 	}
-	return () => { off(); if (--readers === 0) { stopSignals?.(); stopSignals = undefined; } };
+	return () => {
+		off();
+		if (--readers === 0) {
+			stopSignals?.();
+			stopSignals = undefined;
+		}
+	};
 }
 
 export function useDictationLanguage() {
 	const snapshot = useSyncExternalStore(subscribe, store.getSnapshot, store.getServerSnapshot);
-	return { ...snapshot, load: store.load, save: store.save, getLanguage: store.getLanguage };
+	return {
+		...snapshot,
+		load: store.load,
+		save: store.save,
+		saveProvider: store.saveProvider,
+		getLanguage: store.getLanguage,
+		getProvider: () => store.getSnapshot().provider ?? "deepgram",
+	};
 }

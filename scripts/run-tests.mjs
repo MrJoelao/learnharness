@@ -13,14 +13,14 @@ const dataDir = process.env.LH_DATA_DIR || fs.mkdtempSync(path.join(os.tmpdir(),
 process.env.LH_DATA_DIR = dataDir;
 process.env.NODE_ENV = "test";
 
-// 2. Ensure generous heap size for V8 workers
+// 2. Ensure reasonable heap size for V8 workers (2GB per worker prevents delayed GC ballooning)
 const existingNodeOptions = process.env.NODE_OPTIONS || "";
 if (!existingNodeOptions.includes("--max-old-space-size")) {
-	process.env.NODE_OPTIONS = `${existingNodeOptions} --max-old-space-size=4096`.trim();
+	process.env.NODE_OPTIONS = `${existingNodeOptions} --max-old-space-size=2048`.trim();
 }
 
-// 3. Concurrency control: default to 4 unless specified via env or arguments
-const DEFAULT_CONCURRENCY = 4;
+// 3. Concurrency control: default to 2 workers to prevent CPU fan noise and keep RAM usage under ~3GB
+const DEFAULT_CONCURRENCY = 2;
 const rawArgs = process.argv.slice(2);
 const hasConcurrencyArg = rawArgs.some((arg) => arg.startsWith("--test-concurrency"));
 const concurrency = process.env.TEST_CONCURRENCY || DEFAULT_CONCURRENCY;

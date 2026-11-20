@@ -1,6 +1,6 @@
 {
 	"name": "learnharness",
-	"version": "0.7.0",
+	"version": "0.7.1",
 	"license": "AGPL-3.0-only",
 	"author": {
 		"name": "Amos Blomqvist",
@@ -17,6 +17,10 @@
 		"build": "npm run plugins:build-core && npm run plugins:build-authoring && next build",
 		"start": "next start -H localhost",
 		"test": "node scripts/run-tests.mjs",
+		"test:changed": "node scripts/test-changed.mjs",
+		"test:settings": "node scripts/run-tests.mjs tests/settings*.test.ts* tests/file-access-settings.test.ts tests/models-settings-repair.test.ts tests/render-settings.test.*",
+		"test:chat": "node scripts/run-tests.mjs tests/chat*.test.ts* tests/side-chat*.test.ts*",
+		"test:notes": "node scripts/run-tests.mjs tests/notes*.test.ts*",
 		"test:workspaces": "node scripts/run-tests.mjs tests/workspaces.test.ts tests/study-hub*.test.ts*",
 		"test:directory": "node scripts/run-tests.mjs tests/directory*.test.ts tests/source-*.test.ts* tests/render-source-folders.test.tsx",
 		"test:plugins": "node scripts/run-tests.mjs tests/plugin*.test.ts*",
@@ -103,6 +107,7 @@
 		"typebox": "^1.3.27",
 		"undici": "^7.29.0",
 		"use-stick-to-bottom": "^1.1.6",
+		"ws": "^8.22.1",
 		"zod": "^4.4.3"
 	},
 	"overrides": {
@@ -115,6 +120,7 @@
 		"@types/react": "^19.2.18",
 		"@types/react-dom": "^19.2.4",
 		"@types/turndown": "^5.0.6",
+		"@types/ws": "^8.18.2",
 		"@typescript-eslint/parser": "^8.68.0",
 		"concurrently": "^10.0.5",
 		"electron": "^44.9.3",

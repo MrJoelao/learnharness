@@ -340,11 +340,18 @@ export const ROLE_SLOT: Readonly<Record<ModelRole, ModelSlotName>> = {
 export interface GeneralSettings {
 	/** Automatic startup/24h update checks (default ON). Manual checks bypass this. */
 	autoUpdate?: boolean;
+	/** Study Hub access and navigation (default ON). */
+	studyHub?: boolean;
+	/** Session notes panel in chat (default ON). */
+	notes?: boolean;
 }
+
+export type DictationProvider = "deepgram" | "codex";
 
 /** One app-wide dictation preference, shared by every composer. */
 export interface DictationSettings {
 	language?: DictationLanguage;
+	provider?: DictationProvider;
 }
 
 /** Agent settings — everything about the non-conversation machinery. */
@@ -565,8 +572,8 @@ export interface FactorySettings {
 export const FACTORY_SETTINGS: FactorySettings = {
 	version: CURRENT_SETTINGS_VERSION,
 	agent: { workerRequestConcurrency: 8 },
-	general: { autoUpdate: true },
-	dictation: { language: "en" },
+	general: { autoUpdate: true, studyHub: true, notes: true },
+	dictation: { language: "en", provider: "deepgram" },
 	appearance: {
 		theme: "default",
 		background: null, // null = the active theme's background
@@ -623,6 +630,10 @@ function sanitizeGeneral(raw: Record<string, unknown>): GeneralSettings {
 	const out: GeneralSettings = {};
 	const autoUpdate = boolOrDrop(raw.autoUpdate);
 	if (autoUpdate !== undefined) out.autoUpdate = autoUpdate;
+	const studyHub = boolOrDrop(raw.studyHub);
+	if (studyHub !== undefined) out.studyHub = studyHub;
+	const notes = boolOrDrop(raw.notes);
+	if (notes !== undefined) out.notes = notes;
 	return out;
 }
 
@@ -930,10 +941,15 @@ export function sanitizeUserSettings(raw: unknown): UserSettings | null {
 	}
 	if (r.dictation !== undefined) {
 		const raw = r.dictation;
-		out.dictation = raw !== null && typeof raw === "object" && !Array.isArray(raw) &&
-			isDictationLanguage((raw as Record<string, unknown>).language)
-			? { language: (raw as DictationSettings).language }
-			: {};
+		if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+			const dictRaw = raw as Record<string, unknown>;
+			const dictOut: DictationSettings = {};
+			if (isDictationLanguage(dictRaw.language)) dictOut.language = dictRaw.language;
+			if (dictRaw.provider === "codex" || dictRaw.provider === "deepgram") dictOut.provider = dictRaw.provider;
+			out.dictation = dictOut;
+		} else {
+			out.dictation = {};
+		}
 	}
 	if (r.claudeCode !== undefined) {
 		const raw = r.claudeCode;

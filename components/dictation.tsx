@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useCodexDictation } from "./codex-dictation";
 import { Loader2Icon, MicIcon } from "lucide-react";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { Hint } from "@/components/ui/hint";
 import { deepgramListenUrl, type DictationLanguage } from "@/src/core";
 import { useDictationLanguage } from "@/components/dictation-preference";
-import { setDictationActive } from "@/components/dictation-state";
+import { isDictationActive, setDictationActive } from "@/components/dictation-state";
 import { dispatchFocusedPluginShortcut } from "@/components/plugin-input-focus";
 export { isDictationActive } from "@/components/dictation-state";
 
@@ -332,16 +333,61 @@ export type Dictation = {
 };
 
 /**
- * Shared capture engine with one synchronous window-wide recording owner.
- * Each primary run captures its main/question or explicit side destination.
- * Explicit plugin controllers never claim the primary target or finisher;
- * their asynchronous transcript delivery is part of finishing.
+ * Shared capture engine delegating to Deepgram or Codex based on user preference.
  */
 export function useDictation({ append, destination = "primary", disabled = false }: {
 	append: (text: string) => void;
 	/** Explicit destinations never register or consult the core primary target. */
 	destination?: "primary" | "explicit";
 	disabled?: boolean;
+}): Dictation {
+	const { getLanguage, provider: savedProvider, saving } = useDictationLanguage();
+	const selectedProvider = useRef(savedProvider);
+	// Do not move a live recording to another engine if settings refresh.
+	if (!isDictationActive()) selectedProvider.current = savedProvider;
+	const provider = selectedProvider.current;
+	const isSavingDisabled = saving && !isDictationActive();
+	const effectiveDisabled = disabled || isSavingDisabled;
+
+	const deepgram = useDeepgramDictation({
+		append,
+		destination,
+		disabled: effectiveDisabled,
+		enabled: provider === "deepgram" && !effectiveDisabled,
+	});
+	const codex = useCodexDictation({
+		append: (text) => (destination === "primary" ? (questionTarget ?? append)(text) : append(text)),
+		onActive: setDictationActive,
+		getLanguage,
+		destination,
+		disabled: effectiveDisabled,
+		enabled: provider === "codex" && !effectiveDisabled,
+	});
+
+	useEffect(() => {
+		if (provider !== "codex" || destination !== "primary") return;
+		dictationFinisher = codex.finish;
+		return () => {
+			if (dictationFinisher === codex.finish) dictationFinisher = null;
+		};
+	}, [provider, destination, codex.finish]);
+
+	const selected = provider === "codex" ? codex : deepgram;
+	return provider === undefined || effectiveDisabled ? { ...selected, toggle: () => {} } : selected;
+}
+
+/**
+ * Shared capture engine with one synchronous window-wide recording owner.
+ * Each primary run captures its main/question or explicit side destination.
+ * Explicit plugin controllers never claim the primary target or finisher;
+ * their asynchronous transcript delivery is part of finishing.
+ */
+export function useDeepgramDictation({ append, destination = "primary", disabled = false, enabled = true }: {
+	append: (text: string) => void;
+	/** Explicit destinations never register or consult the core primary target. */
+	destination?: "primary" | "explicit";
+	disabled?: boolean;
+	enabled?: boolean;
 }): Dictation {
 	const primary = destination === "primary";
 	const owner = useRef(Symbol("dictation")).current;
@@ -699,12 +745,12 @@ export function useDictation({ append, destination = "primary", disabled = false
 	// Publish finish() for the sibling subtrees (the pending question's
 	// dock) — registered for as long as this page owns the hook.
 	useEffect(() => {
-		if (!primary) return;
+		if (!primary || !enabled) return;
 		dictationFinisher = finish;
 		return () => {
 			if (dictationFinisher === finish) dictationFinisher = null;
 		};
-	}, [finish, primary]);
+	}, [finish, primary, enabled]);
 
 	const toggleFor = useCallback((destination?: DictationDestination) => {
 		if (phaseRef.current === "idle") void start(destination);
@@ -718,7 +764,9 @@ export function useDictation({ append, destination = "primary", disabled = false
 	// focused plugin control first, otherwise core fallback; Esc always
 	// cancels the actual recording owner rather than the focused widget.
 	useEffect(() => {
-		warmTokens.refresh(); // pre-mint at mount (mitigation D) — silent if keyless
+		if (enabled) warmTokens.refresh(); // pre-mint at mount (mitigation D) — silent if keyless
+	}, [enabled]);
+	useEffect(() => {
 		return () => {
 			// Navigation cancels capture: invalidate every pending await before
 			// releasing resources, and never append into a different page's input.
@@ -726,7 +774,10 @@ export function useDictation({ append, destination = "primary", disabled = false
 			cleanup(false);
 		};
 	}, [cleanup]);
-	useEffect(() => registerController(owner, { primary, toggle, cancel }), [owner, primary, toggle, cancel]);
+	useEffect(() => {
+		if (!enabled) return;
+		return registerController(owner, { primary, toggle, cancel });
+	}, [owner, primary, toggle, cancel, enabled]);
 
 	return {
 		phase,

@@ -2,6 +2,7 @@
 
 import { clampNotesWidth, NOTES_AUTOFOLD_BELOW, NOTES_DEFAULT_WIDTH, NOTES_WIDTH_KEY } from "@/components/notes-layout";
 import { createContext, useContext, useEffect, useSyncExternalStore, type ReactNode } from "react";
+import { useGeneralSettings } from "@/components/settings/general-settings";
 
 export const NOTES_OPEN_KEY = "lh-notes-open";
 const SAVE_ERROR = "Notes not saved";
@@ -191,8 +192,9 @@ export class NotesController {
 const NotesContext = createContext<NotesController | null>(null);
 
 export function NotesProvider({ controller, children }: { controller: NotesController; children: ReactNode }) {
+	const { notes: notesEnabled } = useGeneralSettings();
 	useEffect(() => {
-		if (typeof window === "undefined") return;
+		if (typeof window === "undefined" || !notesEnabled) return;
 		void controller.refresh();
 		const onResize = () => controller.setNarrow(window.innerWidth < NOTES_AUTOFOLD_BELOW);
 		onResize();
@@ -204,7 +206,7 @@ export function NotesProvider({ controller, children }: { controller: NotesContr
 			window.removeEventListener("resize", onResize);
 			controller.dispose();
 		};
-	}, [controller]);
+	}, [controller, notesEnabled]);
 	return <NotesContext.Provider value={controller}>{children}</NotesContext.Provider>;
 }
 

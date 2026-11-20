@@ -5,7 +5,7 @@ import { DICTATION_LANGUAGES, type DictationLanguage } from "@/src/core";
 import { MenuShell } from "@/components/menu-shell";
 import { useInteractionLayers } from "@/components/interaction-layers";
 import { Hint } from "@/components/ui/hint";
-import { SettingsMenuTrigger, SettingsRow } from "@/components/settings/controls";
+import { SettingsMenuTrigger, SettingsRow, ThinSelect } from "@/components/settings/controls";
 import { SearchMenuList } from "@/components/settings/search-menu-list";
 import { useDictationActive } from "@/components/dictation-state";
 import { useDictationLanguage } from "@/components/dictation-preference";
@@ -18,6 +18,28 @@ export function DictationLanguageSetting() {
 	return <SettingsRow label="Language" testid="row-dictation-language" dimmed={active}>
 		<DictationLanguagePicker preference={preference} disabled={active} />
 	</SettingsRow>;
+}
+
+export function DictationProviderSetting() {
+	const { provider, saving, saveProvider, error } = useDictationLanguage();
+	const active = useDictationActive();
+	return <>
+		<SettingsRow label="Dictation provider" testid="row-dictation-provider" dimmed={active}>
+			<ThinSelect
+				value={provider ?? "deepgram"}
+				ariaLabel="Dictation provider"
+				testid="dictation-provider"
+				disabled={active || saving || provider === undefined}
+				onChange={(value) => {
+					if (value === "codex" || value === "deepgram") void saveProvider(value);
+				}}
+			>
+				<option value="deepgram">Deepgram</option>
+				<option value="codex">Codex CLI</option>
+			</ThinSelect>
+		</SettingsRow>
+		{error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}
+	</>;
 }
 
 function DictationLanguagePicker({ preference, disabled }: {

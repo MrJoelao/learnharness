@@ -74,6 +74,7 @@ import type { SessionReference, SourceDocumentRef } from "@/src/core";
 import { SourcesChip } from "@/components/sources-panel";
 import { NotesChip, NotesPanel } from "@/components/notes-panel";
 import { NotesController, NotesProvider } from "@/components/notes-state";
+import { useGeneralSettings } from "@/components/settings/general-settings";
 import { useStudyTracker } from "@/components/use-study-tracker";
 import { QuestionDock } from "@/components/question-dock";
 import { PluginQuestionDock } from "./plugin-question-dock";
@@ -325,6 +326,7 @@ export function Chat({
 	sourceDocuments?: readonly SourceDocumentRef[];
 }) {
 	const router = useSafeRouter();
+	const { notes: notesEnabled } = useGeneralSettings();
 	const [isArchived, setIsArchived] = useState(initialIsArchived);
 	const [restoring, setRestoring] = useState(false);
 	const [notes] = useState(() => new NotesController(chatId, initialNotes));
@@ -1794,7 +1796,7 @@ export function Chat({
 						<PhaseChip phase={phases.at(-1) ?? "probe"} />
 					)}
 					<SourcesChip chatId={chatId} sourceDocuments={sourceDocuments} initialReferences={initialReferences} disabled={isArchived} />
-					<NotesChip />
+					{notesEnabled && <NotesChip />}
 					<PluginSessionTopBarActions readContext={actionContext} captureContext={captureActionContext} refreshRef={refreshPluginActions} />
 				</TopBar>
 				{isArchived && (
@@ -2285,7 +2287,7 @@ export function Chat({
 				<AbortTurnDialog mode={abortAsk} onClose={closeAbortAsk} onConfirm={confirmAbort} busy={busy} />
 				</div>
 			</div>
-			<NotesPanel />
+			{notesEnabled && <NotesPanel />}
 		</div>
 		</CitationActionsContext.Provider>
 		</JobsContext.Provider>

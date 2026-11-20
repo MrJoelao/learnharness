@@ -107,7 +107,7 @@ test("external teaching example composes native tools, validated workers, separa
 	assert(view.flatMap(message => message.parts).some(part => part.type === "tool-teaching_extension_echo"));
 	assert(view.flatMap(message => message.parts).some(part => part.type === "data-subagent-artifact"));
 	assert.equal(service.get(result.outcome.id).status, "succeeded");
-	assert.match(fs.readFileSync(path.join(installed, "data", "usage.jsonl"), "utf8"), new RegExp(pin.provider));
+	assert.match(fs.readFileSync(path.join(data, "plugin-data", "teaching-extension", "usage.jsonl"), "utf8"), new RegExp(pin.provider));
 	await host.setEnabled("teaching-extension", false);
 	assert.equal(service.get(result.outcome.id).status, "succeeded", "disable preserves accepted results");
 	assert.equal(isJobLive((acknowledgement.details as { jobId: string }).jobId), false);
