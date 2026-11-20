@@ -17,7 +17,7 @@
 </p>
 
 > [!NOTE]
-> ### LearnHarness Fork (v0.7.0)
+> ### LearnHarness Fork (v0.7.1)
 > This is an independent fork of [LearnHarness](https://github.com/amosblomqvist/learnharness).
 >
 > **Why this fork?**
