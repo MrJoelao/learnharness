@@ -4,7 +4,7 @@ import { extractionStatuses } from "../agent/subagents/extraction.ts";
 import { stores } from "./stores.ts";
 import { sourceDirectory } from "./source-organization.ts";
 import { deleteIdleChatRecord, runningWorkBlocker } from "./chats.ts";
-import { graphRevision } from "./graph.ts";
+import { graphRevision, pruneTopicOrganization } from "./graph.ts";
 
 export class SourceDeletionError extends Error {
 	constructor(message: string, public status = 400, public code = "invalid_source_deletion") { super(message); }
@@ -38,6 +38,7 @@ export function deleteSources(raw: unknown): SourceDirectory & { graphRevision: 
 	// Clear the whole selected batch in one graph rewrite. Kept chats lose
 	// coverage/checkpoints too, so their unchanged messages can be re-extracted.
 	deleteSourcesTraces(stores.graphStore, new Set(targets.map((s) => s.id)), "delete-nodes");
+	pruneTopicOrganization();
 	stores.graphStore.deleteSources(new Set(targets.filter((s) => s.kind === "notes").map((s) => s.id)));
 	const removed = new Set(request.sourceIds.filter((id) => !directory.sources.some((s) => s.id === id)));
 	for (const entry of targets) {

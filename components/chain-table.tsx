@@ -390,11 +390,11 @@ export function ChainTableBody({
 		for (const t of topicOrg.topics) {
 			labelById.set(t.id, t.label);
 			for (const m of t.members) {
-				byNode.set(m, t.id);
+				if (byId.has(m)) byNode.set(m, t.id);
 			}
 		}
 		return { topicByNode: byNode, topicLabelById: labelById };
-	}, [topicOrg]);
+	}, [topicOrg, byId]);
 
 	const chainTopicLabel = useCallback((chain: (typeof visibleChains)[number]) => {
 		const tid = topicByNode.get(chain.conclusion);
@@ -419,13 +419,15 @@ export function ChainTableBody({
 		const map = new Map<string, ClusterGroup>();
 
 		for (const topic of topicOrg?.topics ?? []) {
+			const liveMembers = topic.members.filter((m) => byId.has(m));
+			if (liveMembers.length === 0 && !topic.overriddenAt) continue;
 			map.set(topic.id, {
 				key: `topic-${topic.id}`,
 				birth: null,
 				label: topic.label,
 				kind: null,
 				chains: [],
-				nodeIds: [...topic.members],
+				nodeIds: liveMembers,
 				newestCreatedAt: "",
 				rawTopicId: topic.id,
 			});
@@ -456,7 +458,7 @@ export function ChainTableBody({
 			const group = target ?? unassigned;
 			group.chains.push(chain);
 			for (const id of [...chain.premises, chain.conclusion]) {
-				if (!group.nodeIds.includes(id)) group.nodeIds.push(id);
+				if (byId.has(id) && !group.nodeIds.includes(id)) group.nodeIds.push(id);
 				const createdAt = byId.get(id)?.createdAt ?? "";
 				if (createdAt > group.newestCreatedAt) group.newestCreatedAt = createdAt;
 			}
@@ -1102,7 +1104,7 @@ export function ChainTableOverlay({
 	keyboardActive = true,
 	registerInteraction = true,
 	pickerChrome = false,
-	topicOrg,
+	topicOrg: propTopicOrg,
 }: {
 	topicOrg?: TopicOrganization | null;
 	open: boolean;
@@ -1169,9 +1171,26 @@ export function ChainTableOverlay({
 			setDirectoryPending(true);
 		};
 	}, [open, readDirectory]);
+	const [overlayTopicOrg, setOverlayTopicOrg] = useState<TopicOrganization | null>(propTopicOrg ?? null);
+	useEffect(() => {
+		if (propTopicOrg) setOverlayTopicOrg(propTopicOrg);
+	}, [propTopicOrg]);
+	const readTopics = useCallback(async () => {
+		try {
+			const response = await fetch("/api/graph/topics", { cache: "no-store" });
+			if (response.ok) {
+				const body = (await response.json()) as TopicOrganization;
+				setOverlayTopicOrg(body);
+			}
+		} catch {}
+	}, []);
+	useEffect(() => {
+		if (open && !propTopicOrg) void readTopics();
+	}, [open, propTopicOrg, readTopics]);
 	useServerEvent("sources-changed", () => { if (open) void readDirectory(); });
 	useServerEvent("chats-changed", () => { if (open) void readDirectory(); });
-	useServerResync(() => { if (open) void readDirectory(); });
+	useServerEvent("topics-changed", () => { if (open) void readTopics(); });
+	useServerResync(() => { if (open) { void readDirectory(); void readTopics(); } });
 	const changeOrganization: OrganizationChange = (action) => {
 		const opening = directoryOpening.current;
 		// Serialize this page's edits, and invalidate older notify-then-fetch reads.
@@ -1243,7 +1262,7 @@ export function ChainTableOverlay({
 			>
 				{directoryFailure && <p role="alert" className="px-3 py-1 text-xs text-error">{directoryFailure}</p>}
 				<ChainTableBody
-					topicOrg={topicOrg}
+					topicOrg={overlayTopicOrg ?? propTopicOrg}
 					pickerChrome={pickerChrome}
 					keyboardActive={keyboardActive && !deleteOpen}
 					directory={directory}

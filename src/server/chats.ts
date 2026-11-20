@@ -3,7 +3,7 @@ import { isJobLive } from "../agent/subagents/aborts.ts";
 import { coverageOf } from "../core/coverage.ts";
 import { deleteChatTraces, type ChatDeleteMode, type ChatDeletionStats } from "../core/graph-deletion.ts";
 import { titleFromPrompt } from "../core/contracts.ts";
-import { graphRevision } from "./graph.ts";
+import { graphRevision, pruneTopicOrganization } from "./graph.ts";
 import { stores } from "./stores.ts";
 import { isTurnRunning } from "./turn-liveness.ts";
 import { clearTurnFailure } from "./turn-runs.ts";
@@ -146,6 +146,9 @@ function finishChatDeletion(chatId: string, mode: ChatDeleteMode): Extract<ChatD
 	// THE SYNC BLOCK — no awaits below (see the doc comment). Order:
 	// ledgers → jobs → the chat record.
 	const stats = deleteChatTraces(stores.graphStore, chatId, mode);
+	if (mode === "delete-nodes" && stats.nodesRemoved > 0) {
+		pruneTopicOrganization();
+	}
 	const jobsRemoved = finishChatRecordDeletion(chatId);
 	return { ok: true, mode, stats, jobsRemoved, graphRevision: graphRevision() };
 }

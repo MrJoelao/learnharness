@@ -1320,9 +1320,10 @@ export function ArchivePage({
 			<DeleteSessionDialog
 				chat={deletingChat}
 				onClose={() => setDeletingChat(null)}
-				onDeleted={(id) => {
+				onDeleted={(id, _mode, graphRevision) => {
 					setDeletingChat(null);
 					setArchivedChats((prev) => prev.filter((c) => c.id !== id));
+					window.dispatchEvent(new CustomEvent("lh:graph-revision", { detail: { revision: graphRevision } }));
 				}}
 			/>
 

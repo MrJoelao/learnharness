@@ -587,5 +587,40 @@ describe("ChainTableBody — Sources vs Topics view modes", () => {
 		assert.ok(html.includes('data-testid="new-topic-row"'));
 		assert.ok(html.includes('placeholder="Topic name"'));
 	});
+
+	it("filters out dead node IDs and omits empty auto topics in Topics mode", () => {
+		const orgWithDead = {
+			topics: [
+				{
+					id: "t-dead",
+					label: "Dead Topic",
+					members: ["non-existent-1", "non-existent-2"],
+					locked: false,
+					overriddenAt: null,
+					createdAt: "2026-09-20T10:00:00.000Z",
+					updatedAt: "2026-09-20T10:00:00.000Z",
+				},
+				{
+					id: "t-partial",
+					label: "Partial Topic",
+					members: ["c1", "non-existent-3"],
+					locked: false,
+					overriddenAt: null,
+					createdAt: "2026-09-20T10:00:00.000Z",
+					updatedAt: "2026-09-20T10:00:00.000Z",
+				},
+			],
+			unassigned: ["non-existent-4"],
+			lastAutoRunAt: null,
+			version: 1 as const,
+		};
+		const html = render({
+			initialGroupBy: "topics",
+			topicOrg: orgWithDead,
+			expandedClusters: new Set(["topic-t-partial"]),
+		});
+		assert.ok(!html.includes('data-testid="cluster-group-topic-t-dead"'));
+		assert.ok(html.includes('data-testid="cluster-group-topic-t-partial"'));
+	});
 });
 

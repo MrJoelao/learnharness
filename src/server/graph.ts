@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { LEDGER_FILES, POSITIONS_FILE } from "../../config.ts";
+import { LEDGER_FILES, POSITIONS_FILE, TOPIC_ORGANIZATION_FILE } from "../../config.ts";
 import type { GraphSnapshot } from "../core/contracts.ts";
 import type { GraphCostSummary } from "../core/cost-summary.ts";
 import { graphCostSummary } from "../core/cost-summary.ts";
@@ -9,6 +9,9 @@ import {
 	deleteNodeTraces,
 	type NodeDeletionStats,
 } from "../core/graph-deletion.ts";
+import { pruneDeadNodesFromTopics } from "../core/topic-organization.ts";
+import { settleGraphLayout } from "../core/layout-settle.ts";
+import { emit } from "../core/events.ts";
 import { extractionStatuses } from "../agent/subagents/extraction.ts";
 import { stores } from "./stores.ts";
 import { callCost } from "./pricing.ts";
@@ -62,6 +65,7 @@ export function graphRevision(): number {
 		LEDGER_FILES.sessions,
 		LEDGER_FILES.coverage,
 		POSITIONS_FILE,
+		TOPIC_ORGANIZATION_FILE,
 	]) {
 		try {
 			revision = Math.max(revision, fs.statSync(file).mtimeMs);
@@ -70,6 +74,24 @@ export function graphRevision(): number {
 		}
 	}
 	return revision;
+}
+
+export function pruneTopicOrganization(): boolean {
+	const current = stores.topicOrganizationStore.read();
+	const liveNodeIds = new Set(stores.graphStore.readNodes().map((n) => n.id));
+	const pruned = pruneDeadNodesFromTopics(current, liveNodeIds);
+	const changed =
+		pruned.topics.length !== current.topics.length ||
+		pruned.unassigned.length !== current.unassigned.length ||
+		pruned.topics.some((t, i) => t.members.length !== current.topics[i]?.members.length);
+
+	if (changed) {
+		stores.topicOrganizationStore.write(pruned);
+		emit("topics-changed", {});
+		settleGraphLayout(stores.graphStore, { topicStore: stores.topicOrganizationStore });
+		return true;
+	}
+	return false;
 }
 
 // ─── single-node deletion (node interlude, owner-locked full-death) ──────────
@@ -117,6 +139,9 @@ export function deleteGraphNode(nodeId: string): NodeDeleteOutcome {
 	const stats = deleteNodeTraces(stores.graphStore, nodeId);
 	if (stats === null) {
 		return { ok: false, status: 404, code: "not_found", error: "No such node" };
+	}
+	if (!nodeId.startsWith("arg_")) {
+		pruneTopicOrganization();
 	}
 	return { ok: true, stats, graphRevision: graphRevision() };
 }

@@ -287,3 +287,30 @@ export function applyTopicAction(
 
 	return { ...org, topics, unassigned, lastAutoRunAt: org.lastAutoRunAt };
 }
+
+export function pruneDeadNodesFromTopics(
+	org: TopicOrganization,
+	liveNodeIds: ReadonlySet<string>,
+): TopicOrganization {
+	const topics: GraphTopic[] = [];
+
+	for (const topic of org.topics) {
+		const nextMembers = topic.members.filter((id) => liveNodeIds.has(id));
+		if (nextMembers.length > 0 || topic.overriddenAt !== null) {
+			topics.push(
+				nextMembers.length === topic.members.length
+					? topic
+					: { ...topic, members: nextMembers, updatedAt: new Date().toISOString() },
+			);
+		}
+	}
+
+	const nextUnassigned = org.unassigned.filter((id) => liveNodeIds.has(id));
+
+	return {
+		...org,
+		topics,
+		unassigned: nextUnassigned,
+	};
+}
+
