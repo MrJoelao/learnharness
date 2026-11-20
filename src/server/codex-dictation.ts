@@ -108,23 +108,24 @@ export async function codexDictationAuth(signal: AbortSignal): Promise<Record<st
 		});
 		child.stdin.write(`${JSON.stringify({ method: "initialized" })}\n`);
 
-		let result = await rpc("getAuthStatus", { includeToken: true, refreshToken: false });
+		const result = await rpc("getAuthStatus", { includeToken: true, refreshToken: false });
 		if (!isRecord(result)) throw new Error(LOGIN_ERROR);
+		let status: Record<string, unknown> = result;
 
-		let authToken = typeof result.authToken === "string" ? result.authToken : undefined;
+		let authToken = typeof status.authToken === "string" ? status.authToken : undefined;
 		if (authToken) {
 			const claims = parseJwtPayload(authToken);
 			const expiry = typeof claims?.exp === "number" ? claims.exp : undefined;
 			if (expiry !== undefined && expiry * 1000 < Date.now() + 60_000) {
 				const refreshed = await rpc("getAuthStatus", { includeToken: true, refreshToken: true });
 				if (isRecord(refreshed)) {
-					result = refreshed;
+					status = refreshed;
 					if (typeof refreshed.authToken === "string") authToken = refreshed.authToken;
 				}
 			}
 		}
 
-		if (result.authMethod !== "chatgpt" || !authToken) throw new Error(LOGIN_ERROR);
+		if (status.authMethod !== "chatgpt" || !authToken) throw new Error(LOGIN_ERROR);
 		const claims = parseJwtPayload(authToken);
 		if (!claims) throw new Error(LOGIN_ERROR);
 
@@ -218,10 +219,11 @@ export async function transcribeCodexDictation(pcm: Buffer, signal: AbortSignal,
 			);
 		});
 
-		socket.on("message", (raw) => {
+		socket.on("message", (raw: unknown) => {
 			if (settled) return;
 			try {
-				const parsed: unknown = JSON.parse(raw.toString());
+				const rawString = typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
+				const parsed: unknown = JSON.parse(rawString);
 				if (!isRecord(parsed)) return;
 
 				const eventType = typeof parsed.type === "string" ? parsed.type : undefined;
@@ -267,7 +269,7 @@ export async function transcribeCodexDictation(pcm: Buffer, signal: AbortSignal,
 			}
 		});
 
-		socket.on("error", (error) => {
+		socket.on("error", (error: Error) => {
 			const message = error.message;
 			finish(
 				new Error(

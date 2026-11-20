@@ -57,7 +57,9 @@ async function mount(getUserMedia = async () => stream, getLanguage?: () => Prom
 	Object.assign(globalThis, { AudioContext: FakeContext, AudioWorkletNode: FakeWorklet });
 	function Harness() {
 		dictation = useCodexDictation({
-			append: (text) => appended.push(text),
+			append: (text) => {
+				appended.push(text);
+			},
 			onActive: (value) => {
 				active = value;
 			},

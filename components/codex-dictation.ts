@@ -209,7 +209,10 @@ export function useCodexDictation({
 					if (buf instanceof ArrayBuffer) {
 						arrayBuffer = buf;
 					} else if (ArrayBuffer.isView(buf)) {
-						arrayBuffer = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+						const raw = buf.buffer;
+						if (raw instanceof ArrayBuffer) {
+							arrayBuffer = raw.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+						}
 					}
 					if (arrayBuffer) {
 						const frame = arrayBuffer.slice(0, MAX_BYTES - bytes.current);
