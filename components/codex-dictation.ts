@@ -12,6 +12,7 @@ export interface UseCodexDictationOptions {
 	getLanguage?: () => Promise<string>;
 	destination?: "primary" | "explicit";
 	disabled?: boolean;
+	providerLabel?: string;
 }
 
 export function useCodexDictation({
@@ -21,6 +22,7 @@ export function useCodexDictation({
 	enabled = true,
 	destination = "primary",
 	disabled = false,
+	providerLabel = "Codex",
 }: UseCodexDictationOptions = {}): Dictation {
 	const [phase, setPhase] = useState<DictationPhase>("idle");
 	const [error, setError] = useState<string | null>(null);
@@ -138,8 +140,8 @@ export function useCodexDictation({
 					const text = typeof result?.text === "string" ? result.text : undefined;
 
 					if (gen !== generation.current) return;
-					if (!response.ok) throw new Error(message || "Codex dictation failed. Try again.");
-					if (typeof text !== "string") throw new Error("Codex returned an invalid transcript.");
+					if (!response.ok) throw new Error(message || `${providerLabel} dictation failed. Try again.`);
+					if (typeof text !== "string") throw new Error(`${providerLabel} returned an invalid transcript.`);
 					if (text.trim() && callbacks.current.append) {
 						void callbacks.current.append(text.trim());
 					}
@@ -150,8 +152,8 @@ export function useCodexDictation({
 			} catch (failure) {
 				if (gen !== generation.current) return;
 				const isAbort = failure instanceof DOMException && failure.name === "AbortError";
-				const failureMessage = failure instanceof Error ? failure.message : "Codex dictation failed. Try again.";
-				setError(isAbort ? "Codex dictation took too long. Try again." : failureMessage);
+				const failureMessage = failure instanceof Error ? failure.message : `${providerLabel} dictation failed. Try again.`;
+				setError(isAbort ? `${providerLabel} dictation took too long. Try again.` : failureMessage);
 				cleanup();
 			}
 		})();

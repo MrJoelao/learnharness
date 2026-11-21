@@ -9,6 +9,39 @@ import { SettingsMenuTrigger, SettingsRow, ThinSelect } from "@/components/setti
 import { SearchMenuList } from "@/components/settings/search-menu-list";
 import { useDictationActive } from "@/components/dictation-state";
 import { useDictationLanguage } from "@/components/dictation-preference";
+import { onSettingsSaved } from "@/components/settings-signal";
+
+export interface DictationProvidersAvailability {
+	deepgram: boolean;
+	codex: boolean;
+	antigravity: boolean;
+}
+
+export function useDictationProviders() {
+	const [providers, setProviders] = useState<DictationProvidersAvailability | undefined>(undefined);
+	useEffect(() => {
+		let cancelled = false;
+		const load = () => {
+			fetch("/api/stt/providers")
+				.then((res) => (res.ok ? res.json() : null))
+				.then((data) => {
+					if (!cancelled && data && typeof data === "object") {
+						setProviders({
+							deepgram: Boolean((data as Record<string, unknown>).deepgram),
+							codex: Boolean((data as Record<string, unknown>).codex),
+							antigravity: Boolean((data as Record<string, unknown>).antigravity),
+						});
+					}
+				})
+				.catch(() => {});
+		};
+		load();
+		return onSettingsSaved((section) => {
+			if (section === "dictation" || section === "models" || section === "general") load();
+		});
+	}, []);
+	return { providers };
+}
 
 type LanguagePreference = ReturnType<typeof useDictationLanguage>;
 
@@ -23,6 +56,12 @@ export function DictationLanguageSetting() {
 export function DictationProviderSetting() {
 	const { provider, saving, saveProvider, error } = useDictationLanguage();
 	const active = useDictationActive();
+	const { providers } = useDictationProviders();
+
+	const deepgramAvailable = providers?.deepgram ?? true;
+	const codexAvailable = providers?.codex ?? true;
+	const antigravityAvailable = providers?.antigravity ?? true;
+
 	return <>
 		<SettingsRow label="Dictation provider" testid="row-dictation-provider" dimmed={active}>
 			<ThinSelect
@@ -31,11 +70,20 @@ export function DictationProviderSetting() {
 				testid="dictation-provider"
 				disabled={active || saving || provider === undefined}
 				onChange={(value) => {
-					if (value === "codex" || value === "deepgram") void saveProvider(value);
+					if (value === "codex" || value === "deepgram" || value === "antigravity") {
+						void saveProvider(value);
+					}
 				}}
 			>
-				<option value="deepgram">Deepgram</option>
-				<option value="codex">Codex CLI</option>
+				<option value="deepgram" disabled={providers !== undefined && !deepgramAvailable}>
+					Deepgram{providers !== undefined && !deepgramAvailable ? " (no key)" : ""}
+				</option>
+				<option value="codex" disabled={providers !== undefined && !codexAvailable}>
+					Codex CLI{providers !== undefined && !codexAvailable ? " (not connected)" : ""}
+				</option>
+				<option value="antigravity" disabled={providers !== undefined && !antigravityAvailable}>
+					Google Antigravity{providers !== undefined && !antigravityAvailable ? " (not connected)" : ""}
+				</option>
 			</ThinSelect>
 		</SettingsRow>
 		{error && <p role="alert" className="px-1 text-xs text-destructive">{error}</p>}

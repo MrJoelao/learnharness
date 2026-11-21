@@ -2,6 +2,7 @@ import {
 	MAX_DICTATION_BYTES,
 	readSettingsRecord,
 	subscriptionRequestOrigin,
+	transcribeAntigravityDictation,
 	transcribeCodexDictation,
 } from "@/src/server";
 
@@ -18,8 +19,9 @@ export async function POST(request: Request) {
 		return Response.json({ message: "Dictation requires a LearnHarness request." }, { status: 403 });
 	}
 
-	if (readSettingsRecord()?.dictation?.provider !== "codex") {
-		return Response.json({ message: "Select Codex CLI in dictation settings first." }, { status: 403 });
+	const provider = readSettingsRecord()?.dictation?.provider;
+	if (provider !== "codex" && provider !== "antigravity") {
+		return Response.json({ message: "Select Codex CLI or Google Antigravity in dictation settings first." }, { status: 403 });
 	}
 
 	if (!request.headers.get("content-type")?.startsWith("audio/pcm")) {
@@ -56,16 +58,21 @@ export async function POST(request: Request) {
 		if (requested && !/^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/.test(requested)) {
 			return Response.json({ message: "Choose a supported dictation language." }, { status: 400 });
 		}
-		const text = await transcribeCodexDictation(Buffer.concat(chunks), request.signal, requested?.split("-")[0]);
+		const audioBuffer = Buffer.concat(chunks);
+		const lang = requested?.split("-")[0];
+		const text = provider === "antigravity"
+			? await transcribeAntigravityDictation(audioBuffer, request.signal, lang)
+			: await transcribeCodexDictation(audioBuffer, request.signal, lang);
 		return Response.json({ text }, { headers: { "Cache-Control": "no-store" } });
 	} catch (error) {
+		const isAntigravity = provider === "antigravity";
 		return Response.json(
 			{
 				message: request.signal.aborted
 					? "Dictation cancelled."
 					: error instanceof Error
 						? error.message
-						: "Codex dictation failed. Try again.",
+						: `${isAntigravity ? "Antigravity" : "Codex"} dictation failed. Try again.`,
 			},
 			{ status: 502 },
 		);

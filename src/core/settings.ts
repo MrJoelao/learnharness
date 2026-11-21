@@ -346,7 +346,7 @@ export interface GeneralSettings {
 	notes?: boolean;
 }
 
-export type DictationProvider = "deepgram" | "codex";
+export type DictationProvider = "deepgram" | "codex" | "antigravity";
 
 /** One app-wide dictation preference, shared by every composer. */
 export interface DictationSettings {
@@ -945,7 +945,7 @@ export function sanitizeUserSettings(raw: unknown): UserSettings | null {
 			const dictRaw = raw as Record<string, unknown>;
 			const dictOut: DictationSettings = {};
 			if (isDictationLanguage(dictRaw.language)) dictOut.language = dictRaw.language;
-			if (dictRaw.provider === "codex" || dictRaw.provider === "deepgram") dictOut.provider = dictRaw.provider;
+			if (dictRaw.provider === "codex" || dictRaw.provider === "deepgram" || dictRaw.provider === "antigravity") dictOut.provider = dictRaw.provider;
 			out.dictation = dictOut;
 		} else {
 			out.dictation = {};

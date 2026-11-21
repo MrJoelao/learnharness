@@ -48,6 +48,7 @@ async function fixture(failRead = false) {
 		writes: [] as string[], failWrite: false, outerEscapes: 0,
 		failRead,
 		keys: [] as AuthKeyStatus[],
+		providers: { deepgram: true, codex: true, antigravity: true },
 		nextWrite: undefined as Promise<Response> | undefined,
 	};
 	const previous = new Map<string, PropertyDescriptor | undefined>();
@@ -60,6 +61,7 @@ async function fixture(failRead = false) {
 		cancelAnimationFrame: clearTimeout,
 		fetch: async (url: string, init?: RequestInit) => {
 			if (url === "/api/keys") return Response.json({ keys: state.keys, providers: [] });
+			if (url === "/api/stt/providers") return Response.json(state.providers);
 			if (url === "/api/settings") return state.failRead ? Response.json({}, { status: 500 }) : Response.json({ settings: state.record });
 			assert.equal(url, "/api/settings/dictation");
 			const body = JSON.parse(init!.body as string);
@@ -254,6 +256,29 @@ for (const source of ["none", "file", "env"] as const) test(`Language is below t
 	assert.equal(menu(), null);
 	assert.equal(f.state.outerEscapes, 0);
 	if (source !== "env") assert.ok(byTest("key-deepgram_api_key-editor"), "first Escape closes only the menu");
+});
+
+test("dictation provider selector lists all providers and disables unconnected ones", async () => {
+	const f = await fixture();
+	f.state.providers = { deepgram: true, codex: false, antigravity: false };
+	const { DictationProviderSetting } = await import("../components/dictation-language.tsx");
+	await f.render(<DictationProviderSetting />);
+
+	const select = document.querySelector<HTMLSelectElement>('[data-testid="dictation-provider"]')!;
+	assert.ok(select);
+	const options = [...select.options];
+	assert.equal(options.length, 3);
+	assert.equal(options[0]!.value, "deepgram");
+	assert.equal(options[0]!.hasAttribute("disabled"), false);
+	assert.equal(options[0]!.textContent, "Deepgram");
+
+	assert.equal(options[1]!.value, "codex");
+	assert.equal(options[1]!.hasAttribute("disabled"), true);
+	assert.match(options[1]!.textContent!, /Codex CLI.*not connected/);
+
+	assert.equal(options[2]!.value, "antigravity");
+	assert.equal(options[2]!.hasAttribute("disabled"), true);
+	assert.match(options[2]!.textContent!, /Google Antigravity.*not connected/);
 });
 
 test("the shared model menu preserves ranking, provider identity, keyboard clamping, and row content", async () => {

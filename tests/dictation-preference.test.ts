@@ -121,6 +121,8 @@ test("provider and language writes preserve each other", async () => {
 	assert.deepEqual(section, { language: "pl", provider: "codex" });
 	assert.equal(await store.save("fr"), true);
 	assert.deepEqual(section, { language: "fr", provider: "codex" });
+	assert.equal(await store.saveProvider("antigravity"), true);
+	assert.deepEqual(section, { language: "fr", provider: "antigravity" });
 	assert.equal(await store.saveProvider("deepgram"), true);
 	assert.deepEqual(section, { language: "fr" });
 });

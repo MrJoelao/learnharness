@@ -362,17 +362,27 @@ export function useDictation({ append, destination = "primary", disabled = false
 		destination,
 		disabled: effectiveDisabled,
 		enabled: provider === "codex" && !effectiveDisabled,
+		providerLabel: "Codex",
+	});
+	const antigravity = useCodexDictation({
+		append: (text) => (destination === "primary" ? (questionTarget ?? append)(text) : append(text)),
+		onActive: setDictationActive,
+		getLanguage,
+		destination,
+		disabled: effectiveDisabled,
+		enabled: provider === "antigravity" && !effectiveDisabled,
+		providerLabel: "Antigravity",
 	});
 
 	useEffect(() => {
-		if (provider !== "codex" || destination !== "primary") return;
-		dictationFinisher = codex.finish;
+		if ((provider !== "codex" && provider !== "antigravity") || destination !== "primary") return;
+		dictationFinisher = provider === "codex" ? codex.finish : antigravity.finish;
 		return () => {
-			if (dictationFinisher === codex.finish) dictationFinisher = null;
+			if (dictationFinisher === codex.finish || dictationFinisher === antigravity.finish) dictationFinisher = null;
 		};
-	}, [provider, destination, codex.finish]);
+	}, [provider, destination, codex.finish, antigravity.finish]);
 
-	const selected = provider === "codex" ? codex : deepgram;
+	const selected = provider === "codex" ? codex : provider === "antigravity" ? antigravity : deepgram;
 	return provider === undefined || effectiveDisabled ? { ...selected, toggle: () => {} } : selected;
 }
 

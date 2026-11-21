@@ -493,7 +493,7 @@ export function parseStudyTimeSettingsBody(body: unknown): SettingsBodyResult<St
 	return { ok: true, settings };
 }
 
-/** dictation: { language?: one of Nova-3's supported language codes; provider?: "deepgram" | "codex" } */
+/** dictation: { language?: one of Nova-3's supported language codes; provider?: "deepgram" | "codex" | "antigravity" } */
 export function parseDictationSettingsBody(body: unknown): SettingsBodyResult<DictationSettings> {
 	const raw = asRecord(body);
 	if (!raw) return { ok: false, error: "Invalid JSON body" };
@@ -503,8 +503,8 @@ export function parseDictationSettingsBody(body: unknown): SettingsBodyResult<Di
 		settings.language = raw.language;
 	}
 	if (raw.provider !== undefined) {
-		if (raw.provider !== "deepgram" && raw.provider !== "codex") {
-			return { ok: false, error: 'provider must be "deepgram" or "codex"' };
+		if (raw.provider !== "deepgram" && raw.provider !== "codex" && raw.provider !== "antigravity") {
+			return { ok: false, error: 'provider must be "deepgram", "codex", or "antigravity"' };
 		}
 		settings.provider = raw.provider;
 	}
