@@ -700,7 +700,7 @@ export function ArchivePage({
 							</span>
 						)}
 						{chat.kind === "workspace" && chat.availability !== "available" && (
-							<span className="rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 px-1.5 py-0.2 text-[9px] font-mono uppercase tracking-wider">
+							<span className="rounded bg-warning/15 text-warning px-1.5 py-0.5 text-[9px] font-mono">
 								{chat.availability}
 							</span>
 						)}

@@ -106,7 +106,7 @@ export function NotesImportControl({ importing, onImportFiles }: { importing: bo
 		onClose: () => { setOpen(false); return "closed"; } });
 	const choices = [["Files", filesRef], ["Folder", folderRef]] as const;
 	return (
-		<div ref={rootRef} className="relative shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur"
+		<div ref={rootRef} className="relative shrink-0 rounded-xl border bg-card/85 px-1 py-1 shadow-lg backdrop-blur"
 			onBlur={(event) => { if (interactions.isElementEligible(panelRef.current) && !event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
 			<input ref={filesRef} type="file" multiple accept={IMPORT_ACCEPT} className="hidden" onChange={onChange} />
 			<input ref={folderRef} type="file" {...{ webkitdirectory: "" }} className="hidden" onChange={onChange} />

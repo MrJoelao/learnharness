@@ -1,5 +1,5 @@
 /**
- * Study-time persistence (design: docs/designs/study-time.md): the
+ * Study-time persistence: the
  * append-only history data/study/intervals.jsonl (config.STUDY_FILES) and
  * the working state data/study/open.json. Synchronous node:fs, like the
  * other stores, so one request's read-modify-write cannot interleave with

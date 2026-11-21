@@ -3,7 +3,7 @@
  *
  * Part of the domain-split contracts (src/core/contracts/): each domain file
  * is owned outright by its stream — cross-domain schema changes go through
- * master. Pure types + protocol docs + tiny pure helpers. See docs/archive/vision.md.
+ * master. Pure types + protocol docs + tiny pure helpers.
  */
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { LhMessage } from "../native-messages.ts";

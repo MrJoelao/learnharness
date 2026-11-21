@@ -5,7 +5,7 @@ import { FolderTreeIcon, Loader2Icon, PencilIcon, PlusIcon, SettingsIcon, Refres
 import { Hint } from "@/components/ui/hint";
 import { useInteractionLayer, useInteractionLayers } from "@/components/interaction-layers";
 import { INTERACTION_LAYER_Z_BASE } from "@/components/host-dialog";
-import type { TopicOrganization, GraphTopic } from "@/src/core/topic-organization";
+import type { TopicOrganization, GraphTopic } from "@/src/core";
 import { useNotifyHub } from "@/components/server-events";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { cn } from "@/lib/utils";
@@ -119,7 +119,7 @@ export function TopicsControl({
 	return (
 		<div
 			ref={rootRef}
-			className="relative shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur"
+			className="relative shrink-0 rounded-xl border bg-card/85 px-1 py-1 shadow-lg backdrop-blur"
 			onBlur={(event) => {
 				if (
 					interactions.isElementEligible(panelRef.current) &&

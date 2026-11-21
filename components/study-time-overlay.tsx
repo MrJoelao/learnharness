@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * THE STUDY TIME OVERLAY (design: docs/designs/study-time.md): the history
+ * THE STUDY TIME OVERLAY: the history
  * behind the home page's "Study time" button — cards, a per-chat bar chart,
  * a time-of-day histogram and a 52-week contribution grid, all styled divs
  * on the theme tokens (no chart library). StudyTimeBody is a pure render
@@ -44,7 +44,7 @@ function ContributionGrid({ grid }: { grid: StudySummary["grid"] }) {
 	return (
 		<div
 			data-testid="study-grid"
-			className="grid w-full gap-[3px]"
+			className="grid w-full gap-1"
 			style={{ gridTemplateColumns: `auto repeat(${columns}, minmax(0, 1fr))` }}
 		>
 			{Array.from({ length: columns }, (_, c) => {
@@ -189,7 +189,7 @@ export function StudyTimeBody({
 						<p className="text-sm text-muted-foreground">No study time in this period.</p>
 					) : (
 						<div data-testid="study-hours">
-							<div className="flex h-24 items-end gap-[3px]">
+							<div className="flex h-24 items-end gap-1">
 								{hours.map((ms, h) => (
 									<div
 										key={h}

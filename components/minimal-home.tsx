@@ -156,7 +156,7 @@ export function MinimalHome({
 			    entry law). */}
 			<div className="lh-no-drag lh-wco-floating absolute right-2 top-2 z-10 flex max-w-[calc(100%-5.5rem)] flex-col items-end gap-2">
 				<div className="flex min-w-0 items-start gap-2">
-					<div className="graph-chrome-fade-in shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
+					<div className="graph-chrome-fade-in shrink-0 rounded-xl border bg-card/85 px-1 py-1 shadow-lg backdrop-blur">
 						<Hint label="Every reasoning chain" side="bottom">
 							<button
 								type="button"

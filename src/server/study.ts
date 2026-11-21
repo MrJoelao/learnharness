@@ -1,5 +1,5 @@
 /**
- * Study-time service (design: docs/designs/study-time.md): applies the pure
+ * Study-time service: applies the pure
  * timer transitions (core/study-time.ts) to the open-timer file and the
  * interval history, and answers the history summary. Every operation starts
  * by closing stale timers, so no background sweeper is needed.

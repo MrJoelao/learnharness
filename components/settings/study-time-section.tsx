@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The "Study time" settings section (design: docs/designs/study-time.md):
+ * The "Study time" settings section:
  * the idle limit and the first day of the week. Replace-whole section PUTs
  * through the dialog's single writer, like GraphSection.
  */

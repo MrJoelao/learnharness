@@ -361,7 +361,7 @@ body {
 	border: 1px solid var(--border);
 	/* Tables hug their contents (owner, callout round 2026-10-07): keep the
 	   natural width and let the md-blocks wrapper scroll for wide tables. */
-	width: max-content;
+	width: fit-content;
 	/* Tables run at the SESSION prose size (owner note, 2026-09-19: they
 	   visibly lagged the 16px chat text at streamdown's 12.5px text-sm).
 	   Unlayered CSS beats the cells' own utility-layer text-sm, and the

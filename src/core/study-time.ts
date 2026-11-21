@@ -1,5 +1,5 @@
 /**
- * STUDY TIME — the pure rules (design: docs/designs/study-time.md). The
+ * STUDY TIME — the pure rules. The
  * server (src/server/study.ts) applies the timer transitions and does the
  * I/O; the client tracker shares the input rule and the ping constant; the
  * history overlay formats with formatStudyDuration. Browser-safe: no node:

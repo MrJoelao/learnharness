@@ -1,5 +1,5 @@
 /**
- * Study time — the pure core (docs/designs/study-time.md):
+ * Study time — the pure core:
  * src/core/study-time.ts. No fs, no server.
  */
 

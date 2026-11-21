@@ -1,5 +1,5 @@
 /**
- * Study-time service (docs/designs/study-time.md): src/server/study.ts
+ * Study-time service: src/server/study.ts
  * against a temp LH_DATA_DIR with real chat files and settings.
  */
 

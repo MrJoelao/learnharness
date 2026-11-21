@@ -1,5 +1,5 @@
 /**
- * THE STUDY TRACKER (design: docs/designs/study-time.md): the React-free
+ * THE STUDY TRACKER: the React-free
  * client half of study time. It tells the server two things — "the learner
  * is active in this chat" and "the learner stopped" — and the server keeps
  * the intervals. Clock, timers, focus and fetch are injected so the logic

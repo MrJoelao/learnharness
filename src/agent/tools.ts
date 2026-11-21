@@ -32,7 +32,7 @@ export { jobTools, createVisualExplanationTool };
 export type { ProbeDoneContext } from "./tools/probe.ts";
 
 /**
- * The agent-split tool composition (docs/archive/probe-teach-split.md §1): the
+ * The agent-split tool composition: the
  * PROBER and the TEACHER are different agents with different tool sets.
  * The question tools share a NAME but are genuinely DIFFERENT tools —
  * the prober's quiz has NO nodeId field at all (its declaration is built

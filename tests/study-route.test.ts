@@ -1,5 +1,5 @@
 /**
- * /api/study (docs/designs/study-time.md): app/api/study/route.ts against a
+ * /api/study: app/api/study/route.ts against a
  * temp LH_DATA_DIR — body/query validation, status mapping, no-store.
  */
 

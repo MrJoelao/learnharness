@@ -72,8 +72,7 @@ import {
 	XIcon,
 } from "lucide-react";
 import { chainsForSelection, chainSourceDirectory, folderEntryCheck, toggleSourceEntries, formatChainLine, fuzzyScore, sourceFileLabel } from "@/src/core";
-import type { GraphChain, GraphNode, SourceDirectory, SourceEntry, SourceFolder, SourceEntrySelection } from "@/src/core";
-import type { TopicOrganization, TopicAction } from "@/src/core/topic-organization";
+import type { GraphChain, GraphNode, SourceDirectory, SourceEntry, SourceFolder, SourceEntrySelection, TopicOrganization, TopicAction } from "@/src/core";
 import { useSettingsDialog } from "@/components/settings/settings-dialog";
 import { cn } from "@/lib/utils";
 import { EditableSourceName, SourceDragRow, sourceNameMatches, SourceFolderTree, type OrganizationChange } from "./source-folder-tree";

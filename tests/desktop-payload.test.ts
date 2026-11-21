@@ -9,14 +9,11 @@ import { createPluginHost } from "../src/server/plugin-host.ts";
 import { createPluginSmokeFixture } from "../scripts/smoke-plugin-runtime.mjs";
 import { seedAuthoringReferenceFixture } from "./helpers/plugin-authoring-fixture.ts";
 
+import { AUTHORING_DOCS, AUTHORING_EXAMPLES } from "../scripts/build-plugin-authoring.mjs";
+
 const source = fs.readFileSync(new URL("../scripts/build-server.mjs", import.meta.url), "utf8");
 const STANDALONE = path.join(".next", "standalone");
 const PROMPT = path.join("src", "agent", "system-prompt.md");
-const AUTHORING_DOCS = [
-	"plugin-authoring.md", "plugin-architecture.md", "plugin-question-contract.md",
-	"plugin-problem-contract.md", "plugin-session-extension-contract.md", "plugin-tree-contract.md",
-	"plugin-view-context.md", "dialog-overlay-contract.md", "plugin-examples.md",
-];
 
 function withPayload(test: (fixture: {
 	root: string;
@@ -53,7 +50,7 @@ function withPayload(test: (fixture: {
 		for (const file of AUTHORING_DOCS) {
 			write(path.join("docs", file), fs.readFileSync(new URL(`../docs/${file}`, import.meta.url), "utf8"));
 		}
-		for (const id of ["hello-plugin", "managed-agent", "teaching-extension"]) {
+		for (const id of AUTHORING_EXAMPLES) {
 			write(`examples/plugins/${id}/README.md`, fs.readFileSync(new URL(`../examples/plugins/${id}/README.md`, import.meta.url), "utf8"));
 			write(`examples/plugins/${id}/dist/manifest.json`, JSON.stringify({ apiVersion: 1, id, name: id, version: "1.0.0", minAppVersion: "0.3.7", main: "main.js" }));
 			write(`examples/plugins/${id}/dist/main.js`, "export function activate() {};");
@@ -79,10 +76,19 @@ describe("desktop standalone payload", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-example-layout-"));
 		const directory = path.join(root, "plugins");
 		fs.cpSync(path.resolve("examples/plugins"), directory, { recursive: true });
-		const host = createPluginHost({ directory, appVersion: "0.4.1", createServices() { throw Error("disabled examples must not create services"); } });
+		const host = createPluginHost({ directory, appVersion: "0.7.1", createServices() { throw Error("disabled examples must not create services"); } });
 		try {
 			await host.initialize();
-			assert.deepEqual(host.list().map(plugin => [plugin.id, plugin.status]), [["hello-plugin", "disabled"], ["managed-agent", "disabled"], ["teaching-extension", "disabled"]]);
+			assert.deepEqual(host.list().map(plugin => [plugin.id, plugin.status]), [
+				["algo-visualizer", "disabled"],
+				["concurrency-lab", "disabled"],
+				["hello-plugin", "disabled"],
+				["managed-agent", "disabled"],
+				["multi-mode", "disabled"],
+				["quantum-sim", "disabled"],
+				["study-mode-template", "disabled"],
+				["teaching-extension", "disabled"],
+			]);
 			for (const plugin of host.list()) {
 				assert.ok(fs.existsSync(path.join(directory, plugin.id, "dist", "manifest.json")));
 				assert.equal(fs.existsSync(path.join(directory, plugin.id, "manifest.json")), false);

@@ -1,6 +1,5 @@
 /**
- * /api/study — study-time capture and history (design:
- * docs/designs/study-time.md). Thin transport over src/server/study.ts.
+ * /api/study — study-time capture and history. Thin transport over src/server/study.ts.
  *
  *   POST { input: { type: "active" | "stop", chatId, windowId } | { type: "closeAll" } }
  *     → 200 { ok: true } | 400 invalid_body | 400 chat_not_started | 404 chat_not_found

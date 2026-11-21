@@ -1,5 +1,5 @@
 /**
- * Study-time store (docs/designs/study-time.md): src/store/study.ts against
+ * Study-time store: src/store/study.ts against
  * a temp LH_DATA_DIR. The seam is read at config.ts load, so the env is set
  * BEFORE the dynamic imports (one process per test file).
  */

@@ -75,7 +75,7 @@ export function WorkspaceRow({
 									className="inline-flex size-3 shrink-0 items-center justify-center text-muted-foreground/60 transition-colors hover:text-muted-foreground/90 cursor-default"
 									title={`Unavailable: ${workspace.availability}`}
 								>
-									<AlertTriangleIcon className="size-3 shrink-0 text-amber-500/80" aria-hidden="true" />
+									<AlertTriangleIcon className="size-3 shrink-0 text-warning" aria-hidden="true" />
 									<span className="sr-only">Unavailable: {workspace.availability}</span>
 								</span>
 							</Hint>

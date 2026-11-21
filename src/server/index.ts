@@ -74,3 +74,4 @@ export * from "./custom-provider.ts";
 export { customProviderGet, customProviderMutation } from "./custom-provider-http.ts";
 export { codexBinary } from "./codex-binary.ts";
 export { codexDictationAuth, transcribeCodexDictation, MAX_DICTATION_BYTES } from "./codex-dictation.ts";
+export * from "./topics.ts";

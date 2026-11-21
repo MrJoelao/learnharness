@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { HostDialog } from "@/components/host-dialog";
-import type { TopicOrganization, GraphTopic } from "@/src/core/topic-organization";
+import type { TopicOrganization, GraphTopic } from "@/src/core";
 import { Loader2Icon, PlusIcon } from "lucide-react";
 
 export function AssignTopicDialog({

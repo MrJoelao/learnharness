@@ -392,7 +392,7 @@ export function WorkspaceScreen({
 						data-availability="plugin-disabled"
 						className="flex flex-1 flex-col items-center justify-center p-6 text-center"
 					>
-						<AlertCircleIcon className="size-10 text-amber-500 mb-3" />
+						<AlertCircleIcon className="size-10 text-warning mb-3" />
 						<h2 className="text-base font-semibold text-foreground">Plugin is disabled</h2>
 						<p className="mt-1.5 text-xs text-muted-foreground max-w-md leading-relaxed">
 							The plugin &ldquo;{workspace?.pluginId}&rdquo; providing this workspace is currently disabled.
@@ -422,7 +422,7 @@ export function WorkspaceScreen({
 						data-availability="mode-missing"
 						className="flex flex-1 flex-col items-center justify-center p-6 text-center"
 					>
-						<AlertCircleIcon className="size-10 text-amber-500 mb-3" />
+						<AlertCircleIcon className="size-10 text-warning mb-3" />
 						<h2 className="text-base font-semibold text-foreground">Mode unavailable</h2>
 						<p className="mt-1.5 text-xs text-muted-foreground max-w-md leading-relaxed">
 							The learning mode &ldquo;{workspace?.modeId}&rdquo; is no longer registered by plugin &ldquo;

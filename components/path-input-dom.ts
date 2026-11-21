@@ -136,7 +136,7 @@ export function readPathSelection(root: HTMLElement): TextSelection | null {
 
 export function restorePathSelection(root: HTMLElement, selection: TextSelection): void {
 	const browserSelection = root.ownerDocument.getSelection?.();
-	if (!browserSelection) return;
+	if (!browserSelection || typeof browserSelection.setBaseAndExtent !== "function") return;
 	const anchor = pathInputPoint(root, selection.anchor);
 	const focus = pathInputPoint(root, selection.focus);
 	browserSelection.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);

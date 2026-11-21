@@ -1,5 +1,5 @@
 /**
- * StudyTimeBody static render (docs/designs/study-time.md): the pure body of
+ * StudyTimeBody static render: the pure body of
  * the Study time overlay — explanation, empty states, titles, grid.
  */
 import assert from "node:assert/strict";

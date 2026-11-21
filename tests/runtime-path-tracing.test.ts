@@ -52,7 +52,7 @@ test("plugin runtime and background capture paths never become deployment assets
 
 test("independent plugin-data and provider-debug filename producers retain their opt-outs", () => {
 	for (const [relative, matches, count] of [
-		["src/store/plugin-data-paths.ts", (_call: ts.CallExpression) => true, 3],
+		["src/store/plugin-data-paths.ts", (_call: ts.CallExpression) => true, 5],
 		["src/store/plugin-task-records.ts", (call: ts.CallExpression) => call.arguments.length === 2 && ts.isStringLiteral(call.arguments[1]!) && call.arguments[1]!.text === "tasks", 2],
 		["src/server/plugin-inference.ts", (call: ts.CallExpression) => call.arguments.length === 2 && ts.isStringLiteral(call.arguments[1]!) && call.arguments[1]!.text === "usage.jsonl", 1],
 		["src/agent/provider-events.ts", (call: ts.CallExpression, file: ts.SourceFile) => call.arguments[0]?.getText(file) === "providerEventsDir.current", 1],

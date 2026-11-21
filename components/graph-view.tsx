@@ -837,7 +837,7 @@ export function GraphChromeRow({
 	return (
 		<>
 			{!isEmpty && (
-				<div className="graph-chrome-fade-in w-56 min-w-0 shrink rounded-xl border bg-card/85 px-2 py-[3px] shadow-lg backdrop-blur focus-within:border-ring transition-colors">
+				<div className="graph-chrome-fade-in w-56 min-w-0 shrink rounded-xl border bg-card/85 px-2 py-1 shadow-lg backdrop-blur focus-within:border-ring transition-colors">
 					<Hint
 						// ⌘F focuses node search (surface-scoped registry action).
 						label="Search nodes"
@@ -864,7 +864,7 @@ export function GraphChromeRow({
 			)}
 			{/* The chain table (chains overlay, owner plan 2026-09-29). Own
 			    container (36px band), between the search and Import. */}
-			<div className="graph-chrome-fade-in shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
+			<div className="graph-chrome-fade-in shrink-0 rounded-xl border bg-card/85 px-1 py-1 shadow-lg backdrop-blur">
 					<Hint label="Every reasoning chain" side="bottom">
 						<button
 							type="button"
