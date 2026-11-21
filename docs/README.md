@@ -22,10 +22,6 @@
 
 [The theory of learning and teaching](teaching-methodology.md) is the owner's theory underlying the teaching method. It is not a runtime specification or evidence of measured learning outcomes.
 
-## History
-
-[Archived design documents](archive/README.md) preserve earlier plans and decisions. They are not current specifications or instructions for development.
-
 ## About these docs
 
-These guides follow the repository source. For a particular installed release, use the documentation at its Git tag and its release notes. Archived plans are historical; unmerged proposals are not documented as available features.
+These guides follow the repository source. For a particular installed release, use the documentation at its Git tag and its release notes. Unmerged proposals are not documented as available features.
