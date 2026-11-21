@@ -902,7 +902,7 @@ export function DictationBar({ dictation, disabled = false }: { dictation: Dicta
 				</button>
 			</Hint>
 			<span className="size-1.5 shrink-0 animate-pulse rounded-full bg-destructive" aria-hidden />
-			<div ref={meterRef} className="flex h-4 min-w-0 flex-1 items-center gap-[2px]" data-testid="dictation-meter">
+			<div ref={meterRef} className="flex h-4 min-w-0 flex-1 items-center gap-0.5" data-testid="dictation-meter">
 				{levels.slice(-cellCount).map((v, i) => (
 					<span
 						key={i}

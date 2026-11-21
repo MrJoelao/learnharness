@@ -37,6 +37,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { XIcon } from "lucide-react";
 import { HostDialog } from "@/components/host-dialog";
 import { useInteractionLayers } from "@/components/interaction-layers";
 import type React from "react";
@@ -444,9 +445,9 @@ function OpenSetupDialog({ onClose, onDone }: SetupDialogProps) {
 						aria-label="Close setup"
 						data-testid="setup-close"
 						onClick={onClose}
-						className="ml-auto text-muted-foreground transition-colors hover:text-foreground"
+						className="ml-auto text-muted-foreground transition-colors hover:text-foreground flex items-center justify-center p-1 rounded-md"
 					>
-						✕
+						<XIcon className="size-4" />
 					</button>
 </Hint>
 				</header>

@@ -695,7 +695,7 @@ export function ArchivePage({
 							{chat.title}
 						</span>
 						{isPractice && (
-							<span className="rounded bg-muted px-1.5 py-0.2 text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+							<span className="rounded bg-muted px-1.5 py-0.2 text-xs font-mono text-muted-foreground">
 								Practice
 							</span>
 						)}
@@ -880,7 +880,7 @@ export function ArchivePage({
 
 				{/* Loading State */}
 				{loading && (
-					<div className="py-12 text-center text-xs text-muted-foreground animate-pulse">
+					<div className="py-12 text-center text-xs text-muted-foreground">
 						Loading archive…
 					</div>
 				)}
@@ -988,12 +988,12 @@ export function ArchivePage({
 									<div data-testid="archive-sessions-section" className="space-y-2 pt-2">
 										{sortedArchivedFolders.length > 0 && (
 											<div className="flex items-center gap-2 px-1 pb-1">
-												<span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+												<span className="text-xs font-medium text-muted-foreground">
 													{filteredChats.some((c) => c.kind === "workspace")
 														? (filteredChats.some((c) => c.kind !== "workspace") ? "Archived Items" : "Archived Workspaces")
 														: "Archived Sessions"}
 												</span>
-												<span className="text-[10px] text-muted-foreground/60 tabular-nums">
+												<span className="text-xs text-muted-foreground/60 tabular-nums">
 													({filteredChats.length})
 												</span>
 											</div>
@@ -1074,7 +1074,7 @@ export function ArchivePage({
 									{/* Child/Descendant Folders: Navigable Nested Folders */}
 									{sortedChildFolders.length > 0 && (
 										<div data-testid="archive-nested-folders" className="space-y-2">
-											<div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 px-1">
+											<div className="text-xs font-medium text-muted-foreground px-1">
 												Nested Folders ({sortedChildFolders.length})
 											</div>
 											<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1143,7 +1143,7 @@ export function ArchivePage({
 									{visibleFolderChats.length > 0 && (
 										<div data-testid="archive-folder-chats" className="space-y-1.5">
 											{sortedChildFolders.length > 0 && (
-												<div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 px-1 pt-1">
+												<div className="text-xs font-medium text-muted-foreground px-1 pt-1">
 													{visibleFolderChats.some((c) => c.kind === "workspace")
 														? (visibleFolderChats.some((c) => c.kind !== "workspace") ? "Items" : "Workspaces")
 														: "Sessions"} ({visibleFolderChats.length})

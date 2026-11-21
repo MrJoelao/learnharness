@@ -325,7 +325,7 @@ export function WorkspaceScreen({
 				{screenState === "loading" && (
 					<div
 						data-testid="workspace-loading"
-						className="flex flex-1 items-center justify-center text-xs text-muted-foreground animate-pulse"
+						className="flex flex-1 items-center justify-center text-xs text-muted-foreground"
 					>
 						Loading workspace…
 					</div>

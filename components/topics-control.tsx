@@ -192,9 +192,9 @@ export function TopicsControl({
 							<button
 								type="button"
 								onClick={() => setStatusMsg(null)}
-								className="text-muted-foreground/60 hover:text-foreground text-[10px] ml-2"
+								className="text-muted-foreground/60 hover:text-foreground text-[10px] ml-2 flex items-center"
 							>
-								✕
+								<XIcon className="size-3" />
 							</button>
 						</div>
 					)}

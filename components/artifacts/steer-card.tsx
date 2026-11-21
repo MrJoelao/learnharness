@@ -85,7 +85,7 @@ function AbortedBadge({ kind }: { kind: string }) {
 	return (
 		<div data-testid="job-aborted-badge" className="flex items-center gap-2 text-xs text-muted-foreground">
 			<CircleX className="size-3.5" />
-			<span className="font-medium uppercase tracking-wide">{kind}</span>
+			<span className="font-medium">{kind}</span>
 			<span>aborted by the learner</span>
 		</div>
 	);
@@ -101,7 +101,7 @@ function PdfCompleteBadge({ result }: { result: PdfResult }) {
 	const readPages = result.pagesRead ?? result.pagesConsulted;
 	return (
 		<WorkerResultDetails testId="pdf-complete-badge" heading={<>
-				<span className="font-medium uppercase tracking-wide">PDF</span>
+				<span className="font-medium">PDF</span>
 				<span>reading complete</span>
 				{readPages.length > 0 && (
 					<span>
@@ -122,7 +122,7 @@ function PdfCompleteBadge({ result }: { result: PdfResult }) {
 function ResearchCompleteBadge({ result }: { result: ResearchResult }) {
 	return (
 		<WorkerResultDetails testId="research-complete-badge" heading={<>
-				<span className="font-medium uppercase tracking-wide">Research</span>
+				<span className="font-medium">Research</span>
 				<span>complete</span>
 				{result.sources.length > 0 && <span>· {result.sources.length} sources</span>}
 			</>}>
