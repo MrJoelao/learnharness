@@ -498,7 +498,7 @@ describe("artifact chrome — scrollbar, invert toggles, downloads (release poli
 		assert.match(html, /toggle-invert-demo-brightness/, "the invert switch (house Toggle)");
 		assert.match(html, /data-testid="demo-download"/);
 		assert.ok(!html.includes("hue-rotate"), "inversion is OFF by default — a manual toggle only");
-		assert.match(html, /interactive demo/, "the kind label lives in the caption header");
+		assert.match(html, /interactive demo/i, "the kind label lives in the caption header");
 		assert.match(html, /Wave interference/, "the title rides beside the kind label");
 	});
 

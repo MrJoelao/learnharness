@@ -332,7 +332,7 @@ export function createGraphSimulation(
 			"collide",
 			forceCollide<LayoutNode>()
 				.radius((d) => (d.id.startsWith(IMP_ID_PREFIX) ? 0 : 16))
-				.strength(0.8)
+				.strength(options.depthAnchor?.mode === "vertical" ? 0 : 0.8)
 				.iterations(2),
 		)
 		.force("charge", forceManyBody<LayoutNode>().strength(options.chargeStrength ?? CHARGE_STRENGTH))

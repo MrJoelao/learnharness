@@ -1896,13 +1896,18 @@ describe("the chunked pipeline (extraction coverage)", () => {
 		// The abort must land while batch 2's extractor hangs. The faux
 		// stream only resolves on abort, so wait for the batch-1 merge to
 		// show in coverage, then abort.
-		await new Promise<void>((resolve) => {
+		await new Promise<void>((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				clearInterval(check);
+				reject(new Error("Timed out waiting for batch 1 coverage in extraction"));
+			}, 5000);
 			const check = setInterval(() => {
 				if (ledgers.readCoverage().length > 0) {
 					clearInterval(check);
+					clearTimeout(timeout);
 					resolve();
 				}
-			}, 5);
+			}, 10);
 		});
 		assert.equal(abortExtraction(chatId), true);
 		const stats = await runPromise;

@@ -25,9 +25,17 @@ const rawArgs = process.argv.slice(2);
 const hasConcurrencyArg = rawArgs.some((arg) => arg.startsWith("--test-concurrency"));
 const concurrency = process.env.TEST_CONCURRENCY || DEFAULT_CONCURRENCY;
 
+// 4. Test timeout: default to 30s to prevent hung tests from blocking indefinitely
+const DEFAULT_TIMEOUT_MS = 30000;
+const hasTimeoutArg = rawArgs.some((arg) => arg.startsWith("--test-timeout"));
+const timeoutMs = process.env.TEST_TIMEOUT || DEFAULT_TIMEOUT_MS;
+
 const forwardArgs = [];
 if (!hasConcurrencyArg) {
 	forwardArgs.push(`--test-concurrency=${concurrency}`);
+}
+if (!hasTimeoutArg) {
+	forwardArgs.push(`--test-timeout=${timeoutMs}`);
 }
 
 const fileArgs = [];
