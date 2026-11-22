@@ -4,6 +4,7 @@ import {
 	emptyTopicOrganization,
 	parseTopicOrganization,
 	nodesToClassify,
+	nodesToClassifyDelta,
 	applyTopicAssignments,
 	applyTopicAction,
 	type TopicOrganization,
@@ -316,6 +317,115 @@ describe("topic-organization", () => {
 			parseAssignmentJson('{"n_1": "Valid", "arg_1": "Invalid", "other": "Invalid"}'),
 			{ n_1: "Valid" },
 		);
+
+		// 5. Inverted JSON format: { "Topic": ["n_1", "n_2"] }
+		assert.deepEqual(
+			parseAssignmentJson('{"Algorithms": ["n_1", "n_2"], "Calculus": ["n_3", "arg_invalid"]}'),
+			{ n_1: "Algorithms", n_2: "Algorithms", n_3: "Calculus" },
+		);
+
+		// 6. Object array format: { "topics": [{ "label": "Trees", "members": ["n_10"] }] }
+		assert.deepEqual(
+			parseAssignmentJson('{"topics": [{"label": "Trees", "members": ["n_10", "arg_skip"]}]}'),
+			{ n_10: "Trees" },
+		);
+	});
+
+	it("nodesToClassifyDelta only selects new unassigned proposition nodes", () => {
+		const org: TopicOrganization = {
+			version: 1,
+			topics: [
+				{
+					id: "tp_1",
+					label: "Derivatives",
+					members: ["n_1"],
+					overriddenAt: "2026-11-12T10:00:00.000Z", // locked
+					createdAt: "2026-11-12T10:00:00.000Z",
+					updatedAt: "2026-11-12T10:00:00.000Z",
+				},
+				{
+					id: "tp_2",
+					label: "Integrals",
+					members: ["n_2"],
+					overriddenAt: null, // auto-assigned
+					createdAt: "2026-11-12T10:00:00.000Z",
+					updatedAt: "2026-11-12T10:00:00.000Z",
+				},
+			],
+			unassigned: ["n_3"],
+			lastAutoRunAt: null,
+		};
+		const allIds = new Set(["n_1", "n_2", "n_3", "n_4", "n_5"]);
+		// n_1 is in overridden topic -> excluded
+		// n_2 is already in auto topic -> excluded in delta mode (kept in place)
+		// n_3 is in unassigned -> excluded
+		// n_4 and n_5 are new propositions -> returned for delta classification
+		const delta = nodesToClassifyDelta(org, allIds);
+		assert.deepEqual(delta.sort(), ["n_4", "n_5"]);
+	});
+
+	it("applyTopicAssignments with preserveExistingAutoMembers retains unmentioned auto members", () => {
+		const now = "2026-11-21T12:00:00.000Z";
+		const org: TopicOrganization = {
+			version: 1,
+			topics: [
+				{
+					id: "tp_auto",
+					label: "Linear Algebra",
+					members: ["n_existing_1", "n_existing_2"],
+					overriddenAt: null,
+					createdAt: now,
+					updatedAt: now,
+				},
+			],
+			unassigned: [],
+			lastAutoRunAt: null,
+		};
+
+		// In delta mode, only n_new is assigned to Linear Algebra
+		const deltaAssignments = {
+			n_new: "Linear Algebra",
+		};
+
+		const updated = applyTopicAssignments(org, deltaAssignments, now, {
+			preserveExistingAutoMembers: true,
+		});
+
+		const la = updated.topics.find((t) => t.label === "Linear Algebra");
+		assert.ok(la);
+		// n_existing_1 and n_existing_2 must be preserved alongside n_new!
+		assert.deepEqual(la?.members, ["n_existing_1", "n_existing_2", "n_new"]);
+	});
+
+	it("applyTopicAssignments appends new nodes to matching overridden topic without duplicating it", () => {
+		const now = "2026-11-21T12:00:00.000Z";
+		const org: TopicOrganization = {
+			version: 1,
+			topics: [
+				{
+					id: "tp_locked",
+					label: "User Custom Topic",
+					members: ["n_1"],
+					overriddenAt: "2026-11-12T10:00:00.000Z",
+					createdAt: "2026-11-12T10:00:00.000Z",
+					updatedAt: "2026-11-12T10:00:00.000Z",
+				},
+			],
+			unassigned: ["n_un"],
+			lastAutoRunAt: null,
+		};
+
+		const updated = applyTopicAssignments(
+			org,
+			{ n_2: "user custom topic", n_un: "User Custom Topic" },
+			now,
+			{ preserveExistingAutoMembers: true },
+		);
+
+		assert.equal(updated.topics.length, 1);
+		assert.equal(updated.topics[0]?.id, "tp_locked");
+		assert.deepEqual(updated.topics[0]?.members, ["n_1", "n_2"]);
+		assert.deepEqual(updated.unassigned, ["n_un"]);
 	});
 
 	it("runTopicAssign handles undefined engine and empty nodes safely", async () => {

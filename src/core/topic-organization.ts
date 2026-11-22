@@ -136,6 +136,26 @@ export function nodesToClassify(
 	);
 }
 
+/** Node IDs that should be passed to the LLM for delta (incremental) assignment:
+ *  only proposition nodes that are NOT in ANY topic yet and NOT explicitly unassigned. */
+export function nodesToClassifyDelta(
+	org: TopicOrganization,
+	allPropositionIds: ReadonlySet<string>,
+): string[] {
+	const assigned = assignedNodeIds(org);
+	const explicitlyUnassigned = new Set(org.unassigned);
+
+	return [...allPropositionIds].filter(
+		(id) => !assigned.has(id) && !explicitlyUnassigned.has(id),
+	);
+}
+
+export interface ApplyTopicAssignmentsOptions {
+	/** If true, members of auto-assigned topics that are not mentioned in assignments
+	 *  are preserved (delta mode). Default false (full replacement of auto-assigned topics). */
+	preserveExistingAutoMembers?: boolean;
+}
+
 /** Apply a fresh LLM assignment result into the existing TopicOrganization.
  *  Returns a NEW state (pure, no mutation).
  *
@@ -150,24 +170,51 @@ export function applyTopicAssignments(
 	org: TopicOrganization,
 	assignments: Record<string, string>,
 	now: string,
+	options?: ApplyTopicAssignmentsOptions,
 ): TopicOrganization {
-	// Keep overridden topics exactly as-is
-	const overridden = org.topics.filter((t) => t.overriddenAt !== null);
+	// Clone overridden topics so their existing members & overriddenAt stay intact,
+	// while allowing newly classified nodes to join by matching label without minting duplicates.
+	const overridden: GraphTopic[] = org.topics
+		.filter((t) => t.overriddenAt !== null)
+		.map((t) => ({ ...t, members: [...t.members] }));
+	const overriddenByLabel = new Map<string, GraphTopic>(
+		overridden.map((t) => [t.label.trim().toLowerCase(), t]),
+	);
 	const overriddenMemberIds = new Set(overridden.flatMap((t) => t.members));
+	const explicitlyUnassigned = new Set(org.unassigned);
+
+	const assignedSet = new Set(Object.keys(assignments));
 
 	// Build a label → topic map for the auto (non-overridden) topics
 	const autoTopics = new Map<string, GraphTopic>(
 		org.topics
 			.filter((t) => t.overriddenAt === null)
-			.map((t) => [t.label.trim().toLowerCase(), { ...t, members: [] }]),
+			.map((t) => [
+				t.label.trim().toLowerCase(),
+				{
+					...t,
+					members: options?.preserveExistingAutoMembers
+						? t.members.filter((m) => !assignedSet.has(m))
+						: [],
+				},
+			]),
 	);
 
 	// Place nodes into topics
 	for (const [nodeId, rawLabel] of Object.entries(assignments)) {
-		if (overriddenMemberIds.has(nodeId)) continue; // respect override
+		if (overriddenMemberIds.has(nodeId) || explicitlyUnassigned.has(nodeId)) continue;
 		const label = rawLabel.trim();
 		if (!label) continue;
 		const key = label.toLowerCase();
+		const overriddenMatch = overriddenByLabel.get(key);
+		if (overriddenMatch) {
+			if (!overriddenMatch.members.includes(nodeId)) {
+				overriddenMatch.members.push(nodeId);
+				overriddenMatch.members.sort();
+				overriddenMatch.updatedAt = now;
+			}
+			continue;
+		}
 		if (!autoTopics.has(key)) {
 			// Mint a new topic
 			autoTopics.set(key, {
@@ -185,7 +232,7 @@ export function applyTopicAssignments(
 	// Sort members in every auto topic
 	const autoList: GraphTopic[] = [...autoTopics.values()]
 		.filter((t) => t.members.length > 0)
-		.map((t) => ({ ...t, members: [...t.members].sort(), updatedAt: now }));
+		.map((t) => ({ ...t, members: [...new Set(t.members)].sort(), updatedAt: now }));
 
 	return {
 		version: 1,

@@ -31,6 +31,7 @@ import {
 	REGION_BITMAP_OPTIONS,
 	REGION_BLUR_LADDER,
 } from "../src/core/render-settings.ts";
+import { createGraphSimulation, incrementalLayout } from "../src/core/layout.ts";
 
 describe("zoomRatioOf (the sigma-compatible camera ratio)", () => {
 	test("1 at fit zoom, smaller when zoomed in, larger when zoomed out", () => {
@@ -412,5 +413,86 @@ describe("applyClusterLabels (the label-only rename channel)", () => {
 			W, MAXL, measure,
 		);
 		assert.equal(changed, false);
+	});
+});
+
+describe("layout physics enhancements (forceCollide & cluster-aware layout)", () => {
+	it("registers collide force and excludes implication nodes (radius 0)", () => {
+		const nodes = [
+			{ id: "n_1", x: 0, y: 0 },
+			{ id: "arg_1", x: 0, y: 0 },
+		];
+		const sim = createGraphSimulation(nodes, []);
+		const collideForce = sim.force("collide") as
+			| { radius: () => (d: { id: string }) => number }
+			| undefined;
+		assert.ok(collideForce, "collide force must be registered in simulation");
+		assert.equal(collideForce.radius()({ id: "arg_1" }), 0, "implication nodes must have radius 0");
+		assert.equal(collideForce.radius()({ id: "n_1" }), 16, "proposition nodes must have radius 16");
+	});
+
+	it("differentiates intra-cluster vs inter-cluster link distances", () => {
+		const nodes = [
+			{ id: "n_1", x: 0, y: 0 },
+			{ id: "n_2", x: 0, y: 0 },
+			{ id: "n_3", x: 0, y: 0 },
+			{ id: "arg_1", x: 0, y: 0 },
+		];
+		const edges = [
+			{ from: "n_1", to: "n_2" }, // intra-cluster (Cluster 0)
+			{ from: "n_1", to: "n_3" }, // inter-cluster (Cluster 0 to Cluster 1)
+			{ from: "n_1", to: "arg_1" }, // touching imp node
+		];
+		const clusters = [
+			{ members: ["n_1", "n_2"] },
+			{ members: ["n_3"] },
+		];
+
+		const sim = createGraphSimulation(nodes, edges, {
+			linkDistance: 40,
+			clusterPull: { clusters, strength: 0.15 },
+		});
+
+		const linkForce = sim.force("link") as
+			| { distance: () => (l: { source: string; target: string }) => number }
+			| undefined;
+		assert.ok(linkForce, "link force must be registered in simulation");
+		const distanceFn = linkForce.distance();
+
+		// Link touching arg_ must be linkDistance / 2
+		assert.equal(distanceFn({ source: "n_1", target: "arg_1" }), 20);
+
+		// Intra-cluster link gets tightened (40 * 0.8 = 32)
+		assert.equal(distanceFn({ source: "n_1", target: "n_2" }), 32);
+
+		// Inter-cluster link gets extended (40 * 2.2 = 88)
+		assert.equal(distanceFn({ source: "n_1", target: "n_3" }), 88);
+	});
+
+	it("incrementalLayout seeds bootstrap nodes in cluster sectors when previous positions are absent", () => {
+		const nodes = [
+			{ id: "n_c0_1" },
+			{ id: "n_c0_2" },
+			{ id: "n_c1_1" },
+			{ id: "n_c1_2" },
+		];
+		const clusters = [
+			{ members: ["n_c0_1", "n_c0_2"] },
+			{ members: ["n_c1_1", "n_c1_2"] },
+		];
+
+		const positions = incrementalLayout(nodes, [], new Map(), {
+			clusters,
+			ticks: 1, // minimal tick to inspect seeded placement
+		});
+
+		const p0_1 = positions.get("n_c0_1")!;
+		const p1_1 = positions.get("n_c1_1")!;
+		assert.ok(p0_1 && p1_1);
+
+		// Cluster 0 is at angle 0 (positive x), Cluster 1 is at angle PI (negative x)
+		// They should be spaced apart by > 200 world units from the very first tick!
+		const dist = Math.hypot(p0_1.x - p1_1.x, p0_1.y - p1_1.y);
+		assert.ok(dist > 200, `Bootstrap clusters must seed apart, got distance ${dist}`);
 	});
 });

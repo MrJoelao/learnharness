@@ -11,8 +11,18 @@ import { refreshGraphTopics } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
-	const result = await refreshGraphTopics();
+export async function POST(req: Request) {
+	let mode: "full" | "delta" = "full";
+	try {
+		const body: unknown = await req.json();
+		if (typeof body === "object" && body !== null && "mode" in body && body.mode === "delta") {
+			mode = "delta";
+		}
+	} catch {
+		// Empty body or non-JSON request: defaults to full re-organization
+	}
+
+	const result = await refreshGraphTopics({ mode });
 	if ("error" in result) {
 		const status = result.status ?? 500;
 		return Response.json(

@@ -29,6 +29,7 @@ import type { PiEngine } from "../models.ts";
 import { runSubagent } from "./pi-run.ts";
 import {
 	nodesToClassify,
+	nodesToClassifyDelta,
 	applyTopicAssignments,
 } from "../../core/topic-organization.ts";
 
@@ -41,6 +42,10 @@ export interface TopicAssignDeps {
 	sourceOrganizationStore?: SourceOrganizationStore;
 	graphStore?: GraphStore;
 	topicSettings?: TopicSettings;
+	/** Assignment mode: "full" re-evaluates all unlocked nodes (manual trigger);
+	 *  "delta" only classifies newly minted nodes without touching existing ones (background pass).
+	 *  Defaults to "full". */
+	mode?: "full" | "delta";
 }
 
 /** How many nodes to classify in one LLM call before chunking.
@@ -158,9 +163,12 @@ export async function runTopicAssign(
 	const propositions = nodes.filter((n) => n.id.startsWith("n_"));
 	if (propositions.length === 0) return 0;
 
+	const mode = deps.mode ?? "full";
 	const org = deps.topicStore.read();
 	const allIds = new Set(propositions.map((n) => n.id));
-	const toClassify = nodesToClassify(org, allIds);
+	const toClassify = mode === "delta"
+		? nodesToClassifyDelta(org, allIds)
+		: nodesToClassify(org, allIds);
 	if (toClassify.length === 0) return org.topics.length;
 
 	// Build a nodeId → node lookup
@@ -169,8 +177,14 @@ export async function runTopicAssign(
 	// Collect context (folders, chats, materials)
 	const studyContext = buildStudyContext(propositions, deps);
 
-	// Collect existing topic labels for the LLM to prefer (avoid synonyms)
-	const existingLabels = org.topics.map((t) => t.label);
+	// Collect existing topic labels (case-insensitive dedup) for the LLM to prefer, updated dynamically across chunks
+	const knownLabels = new Map<string, string>();
+	for (const t of org.topics) {
+		const trimmed = t.label.trim();
+		if (trimmed && !knownLabels.has(trimmed.toLowerCase())) {
+			knownLabels.set(trimmed.toLowerCase(), trimmed);
+		}
+	}
 
 	// Process in chunks so very large graphs don't blow the context window
 	const allAssignments: Record<string, string> = {};
@@ -188,18 +202,21 @@ export async function runTopicAssign(
 				const payload: Record<string, unknown> = {
 					id,
 					name: n.name,
-					statement: n.statement,
 				};
 				if (meta?.subject) payload.subject = meta.subject;
 				if (meta?.source) payload.source = meta.source;
+				// Statement compaction: omit statement if name is descriptive, otherwise provide compact snippet
+				if (n.name.trim().length < 12 && n.statement) {
+					payload.snippet = n.statement.slice(0, 60);
+				}
 				return JSON.stringify(payload);
 			})
 			.filter(Boolean)
 			.join("\n");
 
 		const existingLabelsLine =
-			existingLabels.length > 0
-				? `\nExisting topic labels (reuse exact spelling when appropriate):\n${existingLabels.map((l) => `- ${l}`).join("\n")}\n`
+			knownLabels.size > 0
+				? `\nExisting topic labels (reuse exact spelling when appropriate):\n${[...knownLabels.values()].map((l) => `- ${l}`).join("\n")}\n`
 				: "";
 
 		const granularity = deps.topicSettings?.granularity ?? "broad";
@@ -264,11 +281,11 @@ export async function runTopicAssign(
 			`Rules:`,
 			granularityRule,
 			unificationRule,
-			`3. Assign EVERY node in the input list to exactly one topic label. The JSON output must contain an entry for each nodeId.`,
+			`3. Assign EVERY node in the input list to exactly one topic label. The JSON output must cover each nodeId.`,
 			`4. Topic labels must be concise, professional noun phrases (2–5 words), matching the primary language of the material (e.g. Italian if the nodes/courses are in Italian).`,
 			`5. If a node fits an existing label listed above, use that EXACT label (identical spelling and capitalization).`,
 			`6. Create a new label only when no existing label fits.`,
-			`7. Reply with ONLY valid JSON: {"nodeId": "topic label", ...}. No explanation, no markdown code fences.`,
+			`7. Reply with ONLY valid JSON: {"Topic Name": ["nodeId1", "nodeId2"], ...} (or {"nodeId": "Topic Name", ...}). No explanation, no markdown code fences.`,
 			customPromptSection,
 		].filter(Boolean).join("\n");
 
@@ -282,6 +299,12 @@ export async function runTopicAssign(
 			});
 			const parsed = parseAssignmentJson(result.text);
 			Object.assign(allAssignments, parsed);
+			for (const label of Object.values(parsed)) {
+				const trimmed = label.trim();
+				if (trimmed && !knownLabels.has(trimmed.toLowerCase())) {
+					knownLabels.set(trimmed.toLowerCase(), trimmed);
+				}
+			}
 			console.info(`[topic-assign] chunk ${chunkIdx + 1}/${chunks.length}: ${Object.keys(parsed).length} nodes assigned`);
 		} catch (err) {
 			console.error(
@@ -297,17 +320,31 @@ export async function runTopicAssign(
 		return null;
 	}
 
+	// Re-read latest state before writing to avoid clobbering concurrent user edits or resurrecting deleted nodes
+	const latestOrg = deps.topicStore.read();
+	let liveAssignments = allAssignments;
+	if (deps.graphStore) {
+		const liveIds = new Set(deps.graphStore.readNodes().map((n) => n.id));
+		liveAssignments = Object.fromEntries(
+			Object.entries(allAssignments).filter(([id]) => liveIds.has(id)),
+		);
+		if (Object.keys(liveAssignments).length === 0) return latestOrg.topics.length;
+	}
+
 	const now = new Date().toISOString();
-	const nextOrg = applyTopicAssignments(org, allAssignments, now);
+	const nextOrg = applyTopicAssignments(latestOrg, liveAssignments, now, {
+		preserveExistingAutoMembers: mode === "delta",
+	});
 	deps.topicStore.write(nextOrg);
 	console.info(
-		`[topic-assign] done: ${nextOrg.topics.length} topics, ` +
+		`[topic-assign] done (${mode} mode): ${nextOrg.topics.length} topics, ` +
 		`${Object.keys(allAssignments).length}/${toClassify.length} nodes assigned`,
 	);
 	return nextOrg.topics.length;
 }
 
-/** Parse the LLM's JSON response, tolerating occasional markdown fences. */
+/** Parse the LLM's JSON response, supporting both direct { "n_...": "Topic" }
+ *  and inverted { "Topic": ["n_1", "n_2"] } formats, tolerating occasional markdown fences. */
 export function parseAssignmentJson(text: string): Record<string, string> {
 	// Strip optional ```json ... ``` fences
 	const stripped = text.replace(/^```[a-z]*\n?/m, "").replace(/\n?```\s*$/m, "").trim();
@@ -326,10 +363,45 @@ export function parseAssignmentJson(text: string): Record<string, string> {
 	}
 	if (typeof parsed !== "object" || parsed === null) return {};
 	const result: Record<string, string> = {};
+
 	for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
 		if (typeof k === "string" && k.startsWith("n_") && typeof v === "string" && v.trim()) {
+			// Direct mapping: nodeId -> topic label
 			result[k] = v.trim();
+		} else if (typeof k === "string" && Array.isArray(v) && k.trim()) {
+			// Inverted mapping: topic label -> array of nodeIds
+			const topic = k.trim();
+			for (const item of v) {
+				if (typeof item === "string" && item.startsWith("n_")) {
+					result[item] = topic;
+				}
+			}
 		}
 	}
+
+	// Also support wrapper { "topics": [{ "label": "Topic", "members": ["n_1"] }] }
+	const topicsArr = (parsed as Record<string, unknown>)["topics"];
+	if (Array.isArray(topicsArr)) {
+		for (const t of topicsArr) {
+			if (typeof t === "object" && t !== null) {
+				const rec = t as Record<string, unknown>;
+				const label =
+					typeof rec.label === "string"
+						? rec.label.trim()
+						: typeof rec.name === "string"
+							? rec.name.trim()
+							: "";
+				const members = rec.members;
+				if (label && Array.isArray(members)) {
+					for (const m of members) {
+						if (typeof m === "string" && m.startsWith("n_")) {
+							result[m] = label;
+						}
+					}
+				}
+			}
+		}
+	}
+
 	return result;
 }

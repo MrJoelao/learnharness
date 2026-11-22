@@ -26,6 +26,7 @@ import {
 	forceSimulation,
 	forceLink,
 	forceManyBody,
+	forceCollide,
 	forceX,
 	forceY,
 	type Simulation,
@@ -270,6 +271,14 @@ export function createGraphSimulation(
 	const linkStrength = options.linkStrength ?? 1;
 	const linkDistance = options.linkDistance ?? LINK_DISTANCE;
 
+	// Cluster membership lookup for link-distance differentiation (intra vs inter-cluster)
+	const clusterByNode = new Map<string, number>();
+	if (options.clusterPull?.clusters) {
+		options.clusterPull.clusters.forEach((c, idx) => {
+			for (const id of c.members) clusterByNode.set(id, idx);
+		});
+	}
+
 	const sim = forceSimulation<LayoutNode, SimLink>(nodes)
 		.force(
 			"link",
@@ -281,17 +290,50 @@ export function createGraphSimulation(
 				// link touching an implication node (arg_-prefixed id — the
 				// string form pre-init, the node ref after) gets HALF the
 				// base distance, default or user-tuned alike.
+				// Intra-cluster links get tighter distance (0.8x); inter-cluster links get extended distance (2.2x).
 				.distance(
-					(l) =>
-						impLinkId(l.source).startsWith(IMP_ID_PREFIX) || impLinkId(l.target).startsWith(IMP_ID_PREFIX)
-							? linkDistance / 2
-							: linkDistance,
+					(l) => {
+						const isImp =
+							impLinkId(l.source).startsWith(IMP_ID_PREFIX) ||
+							impLinkId(l.target).startsWith(IMP_ID_PREFIX);
+						if (isImp) return linkDistance / 2;
+
+						if (clusterByNode.size > 0) {
+							const cSrc = clusterByNode.get(impLinkId(l.source));
+							const cTgt = clusterByNode.get(impLinkId(l.target));
+							if (cSrc !== undefined && cTgt !== undefined) {
+								if (cSrc === cTgt) return linkDistance * 0.8;
+								return linkDistance * 2.2;
+							}
+						}
+						return linkDistance;
+					},
 				)
 				.strength(
-					(l) =>
-						(linkStrength * 1) /
-						Math.min(degree.get((l.source as LayoutNode).id) ?? 1, degree.get((l.target as LayoutNode).id) ?? 1),
+					(l) => {
+						const degFactor =
+							(linkStrength * 1) /
+							Math.min(
+								degree.get((l.source as LayoutNode).id) ?? 1,
+								degree.get((l.target as LayoutNode).id) ?? 1,
+							);
+						if (clusterByNode.size > 0) {
+							const cSrc = clusterByNode.get((l.source as LayoutNode).id);
+							const cTgt = clusterByNode.get((l.target as LayoutNode).id);
+							if (cSrc !== undefined && cTgt !== undefined && cSrc !== cTgt) {
+								return degFactor * 0.4;
+							}
+						}
+						return degFactor;
+					},
 				),
+		)
+		.force(
+			"collide",
+			forceCollide<LayoutNode>()
+				.radius((d) => (d.id.startsWith(IMP_ID_PREFIX) ? 0 : 16))
+				.strength(0.8)
+				.iterations(2),
 		)
 		.force("charge", forceManyBody<LayoutNode>().strength(options.chargeStrength ?? CHARGE_STRENGTH))
 		.alphaDecay(options.alphaDecay ?? 0.0228)
@@ -408,6 +450,9 @@ export function createGraphSimulation(
 		const sumX = new Float64Array(k);
 		const sumY = new Float64Array(k);
 		const cnt = new Float64Array(k);
+		const repX = new Float64Array(k);
+		const repY = new Float64Array(k);
+		const MIN_CLUSTER_DIST = 260;
 		const strength = cp.strength;
 		// The cluster centroid pull also respects the depth mode: vertical
 		// → x-only (the depth force owns y); radial → tangential only
@@ -428,14 +473,52 @@ export function createGraphSimulation(
 				sumY[ci] = sumY[ci]! + (n.y ?? 0);
 				cnt[ci] = cnt[ci]! + 1;
 			}
+
+			// Inter-cluster macro-repulsion: push distinct cluster centroids apart
+			repX.fill(0);
+			repY.fill(0);
+			if (k >= 2) {
+				for (let i = 0; i < k; i++) {
+					if ((cnt[i] ?? 0) < 2) continue;
+					const cix = sumX[i]! / cnt[i]!;
+					const ciy = sumY[i]! / cnt[i]!;
+					for (let j = i + 1; j < k; j++) {
+						if ((cnt[j] ?? 0) < 2) continue;
+						const cjx = sumX[j]! / cnt[j]!;
+						const cjy = sumY[j]! / cnt[j]!;
+						const dx = cix - cjx;
+						const dy = ciy - cjy;
+						const dist = Math.hypot(dx, dy);
+						if (dist < MIN_CLUSTER_DIST) {
+							const d = Math.max(dist, 1);
+							const push = ((MIN_CLUSTER_DIST - d) / MIN_CLUSTER_DIST) * 1.5;
+							let ux: number;
+							let uy: number;
+							if (dist < 1e-6) {
+								const angle = ((i * 7 + j * 13) % 360) * (Math.PI / 180);
+								ux = Math.cos(angle);
+								uy = Math.sin(angle);
+							} else {
+								ux = dx / d;
+								uy = dy / d;
+							}
+							repX[i] = repX[i]! + ux * push;
+							repY[i] = repY[i]! + uy * push;
+							repX[j] = repX[j]! - ux * push;
+							repY[j] = repY[j]! - uy * push;
+						}
+					}
+				}
+			}
+
 			for (let i = 0; i < nodes.length; i++) {
 				const ci = nodeCluster[i]!;
 				if (ci < 0 || (cnt[ci] ?? 0) < 2) continue;
 				const n = nodes[i]!;
 				const px = n.x ?? 0;
 				const py = n.y ?? 0;
-				const ux = sumX[ci]! / cnt[ci]! - px;
-				const uy = sumY[ci]! / cnt[ci]! - py;
+				const ux = sumX[ci]! / cnt[ci]! - px + repX[ci]! * 45;
+				const uy = sumY[ci]! / cnt[ci]! - py + repY[ci]! * 45;
 				if (orphan && orphan[i]) {
 					// Orphans: full regular-view pull (see the ORPHAN RULE above).
 					n.vx = (n.vx ?? 0) + ux * strength * alpha;
@@ -606,6 +689,16 @@ export function incrementalLayout(
 	else if (hasCore) rimRadius = coreRadius * 1.15; // no connected anchors yet: bbox fallback
 	rimRadius += 4;
 
+	// Cluster membership lookup for bootstrap macro-layout seeding
+	const clusterSeedMap = options.clusters
+		? new Map<string, number>()
+		: undefined;
+	if (clusterSeedMap && options.clusters) {
+		options.clusters.forEach((c, idx) => {
+			for (const id of c.members) clusterSeedMap.set(id, idx);
+		});
+	}
+
 	// Seed every node.
 	const simNodes: LayoutNode[] = nodes.map((node) => {
 		const rand = seededRandom(node.id);
@@ -645,9 +738,18 @@ export function incrementalLayout(
 				// becomes that previous position, exactly like any node.)
 				anchors.set(node.id, { x, y });
 			} else {
-				// Bootstrap: the classic seeded scatter.
-				x = (rand() - 0.5) * 100;
-				y = (rand() - 0.5) * 100;
+				// Bootstrap: macro-layout cluster seeding if clusters are present, else classic seeded scatter.
+				const clusterIdx = clusterSeedMap?.get(node.id);
+				if (clusterIdx !== undefined && options.clusters && options.clusters.length > 0) {
+					const k = options.clusters.length;
+					const angle = (clusterIdx / Math.max(k, 1)) * Math.PI * 2;
+					const radius = 180 + k * 16;
+					x = Math.cos(angle) * radius + (rand() - 0.5) * 45;
+					y = Math.sin(angle) * radius + (rand() - 0.5) * 45;
+				} else {
+					x = (rand() - 0.5) * 100;
+					y = (rand() - 0.5) * 100;
+				}
 			}
 		}
 		// d3 is fine with coincident seeds (no division), but nudge exact

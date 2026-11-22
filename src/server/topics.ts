@@ -35,9 +35,12 @@ export function applyTopicActionAndSettle(action: TopicAction): TopicOrganizatio
 	return next;
 }
 
-export async function refreshGraphTopics(): Promise<
+export async function refreshGraphTopics(options?: {
+	mode?: "full" | "delta";
+}): Promise<
 	{ topics: number; message?: string } | { error: string; status: number; code?: string }
 > {
+	const mode = options?.mode ?? "full";
 	const graph = getGraph(stores.graphStore);
 	if (graph.nodes.length === 0) {
 		return { topics: 0, message: "Graph is empty" };
@@ -63,6 +66,7 @@ export async function refreshGraphTopics(): Promise<
 			sourceOrganizationStore: stores.sourceOrganizationStore,
 			graphStore: stores.graphStore,
 			topicSettings: resolved.graph.topics,
+			mode,
 		});
 
 		if (count === null) {
@@ -74,7 +78,7 @@ export async function refreshGraphTopics(): Promise<
 
 		settleGraphLayout(stores.graphStore, {
 			topicStore: stores.topicOrganizationStore,
-			resetAnchors: true,
+			resetAnchors: mode === "full",
 		});
 
 		emit("topics-changed", {});

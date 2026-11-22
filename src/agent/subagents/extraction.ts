@@ -23,9 +23,15 @@ import type {
 	SessionFindings,
 } from "../../core/contracts.ts";
 import { getGraph, mergeFindings, type DerivedGraph, type EmissionStats, type GraphDeps } from "../../core/graph.ts";
-import type { GraphStore } from "../../core/ports.ts";
+import type {
+	GraphStore,
+	ChatOrganizationStore,
+	SourceOrganizationStore,
+	SettingsStore,
+} from "../../core/ports.ts";
 import { emit } from "../../core/events.ts";
 import { settleGraphLayout } from "../../core/layout-settle.ts";
+import { resolveSettings } from "../../core/settings-resolution.ts";
 import { batchRuns, coverageOf, messageViewLines } from "../../core/coverage.ts";
 import { failedOutputCallIds, type LhMessage } from "../../core/native-messages.ts";
 import { prepareAuditorReview } from "../tools/graph.ts";
@@ -743,6 +749,9 @@ export interface ExtractionPipelineDeps extends GraphDeps, ExtractionModels {
 	 *  callers wire the live effective settings (extraction-UX redesign,
 	 *  2026-09-24). */
 	getChunkTokens?: () => number;
+	chatOrganizationStore?: ChatOrganizationStore;
+	sourceOrganizationStore?: SourceOrganizationStore;
+	settingsStore?: SettingsStore;
 }
 
 export interface NotesImportInput {
@@ -1219,9 +1228,27 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 				const engine = stageEngine("extractor", deps.extractor);
 				if (engine) {
 					const allNodes = deps.graphStore.readNodes();
-					void runTopicAssign(allNodes, { topicStore: deps.topicOrganizationStore, engine })
+					const topicStore = deps.topicOrganizationStore;
+					const prevRunAt = topicStore.read().lastAutoRunAt;
+					const topicSettings = deps.settingsStore
+						? resolveSettings(deps.settingsStore.readSettings()).graph.topics
+						: undefined;
+					void runTopicAssign(allNodes, {
+						topicStore,
+						engine,
+						chatStore: deps.chatStore,
+						chatOrganizationStore: deps.chatOrganizationStore,
+						sourceOrganizationStore: deps.sourceOrganizationStore,
+						graphStore: deps.graphStore,
+						topicSettings,
+						mode: "delta",
+					})
 						.then((count) => {
-							if (count !== null) {
+							if (count !== null && topicStore.read().lastAutoRunAt !== prevRunAt) {
+								settleGraphLayout(deps.graphStore, {
+									topicStore,
+									resetAnchors: false,
+								});
 								emit("topics-changed", {});
 								emit("sources-changed", {});
 							}
@@ -1414,9 +1441,27 @@ export function createExtractionPipeline(deps: ExtractionPipelineDeps): Extracti
 				const engine = stageEngine("extractor", deps.extractor);
 				if (engine) {
 					const allNodes = deps.graphStore.readNodes();
-					void runTopicAssign(allNodes, { topicStore: deps.topicOrganizationStore, engine })
+					const topicStore = deps.topicOrganizationStore;
+					const prevRunAt = topicStore.read().lastAutoRunAt;
+					const topicSettings = deps.settingsStore
+						? resolveSettings(deps.settingsStore.readSettings()).graph.topics
+						: undefined;
+					void runTopicAssign(allNodes, {
+						topicStore,
+						engine,
+						chatStore: deps.chatStore,
+						chatOrganizationStore: deps.chatOrganizationStore,
+						sourceOrganizationStore: deps.sourceOrganizationStore,
+						graphStore: deps.graphStore,
+						topicSettings,
+						mode: "delta",
+					})
 						.then((count) => {
-							if (count !== null) {
+							if (count !== null && topicStore.read().lastAutoRunAt !== prevRunAt) {
+								settleGraphLayout(deps.graphStore, {
+									topicStore,
+									resetAnchors: false,
+								});
 								emit("topics-changed", {});
 								emit("sources-changed", {});
 							}
