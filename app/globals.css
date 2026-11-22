@@ -686,12 +686,12 @@ body {
 .lh-segmented-pill-item,
 .lh-segmented-item {
 	display: flex; height: 100%; align-items: center; justify-content: center;
-	font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;
+	font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: normal;
 	color: var(--muted-foreground); cursor: pointer;
 	transition: background-color 150ms, color 150ms, box-shadow 150ms, transform 100ms;
 }
-.lh-segmented-pill-item { border-radius: 9999px; padding: 0 0.625rem; }
-.lh-segmented-item { border-radius: 0.375rem; padding: 0 0.5rem; }
+.lh-segmented-pill-item { border-radius: 9999px; padding: 0 0.5rem; }
+.lh-segmented-item { border-radius: var(--radius-sm, 4px); padding: 0 0.5rem; }
 .lh-segmented-pill-item:active,
 .lh-segmented-item:active { transform: scale(0.96); }
 .lh-segmented-pill-item:hover { color: var(--foreground); background-color: color-mix(in srgb, var(--muted) 40%, transparent); }

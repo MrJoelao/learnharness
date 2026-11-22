@@ -1,103 +1,756 @@
-.fc-root { --fc-red: #f87171; --fc-amber: #fbbf24; --fc-green: #4ade80; --fc-blue: #60a5fa; color: var(--foreground, inherit); font-size: 14px; line-height: 1.5; }
-.fc-library { padding: 16px; max-width: 1100px; margin: 0 auto; }
-.fc-root .fc-toolbar, .fc-root .fc-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.fc-root .fc-toolbar { margin-bottom: 12px; }
-.fc-root .fc-file-status { margin: 0 0 12px; }
-.fc-root .fc-file-status:empty { display: none; }
-.fc-root .fc-file-name { overflow-wrap: anywhere; }
-.fc-root [hidden] { display: none !important; }
-.fc-root .fc-button, .fc-root .fc-picker { display: inline-flex; }
-.fc-root .fc-input { display: block; width: 100%; border: 1px solid var(--border); border-radius: 0.375rem; padding: 7px 10px; background: var(--background, transparent); color: inherit; font: inherit; transition: border-color 150ms ease; }
-.fc-root .fc-input:focus-visible { outline: none; border-color: var(--ring); }
-.fc-root textarea.fc-input { min-height: 130px; resize: vertical; }
-.fc-root .fc-deck-panel { border: 1px solid var(--border); border-radius: 0.75rem; overflow: hidden; background: var(--card); }
-.fc-root .fc-deck-toolbar { display: flex; align-items: center; gap: 8px; padding: 12px; }
-.fc-root .fc-search { display: block; flex: 1; min-width: 0; }
-.fc-root .fc-tree > .fc-muted { padding: 12px; }
-.fc-root .fc-field { display: block; margin: 0 0 14px; }
-.fc-root .fc-label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 12px; }
-.fc-root .fc-check { display: flex; align-items: center; gap: 7px; padding: 4px 0; }
-.fc-root .fc-check input { accent-color: var(--primary, #888); }
-.fc-root .fc-error { color: var(--destructive, #dc5555); white-space: pre-wrap; overflow-wrap: anywhere; }
-.fc-root .fc-error:empty, .fc-tree-rename-error:empty { display: none; }
-.fc-root .fc-muted { color: var(--muted-foreground, #888); font-size: 12px; }
-.fc-root .fc-markdown { overflow-wrap: anywhere; min-width: 0; }
-.fc-root .fc-markdown > :first-child { margin-top: 0; }
-.fc-root .fc-markdown > :last-child { margin-bottom: 0; }
-.fc-root .fc-selection-actions { justify-content: space-between; gap: 8px 16px; padding: 0 12px 8px; }
-.fc-root .fc-delete-selected { display: inline-flex; color: var(--muted-foreground, #888); }
-.fc-root .fc-selection-summary { display: flex; align-items: center; gap: 8px; margin-left: auto; white-space: nowrap; }
-.fc-root .fc-selection-summary > .fc-muted { min-width: 10ch; text-align: right; }
-.fc-root .fc-tree-viewport { overflow-x: auto; }
-.fc-root .fc-tree-inner { min-width: 40rem; }
-.fc-root .fc-tree-row-content { display: flex; flex: 1; align-items: center; gap: 6px; min-width: 0; }
-.fc-root .fc-tree-icon { width: 16px; height: 16px; flex: none; color: var(--muted-foreground, #888); }
-.fc-root .fc-tree-name { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
-.fc-root .fc-tree-label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; font: inherit; text-align: left; }
-.fc-root button.fc-tree-label { cursor: pointer; background: transparent; border: 0; padding: 0; }
-.fc-root button.fc-tree-label:hover { text-decoration: underline; text-underline-offset: 3px; }
-.fc-root .fc-tree-metadata { color: var(--muted-foreground, #888); flex: none; font-size: 11px; }
-.fc-root .fc-tree-metadata:empty { display: none; }
-.fc-root .fc-tree-more { margin-left: auto; display: inline-flex; flex: none; color: var(--muted-foreground, #888); }
-.fc-root .fc-tree-rename { width: 100%; min-width: 5rem; height: 24px; border: 0; border-bottom: 1px solid var(--ring, #888); border-radius: 0; background: transparent; color: inherit; font: inherit; outline: none; padding: 0; }
-.fc-root .fc-tree-rename-error { color: var(--destructive, #dc5555); white-space: normal; overflow-wrap: anywhere; font-size: 11px; }
-.fc-root .fc-dashboard-slot { margin-top: 24px; }
-.fc-root .fc-dashboard-heading { font-size: 16px; font-weight: 600; margin: 0 0 16px; }
-.fc-root .fc-dashboard h3 { font-size: 13px; font-weight: 600; margin: 0 0 10px; }
-.fc-root .fc-state-bar { display: flex; height: 12px; border-radius: 9999px; overflow: hidden; background: var(--muted, #8882); }
-.fc-root [data-state="new"] { --fc-state-shade: var(--fc-blue); }
-.fc-root [data-state="learning"] { --fc-state-shade: var(--fc-amber); }
-.fc-root [data-state="review"] { --fc-state-shade: var(--fc-green); }
-.fc-root [data-state="relearning"] { --fc-state-shade: var(--fc-red); }
-.fc-root .fc-state-segment { display: block; background: var(--fc-state-shade); }
-.fc-root .fc-state-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; list-style: none; padding: 0; margin: 12px 0 6px; font-size: 12px; }
-.fc-root .fc-state-legend li { display: flex; align-items: center; gap: 6px; }
-.fc-root .fc-state-legend li::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--fc-state-shade); }
-.fc-root .fc-chart-grid { display: grid; gap: 16px; margin-top: 16px; }
-.fc-root .fc-chart { display: flex; flex-direction: column; min-width: 0; margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); }
-.fc-root .fc-chart-scroll { flex: none; overflow-x: auto; }
-.fc-root .fc-chart-svg { display: block; width: 100%; min-width: 20rem; max-width: 46rem; height: auto; margin-inline: auto; }
-.fc-root .fc-chart-bar[data-bucket="overdue"] { fill: var(--fc-red); }
-.fc-root .fc-chart-bar[data-bucket="today"] { fill: var(--fc-amber); }
-.fc-root .fc-chart-bar[data-bucket="future"] { fill: var(--fc-blue); }
-.fc-root .fc-chart-bar[data-bucket="activity"] { fill: var(--fc-green); }
-.fc-root .fc-chart-date { fill: var(--muted-foreground, #888); }
-.fc-root .fc-chart-caption { font-size: 11px; line-height: 1.5; color: var(--muted-foreground, #888); margin: 10px 0 0; }
-.fc-root .fc-chart > .fc-chart-caption { flex: 1; }
-@media (min-width: 1450px) { .fc-root .fc-chart-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.fc-root .fc-batch { border: 1px solid var(--border); border-radius: 0.75rem; padding: 14px; margin-bottom: 14px; background: var(--card); }
-.fc-root.fc-review-surface { box-sizing: border-box; min-height: 100%; height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; padding: 48px 24px; }
-.fc-root.fc-review-surface:focus { outline: none; }
-.fc-root .fc-review-stage { --fc-rating-again: var(--fc-red); --fc-rating-hard: var(--fc-amber); --fc-rating-good: var(--fc-green); --fc-rating-easy: var(--fc-blue); container-type: inline-size; width: 100%; max-width: 44rem; flex: none; margin-block: auto; text-align: center; }
-.fc-root .fc-review-stage:focus { outline: none; }
-/* A width-based minimum keeps short cards 16:9 without constraining long answers. */
-.fc-root .fc-review-card { box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; width: 100%; min-height: 56.25cqw; padding: 32px; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card, var(--background, transparent)); }
-.fc-root .fc-review-title { font-size: 16px; font-weight: 600; margin: 0 0 16px; line-height: 1.5; }
-.fc-root .fc-review-title:focus { outline: none; }
-.fc-root .fc-review-footer { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 20px; }
-.fc-root .fc-review-footer .fc-actions { justify-content: center; align-items: flex-start; }
-.fc-root .fc-review-footer > p { margin: 0; }
-.fc-root .fc-rating { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.fc-root .fc-shortcut { color: var(--muted-foreground, #888); font-size: 11px; }
-.fc-root .fc-review-meta, .fc-root .fc-review-remaining { color: var(--muted-foreground, #888); font-size: 12px; }
-.fc-root .fc-review-bottom { display: flex; align-items: flex-start; justify-content: flex-end; margin-top: 8px; text-align: right; }
-.fc-root .fc-review-bottom:empty { display: none; }
-.fc-root .fc-review-bottom > p { margin: 0; }
-.fc-root .fc-review-bottom .fc-review-remaining { margin-left: auto; text-align: right; white-space: nowrap; }
-.fc-root.fc-practice-surface { padding-bottom: 16px; }
-.fc-root.fc-practice-surface > .fc-practice-note { flex: none; width: 100%; margin: 24px 0 0; text-align: center; }
-.fc-root .fc-review-card > .fc-markdown { font-size: 17px; }
-.fc-root.fc-preview-dialog { container-type: inline-size; }
-.fc-root .fc-preview-card { text-align: center; }
-.fc-root .fc-review-card table { margin-inline: auto; }
-.fc-root .fc-answer:not(:empty) { padding-top: 24px; margin-top: 24px; border-top: 1px solid var(--border, #8885); }
-.fc-dialog { min-width: 0; }
-.fc-dialog .fc-dialog-heading { font-size: 16px; font-weight: 600; margin: 0 0 18px; }
-.fc-dialog .fc-actions { margin-top: 14px; }
-.fc-dialog .fc-delete-description { margin-bottom: 12px; }
-.fc-dialog .fc-delete-description .fc-markdown { color: inherit; }
-.fc-settings { padding: 12px 0; }
-.fc-root .fc-model-settings { display: grid; gap: 16px; margin-top: 18px; }
-.fc-root .fc-model-overrides { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 10px; }
-.fc-root .fc-model-row, .fc-root .fc-thinking-row { display: inline-flex; }
-@media (max-width: 600px) { .fc-library { padding: 10px; } .fc-root.fc-review-surface { padding: 40px 12px 24px; } .fc-root .fc-review-card { padding: 20px; } }
+/* ==========================================================================
+   LearnHarness Native Flashcards Plugin - Unslopped & Crafted Design System
+   World: Minimal physical index cards meets technical study terminal.
+   4px Spacing Grid, Semantic Color Palette, Monospace Telemetry, Tactile Keycaps.
+   ========================================================================== */
+
+.fc-root {
+  --fc-red: #f87171;
+  --fc-amber: #fbbf24;
+  --fc-green: #4ade80;
+  --fc-blue: #60a5fa;
+  color: var(--foreground, inherit);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.fc-root [hidden] {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   1. Library View (Main Screen)
+   -------------------------------------------------------------------------- */
+.fc-library {
+  box-sizing: border-box;
+  padding: 24px;
+  max-width: 1120px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Toolbar & Action Bar */
+.fc-root .fc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.fc-root .fc-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fc-root .fc-button,
+.fc-root .fc-picker {
+  display: inline-flex;
+  align-items: center;
+}
+
+.fc-root .fc-picker {
+  flex: 1 1 280px;
+  min-width: 220px;
+}
+
+.fc-root .fc-file-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  padding: 6px 12px;
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+.fc-root .fc-file-status:empty {
+  display: none;
+}
+.fc-root .fc-file-name {
+  overflow-wrap: anywhere;
+}
+
+/* Inputs & Form Controls */
+.fc-root .fc-input {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: 0 12px;
+  background: var(--background, transparent);
+  color: inherit;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.fc-root .fc-input:focus-visible {
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 1px var(--ring);
+}
+.fc-root textarea.fc-input {
+  height: auto;
+  min-height: 120px;
+  padding: 10px 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.fc-root .fc-field {
+  display: block;
+  margin: 0 0 16px;
+}
+.fc-root .fc-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--foreground);
+  margin-bottom: 6px;
+}
+.fc-root .fc-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.fc-root .fc-check input {
+  accent-color: var(--primary, #888);
+}
+.fc-root .fc-error {
+  color: var(--destructive, #f87171);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 4px 0;
+}
+.fc-root .fc-error:empty,
+.fc-tree-rename-error:empty {
+  display: none;
+}
+.fc-root .fc-muted {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.fc-root .fc-markdown {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.fc-root .fc-markdown > :first-child {
+  margin-top: 0;
+}
+.fc-root .fc-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* --------------------------------------------------------------------------
+   2. Decks & Propositions Panel
+   -------------------------------------------------------------------------- */
+.fc-root .fc-deck-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  overflow: hidden;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.fc-root .fc-deck-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.fc-root .fc-search {
+  display: block;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.fc-root .fc-selection-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+.fc-root .fc-delete-selected {
+  display: inline-flex;
+  color: var(--muted-foreground);
+}
+.fc-root .fc-selection-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+.fc-root .fc-selection-summary > .fc-muted {
+  min-width: 10ch;
+  text-align: right;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+
+/* Tree Component Styling */
+.fc-root .fc-tree > .fc-muted {
+  padding: 16px;
+}
+.fc-root .fc-tree-viewport {
+  overflow-x: auto;
+}
+.fc-root .fc-tree-inner {
+  min-width: 36rem;
+}
+.fc-root .fc-tree-row-content {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.fc-root .fc-tree-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.fc-root .fc-tree-name {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+.fc-root .fc-tree-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.fc-root button.fc-tree-label {
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.fc-root button.fc-tree-label:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.fc-root .fc-tree-metadata {
+  color: var(--muted-foreground);
+  flex: none;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+}
+.fc-root .fc-tree-metadata:empty {
+  display: none;
+}
+.fc-root .fc-tree-more {
+  margin-left: auto;
+  display: inline-flex;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.fc-root .fc-tree-rename {
+  width: 100%;
+  min-width: 5rem;
+  height: 24px;
+  border: 0;
+  border-bottom: 1px solid var(--ring);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  outline: none;
+  padding: 0;
+}
+.fc-root .fc-tree-rename-error {
+  color: var(--destructive, #f87171);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+/* Generation Batch Status */
+.fc-root .fc-batch {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/* --------------------------------------------------------------------------
+   3. Spaced Repetition Statistics & Dashboard
+   -------------------------------------------------------------------------- */
+.fc-root .fc-dashboard-slot {
+  margin-top: 12px;
+}
+.fc-root .fc-dashboard {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  padding: 20px 24px;
+  background: var(--card);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.fc-root .fc-dashboard-heading {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+.fc-root .fc-dashboard h3 {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0 0 8px;
+  color: var(--muted-foreground);
+}
+
+/* State Breakdown Bar */
+.fc-root .fc-state-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--muted) 60%, transparent);
+  margin-bottom: 12px;
+}
+.fc-root [data-state="new"] {
+  --fc-state-shade: var(--fc-blue);
+}
+.fc-root [data-state="learning"] {
+  --fc-state-shade: var(--fc-amber);
+}
+.fc-root [data-state="review"] {
+  --fc-state-shade: var(--fc-green);
+}
+.fc-root [data-state="relearning"] {
+  --fc-state-shade: var(--fc-red);
+}
+.fc-root .fc-state-segment {
+  display: block;
+  background: var(--fc-state-shade);
+  transition: width 200ms ease;
+}
+
+.fc-root .fc-state-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 8px;
+  font-size: 12px;
+}
+.fc-root .fc-state-legend li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+}
+.fc-root .fc-state-legend li::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--fc-state-shade);
+}
+.fc-root .fc-state-legend li strong {
+  color: var(--foreground);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* Chart Grid & Visualizations */
+.fc-root .fc-chart-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 880px) {
+  .fc-root .fc-chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.fc-root .fc-chart {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin: 0;
+  padding: 16px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in srgb, var(--background) 40%, var(--card));
+}
+.fc-root .fc-chart-scroll {
+  flex: none;
+  overflow-x: auto;
+}
+.fc-root .fc-chart-svg {
+  display: block;
+  width: 100%;
+  min-width: 20rem;
+  max-width: 46rem;
+  height: auto;
+  margin-inline: auto;
+}
+.fc-root .fc-chart-bar[data-bucket="overdue"] {
+  fill: var(--fc-red);
+}
+.fc-root .fc-chart-bar[data-bucket="today"] {
+  fill: var(--fc-amber);
+}
+.fc-root .fc-chart-bar[data-bucket="future"] {
+  fill: var(--fc-blue);
+}
+.fc-root .fc-chart-bar[data-bucket="activity"] {
+  fill: var(--fc-green);
+}
+.fc-root .fc-chart-count {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.fc-root .fc-chart-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+.fc-root .fc-chart-date {
+  fill: var(--muted-foreground);
+}
+.fc-root .fc-chart-caption {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+  margin: 8px 0 0;
+}
+.fc-root .fc-chart > .fc-chart-caption {
+  flex: 1;
+}
+
+/* --------------------------------------------------------------------------
+   4. The Flashcard Study Surface (Active Review & Practice Card UX)
+   -------------------------------------------------------------------------- */
+.fc-root.fc-review-surface {
+  box-sizing: border-box;
+  min-height: 100%;
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background: var(--background);
+}
+.fc-root.fc-review-surface:focus {
+  outline: none;
+}
+
+.fc-root .fc-review-stage {
+  --fc-rating-again: var(--fc-red);
+  --fc-rating-hard: var(--fc-amber);
+  --fc-rating-good: var(--fc-green);
+  --fc-rating-easy: var(--fc-blue);
+  container-type: inline-size;
+  width: 100%;
+  max-width: 46rem;
+  flex: none;
+  margin-block: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.fc-root .fc-review-stage:focus {
+  outline: none;
+}
+
+/* Proposition / Context Eyebrow */
+.fc-root .fc-review-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  margin: 0 0 16px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  padding: 3px 12px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+  border: 1px solid var(--border);
+  display: inline-block;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fc-root .fc-review-title:focus {
+  outline: none;
+}
+
+/* The Tactile Flashcard */
+.fc-root .fc-review-card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 22rem;
+  padding: 48px 40px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 12px 32px -4px rgba(0, 0, 0, 0.28);
+  position: relative;
+  text-align: center;
+}
+.fc-root .fc-review-card table {
+  margin-inline: auto;
+}
+.fc-root .fc-review-card > .fc-markdown {
+  font-size: 18px;
+  line-height: 1.6;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  max-width: 38rem;
+  margin: 0 auto;
+}
+
+/* Answer Reveal Area */
+.fc-root .fc-answer {
+  width: 100%;
+}
+.fc-root .fc-answer:not(:empty) {
+  width: 100%;
+  max-width: 38rem;
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--foreground);
+  animation: fcReveal 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fcReveal {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Review Counter & Telemetry */
+.fc-root .fc-review-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 16px;
+}
+.fc-root .fc-review-bottom:empty {
+  display: none;
+}
+.fc-root .fc-review-bottom > p {
+  margin: 0;
+}
+.fc-root .fc-review-bottom .fc-review-remaining {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--muted) 35%, transparent);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* Action Controls & Keycaps */
+.fc-root .fc-review-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+  width: 100%;
+}
+.fc-root .fc-review-footer > p {
+  margin: 0;
+}
+.fc-root .fc-review-footer .fc-actions {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.fc-root .fc-rating {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.fc-root .fc-rating button {
+  min-width: 104px;
+  height: 38px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: opacity 120ms ease, transform 80ms ease;
+}
+.fc-root .fc-rating button:active {
+  transform: scale(0.98);
+}
+
+.fc-root .fc-shortcut {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.15);
+}
+
+.fc-root .fc-review-meta {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Practice Mode Surface */
+.fc-root.fc-practice-surface {
+  padding-bottom: 24px;
+}
+.fc-root.fc-practice-surface > .fc-practice-note {
+  flex: none;
+  width: auto;
+  margin: 24px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted-foreground);
+  padding: 4px 14px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--muted) 25%, transparent);
+  border: 1px solid var(--border);
+}
+
+/* --------------------------------------------------------------------------
+   5. Dialogs, Previews & Settings
+   -------------------------------------------------------------------------- */
+.fc-root.fc-preview-dialog {
+  container-type: inline-size;
+}
+.fc-root .fc-preview-card {
+  text-align: center;
+}
+.fc-dialog {
+  min-width: 0;
+}
+.fc-dialog .fc-dialog-heading {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+.fc-dialog .fc-actions {
+  margin-top: 16px;
+}
+.fc-dialog .fc-delete-description {
+  margin-bottom: 12px;
+}
+.fc-dialog .fc-delete-description .fc-markdown {
+  color: inherit;
+}
+
+.fc-settings {
+  padding: 12px 0;
+}
+.fc-root .fc-model-settings {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+.fc-root .fc-model-overrides {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fc-root .fc-model-row,
+.fc-root .fc-thinking-row {
+  display: inline-flex;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .fc-library {
+    padding: 12px;
+    gap: 16px;
+  }
+  .fc-root.fc-review-surface {
+    padding: 24px 12px 16px;
+  }
+  .fc-root .fc-review-card {
+    padding: 32px 20px;
+    min-height: 18rem;
+  }
+  .fc-root .fc-review-card > .fc-markdown {
+    font-size: 16px;
+  }
+  .fc-root .fc-answer:not(:empty) {
+    font-size: 15px;
+    margin-top: 24px;
+    padding-top: 20px;
+  }
+  .fc-root .fc-rating button {
+    min-width: 80px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+}

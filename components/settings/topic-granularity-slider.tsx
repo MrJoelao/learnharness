@@ -76,7 +76,7 @@ export function TopicGranularitySlider({
 				<div className="relative h-1 w-full rounded-full bg-border/80">
 					{/* Active progress fill */}
 					<div
-						className="absolute left-0 top-0 h-1 rounded-full bg-foreground/60 transition-all duration-200 ease-out"
+						className="absolute left-0 top-0 h-1 rounded-full bg-foreground/60 transition-[width] duration-200 ease-out"
 						style={{ width: `${percent}%` }}
 					/>
 
@@ -100,7 +100,7 @@ export function TopicGranularitySlider({
 
 				{/* Tactile Thumb */}
 				<div
-					className="pointer-events-none absolute size-3.5 -translate-x-1/2 rounded-full border border-foreground/30 bg-background shadow-xs transition-all duration-200 ease-out group-focus-within:border-foreground group-focus-within:ring-1 group-focus-within:ring-foreground/40"
+					className="pointer-events-none absolute size-3.5 -translate-x-1/2 rounded-full border border-foreground/30 bg-background shadow-xs transition-[left,border-color,box-shadow] duration-200 ease-out group-focus-within:border-foreground group-focus-within:ring-1 group-focus-within:ring-foreground/40"
 					style={{ left: `${percent}%` }}
 				/>
 
@@ -120,7 +120,7 @@ export function TopicGranularitySlider({
 			</div>
 
 			{/* Bottom step labels */}
-			<div className="flex justify-between px-0.5 font-ui text-[10px] text-muted-foreground/60">
+			<div className="flex justify-between px-0.5 font-ui text-xs text-muted-foreground/60">
 				{TOPIC_GRANULARITY_STEPS.map((step, idx) => {
 					const isActive = idx === activeIdx;
 					return (

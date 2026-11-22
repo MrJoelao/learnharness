@@ -95,7 +95,7 @@ export function NotesChip() {
 	return (
 		<div
 			className={cn(
-				"flex items-center shrink-0 overflow-hidden transition-all duration-200 ease-in-out",
+				"flex items-center shrink-0 overflow-hidden transition-[max-width,opacity,margin] duration-200 ease-in-out",
 				visible ? "max-w-0 opacity-0 pointer-events-none -mr-1" : "max-w-36 opacity-100 mr-0",
 			)}
 		>
@@ -110,7 +110,7 @@ export function NotesChip() {
 						controller?.setOpen(!visible);
 					}}
 					className={
-						"lh-no-drag flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide transition-colors focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none " +
+						"lh-no-drag flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none " +
 						(visible
 							? "border-border/90 bg-accent text-foreground shadow-xs font-medium"
 							: "border-border/80 text-muted-foreground hover:border-border hover:text-foreground hover:bg-muted/30")

@@ -163,7 +163,7 @@ export function ThemeCards({
 										{selected && <CheckIcon className="size-3.5 shrink-0" strokeWidth={2.5} />}
 										<span className="truncate">{theme.name}</span>
 									</span>
-									<span className="shrink-0 rounded-sm border border-border px-1.5 font-ui text-xs uppercase tracking-wider text-muted-foreground">
+									<span className="shrink-0 rounded-sm border border-border px-1.5 font-ui text-xs text-muted-foreground">
 										{theme.builtin ? theme.mode : "custom"}
 									</span>
 								</span>

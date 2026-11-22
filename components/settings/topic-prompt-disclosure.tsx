@@ -39,7 +39,7 @@ export function TopicPromptDisclosure({
 		<div
 			data-testid="disclosure-topic-custom-prompt"
 			className={cn(
-				"rounded-lg border transition-all duration-200 ease-out",
+				"rounded-lg border transition-colors duration-200 ease-out",
 				isOpen
 					? "border-border bg-card/40"
 					: "border-border/50 bg-background/30 hover:border-border hover:bg-muted/15"
@@ -79,7 +79,7 @@ export function TopicPromptDisclosure({
 				<div className="flex items-center gap-2">
 					<span
 						className={cn(
-							"rounded-[3px] border px-1.5 py-0.5 font-ui text-[10px] tracking-wide transition-colors",
+							"rounded-sm border px-1.5 py-0.5 font-ui text-xs tracking-wide transition-colors",
 							hasContent
 								? "border-accent/40 bg-accent/15 text-foreground"
 								: "border-border/60 text-muted-foreground/70"
@@ -107,7 +107,7 @@ export function TopicPromptDisclosure({
 						className="w-full rounded-md border border-border/70 bg-background/80 p-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/45 transition-colors focus:border-foreground/40 focus:outline-none focus:ring-1 focus:ring-foreground/20"
 					/>
 
-					<div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+					<div className="flex items-center justify-between text-xs text-muted-foreground/60">
 						<span>Saved automatically on blur</span>
 						{draft.length > 0 && (
 							<button

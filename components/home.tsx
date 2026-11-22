@@ -313,7 +313,7 @@ export function Home({
 							<div className="flex h-7 items-center rounded-full border border-border/80 bg-card/85 p-0.5 shadow-xs backdrop-blur" role="radiogroup" aria-label="Session type" data-testid="home-mode-switch">
 								{(["teach", "practice"] as const).map((m) => {
 									const selected = mode === m;
-									return <button key={m} type="button" role="radio" aria-checked={selected} data-testid={`home-mode-${m}`} onClick={() => { setMode(m); if (m === "practice") applyDocuments([]); }} className={cn("flex h-full items-center justify-center gap-1.5 rounded-full px-2.5 text-[10px] font-medium uppercase tracking-wider transition-all duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", selected ? "bg-accent text-foreground font-semibold shadow-xs" : "text-muted-foreground hover:text-foreground hover:bg-muted/30")}>
+									return <button key={m} type="button" role="radio" aria-checked={selected} data-testid={`home-mode-${m}`} onClick={() => { setMode(m); if (m === "practice") applyDocuments([]); }} className={cn("flex h-full items-center justify-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", selected ? "bg-accent text-foreground font-semibold shadow-xs" : "text-muted-foreground hover:text-foreground hover:bg-muted/30")}>
 										{m === "practice" ? <DumbbellIcon aria-hidden="true" className="size-3" /> : null}<span>{m === "teach" ? "Teach" : "Practice"}</span>
 									</button>;
 								})}

@@ -177,7 +177,7 @@ export function TopicsControl({
 							data-testid="btn-auto-assign-topics"
 							disabled={refreshing}
 							onClick={() => void runAutoAssign()}
-							className="flex h-6.5 items-center gap-1.5 rounded-md border border-border/70 bg-background/60 px-2 font-ui text-[11px] font-medium text-foreground transition-all duration-150 hover:bg-muted/40 hover:border-border active:scale-[0.98] disabled:opacity-40 cursor-pointer"
+							className="flex h-6.5 items-center gap-1.5 rounded-md border border-border/70 bg-background/60 px-2 font-ui text-xs font-medium text-foreground transition-[background-color,border-color,transform] duration-150 hover:bg-muted/40 hover:border-border active:scale-[0.98] disabled:opacity-40 cursor-pointer"
 							title="Re-run AI topic assignment on graph nodes"
 						>
 							<RefreshCwIcon className={cn("size-3 text-muted-foreground", refreshing && "animate-spin text-foreground")} />
@@ -192,7 +192,7 @@ export function TopicsControl({
 							<button
 								type="button"
 								onClick={() => setStatusMsg(null)}
-								className="text-muted-foreground/60 hover:text-foreground text-[10px] ml-2 flex items-center"
+								className="text-muted-foreground/60 hover:text-foreground text-xs ml-2 flex items-center"
 							>
 								<XIcon className="size-3" />
 							</button>
@@ -250,12 +250,12 @@ export function TopicsControl({
 												<span className="truncate font-prose text-xs text-foreground/90 font-medium">
 													{topic.label}
 												</span>
-												<span className="shrink-0 rounded-[3px] border border-border/50 bg-muted/20 px-1 py-0.2 font-mono text-[10px] text-muted-foreground tabular-nums">
+												<span className="shrink-0 rounded-sm border border-border/50 bg-muted/20 px-1.5 py-0.5 font-mono text-xs text-muted-foreground tabular-nums">
 													{topic.members.length}
 												</span>
 												{topic.overriddenAt && (
 													<span
-														className="shrink-0 rounded-[3px] border border-border/50 px-1 font-ui text-[9px] text-muted-foreground/80"
+														className="shrink-0 rounded-sm border border-border/50 px-1.5 py-0.5 font-ui text-xs text-muted-foreground/80"
 														title="Customized by user"
 													>
 														manual
@@ -306,7 +306,7 @@ export function TopicsControl({
 							type="button"
 							disabled={!newTopicLabel.trim()}
 							onClick={handleCreate}
-							className="flex h-7 items-center gap-1 rounded-md border border-border/70 bg-background/80 px-2.5 font-ui text-xs font-medium text-foreground transition-all hover:bg-muted/40 hover:border-border active:scale-[0.98] disabled:opacity-40 cursor-pointer"
+							className="flex h-7 items-center gap-1 rounded-md border border-border/70 bg-background/80 px-2.5 font-ui text-xs font-medium text-foreground transition-[background-color,border-color,transform] hover:bg-muted/40 hover:border-border active:scale-[0.98] disabled:opacity-40 cursor-pointer"
 						>
 							<PlusIcon className="size-3" />
 							Add

@@ -1651,7 +1651,7 @@ export function SessionsSidebar({
 									<span className="min-w-0 flex-1 truncate">All Archived</span>
 									<span
 										aria-label={`${archivedChats.length} ${archivedChats.length === 1 ? "item" : "items"}`}
-										className="text-[10px] tabular-nums text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/30"
+										className="text-xs tabular-nums text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/30"
 									>
 										{archivedChats.length}
 									</span>
@@ -1671,7 +1671,7 @@ export function SessionsSidebar({
 									<span className="min-w-0 flex-1 truncate">Unorganized</span>
 									<span
 										aria-label={`${unorganizedArchivedChatsCount} ${unorganizedArchivedChatsCount === 1 ? "item" : "items"}`}
-										className="text-[10px] tabular-nums text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/30"
+										className="text-xs tabular-nums text-muted-foreground/70 px-1.5 py-0.5 rounded bg-muted/30"
 									>
 										{unorganizedArchivedChatsCount}
 									</span>
@@ -1682,10 +1682,10 @@ export function SessionsSidebar({
 							{archivedFolders.length > 0 && (
 								<div className="pt-2">
 									<div className="px-2.5 pb-1 flex items-center justify-between">
-										<span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-											Archived Folders
+										<span className="text-xs font-semibold text-muted-foreground/60">
+											Archived folders
 										</span>
-										<span className="text-[10px] text-muted-foreground/60 tabular-nums">
+										<span className="text-xs text-muted-foreground/60 tabular-nums">
 											({archivedFolders.length})
 										</span>
 									</div>
@@ -1826,14 +1826,14 @@ export function SessionsSidebar({
 										setIsNewMenuOpen(false);
 										void newSession();
 									}}
-									className="lh-new-session-option group flex items-start gap-2.5 rounded-lg p-2 text-left transition-all duration-150 hover:bg-accent cursor-pointer active:scale-[0.99]"
+									className="lh-new-session-option group flex items-start gap-2.5 rounded-lg p-2 text-left transition-[background-color,color,transform] duration-150 hover:bg-accent cursor-pointer active:scale-[0.99]"
 								>
 									<div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 group-hover:bg-accent-foreground/10 group-hover:border-border transition-colors">
 										<GraduationCapIcon className="size-3.5 text-foreground/80" />
 									</div>
 									<div className="flex flex-col min-w-0">
 										<span className="font-medium text-foreground text-xs leading-none">New Teaching Session</span>
-										<span className="text-[10px] text-muted-foreground/80 mt-1">Guided curriculum with interactive tutor</span>
+										<span className="text-xs text-muted-foreground/80 mt-1">Guided curriculum with interactive tutor</span>
 									</div>
 								</button>
 
@@ -1844,14 +1844,14 @@ export function SessionsSidebar({
 										setIsNewMenuOpen(false);
 										router.push("/chat/new?mode=practice");
 									}}
-									className="lh-new-session-option group flex items-start gap-2.5 rounded-lg p-2 text-left transition-all duration-150 hover:bg-accent cursor-pointer active:scale-[0.99]"
+									className="lh-new-session-option group flex items-start gap-2.5 rounded-lg p-2 text-left transition-[background-color,color,transform] duration-150 hover:bg-accent cursor-pointer active:scale-[0.99]"
 								>
 									<div className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40 group-hover:bg-accent-foreground/10 group-hover:border-border transition-colors">
 										<DumbbellIcon className="size-3.5 text-foreground/80" />
 									</div>
 									<div className="flex flex-col min-w-0">
 										<span className="font-medium text-foreground text-xs leading-none">New Practice Session</span>
-										<span className="text-[10px] text-muted-foreground/80 mt-1">Review questions and active recall</span>
+										<span className="text-xs text-muted-foreground/80 mt-1">Review questions and active recall</span>
 									</div>
 								</button>
 							</div>

@@ -281,7 +281,7 @@ function KeyTableRow({
 							target="_blank"
 							rel="noreferrer"
 							onClick={(e) => e.stopPropagation()}
-							className="text-[10px] text-muted-foreground/60 underline-offset-2 hover:text-foreground hover:underline"
+							className="text-xs text-muted-foreground/60 underline-offset-2 hover:text-foreground hover:underline"
 						>
 							key ↗
 						</a>
@@ -983,7 +983,7 @@ function CustomEndpointEditor({
 								<div key={m.id} className="flex items-center gap-2" data-testid={pinTestid("custom-pin-row", m.id)}>
 									<span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground" title={m.id}>
 										{m.id}
-										<span className="block text-[10px] text-muted-foreground">Context: {d.context.trim() ? "user pin" : m.context ? `reported ${m.context}` : `fallback ${CUSTOM_MODEL_DEFAULT_CONTEXT_WINDOW}`} · Output: {d.maxTokens.trim() ? "user pin" : m.maxTokens ? `reported ${m.maxTokens}` : `fallback ${CUSTOM_MODEL_DEFAULT_MAX_TOKENS}`}</span>
+										<span className="block text-xs text-muted-foreground">Context: {d.context.trim() ? "user pin" : m.context ? `reported ${m.context}` : `fallback ${CUSTOM_MODEL_DEFAULT_CONTEXT_WINDOW}`} · Output: {d.maxTokens.trim() ? "user pin" : m.maxTokens ? `reported ${m.maxTokens}` : `fallback ${CUSTOM_MODEL_DEFAULT_MAX_TOKENS}`}</span>
 									</span>
 									<input
 										type="text"

@@ -40,7 +40,7 @@ function FolderSchematic({ active }: { active: boolean }) {
 			<path
 				d="M 12 12 L 12 38 A 4 4 0 0 0 16 42 L 84 42 A 4 4 0 0 0 88 38 L 88 14 A 4 4 0 0 0 84 10 L 44 10 L 38 6 L 16 6 A 4 4 0 0 0 12 10 Z"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[stroke,fill] duration-300 ease-out",
 					active
 						? "stroke-foreground/70 fill-foreground/[0.03]"
 						: "stroke-border/70 fill-transparent"
@@ -55,7 +55,7 @@ function FolderSchematic({ active }: { active: boolean }) {
 				cy="19"
 				r="3.5"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[fill,stroke] duration-300 ease-out",
 					active ? "fill-foreground/80 stroke-foreground" : "fill-muted-foreground/30 stroke-muted-foreground/50"
 				)}
 				strokeWidth={1.2}
@@ -65,7 +65,7 @@ function FolderSchematic({ active }: { active: boolean }) {
 				cy="31"
 				r="3.5"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[fill,stroke] duration-300 ease-out",
 					active ? "fill-foreground/80 stroke-foreground" : "fill-muted-foreground/30 stroke-muted-foreground/50"
 				)}
 				strokeWidth={1.2}
@@ -75,7 +75,7 @@ function FolderSchematic({ active }: { active: boolean }) {
 			<path
 				d="M 30 19 C 46 19, 52 25, 66 25"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[stroke,opacity,stroke-dashoffset] duration-300 ease-out",
 					active ? "stroke-foreground opacity-100" : "stroke-muted-foreground/40 opacity-40"
 				)}
 				strokeWidth={1.5}
@@ -88,7 +88,7 @@ function FolderSchematic({ active }: { active: boolean }) {
 			<path
 				d="M 30 31 C 46 31, 52 25, 66 25"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[stroke,opacity,stroke-dashoffset] duration-300 ease-out",
 					active ? "stroke-foreground opacity-100" : "stroke-muted-foreground/40 opacity-40"
 				)}
 				strokeWidth={1.5}
@@ -105,7 +105,7 @@ function FolderSchematic({ active }: { active: boolean }) {
 				cy="25"
 				r="5.5"
 				className={cn(
-					"transition-all duration-300 ease-out origin-center",
+					"transition-[fill,stroke,transform] duration-300 ease-out origin-center",
 					active
 						? "fill-foreground stroke-foreground scale-105"
 						: "fill-muted-foreground/30 stroke-muted-foreground/60 scale-95"
@@ -187,7 +187,7 @@ function GlobalSchematic({ active }: { active: boolean }) {
 			<path
 				d="M 24 30 C 34 20, 42 16, 52 16"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[stroke,opacity,stroke-dashoffset] duration-300 ease-out",
 					active ? "stroke-foreground opacity-100" : "stroke-muted-foreground/40 opacity-40"
 				)}
 				strokeWidth={1.5}
@@ -200,7 +200,7 @@ function GlobalSchematic({ active }: { active: boolean }) {
 			<path
 				d="M 52 16 C 62 18, 70 24, 78 32"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[stroke,opacity,stroke-dashoffset] duration-300 ease-out",
 					active ? "stroke-foreground opacity-100" : "stroke-muted-foreground/40 opacity-40"
 				)}
 				strokeWidth={1.5}
@@ -213,7 +213,7 @@ function GlobalSchematic({ active }: { active: boolean }) {
 			<path
 				d="M 24 30 C 40 40, 62 40, 78 32"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[stroke,opacity,stroke-dashoffset] duration-300 ease-out",
 					active ? "stroke-foreground opacity-100" : "stroke-muted-foreground/35 opacity-30"
 				)}
 				strokeWidth={1.4}
@@ -230,7 +230,7 @@ function GlobalSchematic({ active }: { active: boolean }) {
 				cy="30"
 				r="4"
 				className={cn(
-					"transition-all duration-300 ease-out origin-center",
+					"transition-[fill,stroke,transform] duration-300 ease-out origin-center",
 					active ? "fill-foreground stroke-foreground scale-105" : "fill-muted-foreground/30 stroke-muted-foreground/60 scale-95"
 				)}
 				strokeWidth={1.2}
@@ -240,7 +240,7 @@ function GlobalSchematic({ active }: { active: boolean }) {
 				cy="16"
 				r="4.5"
 				className={cn(
-					"transition-all duration-300 ease-out origin-center",
+					"transition-[fill,stroke,transform] duration-300 ease-out origin-center",
 					active ? "fill-foreground stroke-foreground scale-105" : "fill-muted-foreground/30 stroke-muted-foreground/60 scale-95"
 				)}
 				strokeWidth={1.2}
@@ -250,7 +250,7 @@ function GlobalSchematic({ active }: { active: boolean }) {
 				cy="32"
 				r="4"
 				className={cn(
-					"transition-all duration-300 ease-out origin-center",
+					"transition-[fill,stroke,transform] duration-300 ease-out origin-center",
 					active ? "fill-foreground stroke-foreground scale-105" : "fill-muted-foreground/30 stroke-muted-foreground/60 scale-95"
 				)}
 				strokeWidth={1.2}
@@ -279,7 +279,7 @@ function StrictSchematic({ active }: { active: boolean }) {
 				height="34"
 				rx="4"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[stroke,fill] duration-300 ease-out",
 					active ? "stroke-foreground/60 fill-foreground/[0.02]" : "stroke-border/70 fill-transparent"
 				)}
 				strokeWidth={1.2}
@@ -291,7 +291,7 @@ function StrictSchematic({ active }: { active: boolean }) {
 				height="34"
 				rx="4"
 				className={cn(
-					"transition-all duration-300 ease-out",
+					"transition-[stroke,fill] duration-300 ease-out",
 					active ? "stroke-foreground/60 fill-foreground/[0.02]" : "stroke-border/70 fill-transparent"
 				)}
 				strokeWidth={1.2}
@@ -323,7 +323,7 @@ function StrictSchematic({ active }: { active: boolean }) {
 				cy="29"
 				r="4.2"
 				className={cn(
-					"transition-all duration-300 ease-out origin-center",
+					"transition-[fill,stroke,transform] duration-300 ease-out origin-center",
 					active ? "fill-foreground stroke-foreground scale-105" : "fill-muted-foreground/30 stroke-muted-foreground/60 scale-95"
 				)}
 				strokeWidth={1.2}
@@ -334,7 +334,7 @@ function StrictSchematic({ active }: { active: boolean }) {
 				x2="32"
 				y2="29"
 				className={cn(
-					"transition-all duration-300",
+					"transition-[stroke,opacity] duration-300",
 					active ? "stroke-foreground opacity-100" : "stroke-muted-foreground/40 opacity-40"
 				)}
 				strokeWidth={1.5}
@@ -352,7 +352,7 @@ function StrictSchematic({ active }: { active: boolean }) {
 				cy="29"
 				r="4.2"
 				className={cn(
-					"transition-all duration-300 ease-out origin-center",
+					"transition-[fill,stroke,transform] duration-300 ease-out origin-center",
 					active ? "fill-foreground stroke-foreground scale-105" : "fill-muted-foreground/30 stroke-muted-foreground/60 scale-95"
 				)}
 				strokeWidth={1.2}
@@ -363,7 +363,7 @@ function StrictSchematic({ active }: { active: boolean }) {
 				x2="75"
 				y2="29"
 				className={cn(
-					"transition-all duration-300",
+					"transition-[stroke,opacity] duration-300",
 					active ? "stroke-foreground opacity-100" : "stroke-muted-foreground/40 opacity-40"
 				)}
 				strokeWidth={1.5}
@@ -440,7 +440,7 @@ export function TopicUnificationSelector({
 						data-testid={`topic-unification-${opt.id}`}
 						onClick={() => onChange(opt.id)}
 						className={cn(
-							"group relative flex flex-col justify-between rounded-lg border p-2.5 text-left transition-all duration-200 ease-out cursor-pointer active:scale-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40",
+							"group relative flex flex-col justify-between rounded-lg border p-2.5 text-left transition-[border-color,background-color,box-shadow,transform] duration-200 ease-out cursor-pointer active:scale-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/40",
 							active
 								? "border-foreground/40 bg-accent/30 dark:bg-accent/20 shadow-xs"
 								: "border-border/60 bg-background/50 hover:border-border hover:bg-muted/20"
@@ -449,7 +449,7 @@ export function TopicUnificationSelector({
 						{/* Schematic visual box */}
 						<div
 							className={cn(
-								"mb-2 flex h-14 w-full items-center justify-center rounded-md border px-1 transition-all duration-200 ease-out",
+								"mb-2 flex h-14 w-full items-center justify-center rounded-md border px-1 transition-[border-color,background-color,box-shadow] duration-200 ease-out",
 								active
 									? "border-foreground/20 bg-background/60 shadow-2xs"
 									: "border-border/40 bg-muted/10 group-hover:bg-muted/25"
@@ -470,7 +470,7 @@ export function TopicUnificationSelector({
 							</span>
 							<span
 								className={cn(
-									"shrink-0 rounded-[3px] border px-1 py-0.5 font-ui text-[10px] tracking-wide transition-colors",
+									"shrink-0 rounded-sm border px-1.5 py-0.5 font-ui text-xs tracking-wide transition-colors",
 									active
 										? opt.isRecommended
 											? "border-accent/40 bg-accent/20 text-foreground"

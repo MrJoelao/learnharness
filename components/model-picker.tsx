@@ -277,9 +277,9 @@ export function ModelControl({ chatId, onModelChange }: { chatId?: string; onMod
 				action="open-model-picker"
 				side="top"
 			>
-				<button type="button" data-testid="stats-model" onClick={() => openMenu("model")} aria-expanded={open === "model"} className={cn("flex h-full items-center gap-1 rounded-full px-2 text-xs font-medium transition-all duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", open === "model" ? "bg-accent text-foreground shadow-xs" : "text-card-foreground hover:bg-muted/50 hover:text-foreground")}>
+				<button type="button" data-testid="stats-model" onClick={() => openMenu("model")} aria-expanded={open === "model"} className={cn("flex h-full items-center gap-1 rounded-full px-2 text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", open === "model" ? "bg-accent text-foreground shadow-xs" : "text-card-foreground hover:bg-muted/50 hover:text-foreground")}>
 					<span className="truncate max-w-[140px]">{effectiveId ? prettyModel(effectiveId) : "—"}</span>
-					<span aria-hidden className="text-[10px] text-muted-foreground/80">▾</span>
+					<span aria-hidden className="text-xs text-muted-foreground/80">▾</span>
 				</button>
 			</Hint>
 			<span className="h-3 w-px bg-border/60 mx-0.5" aria-hidden="true" />
@@ -291,9 +291,9 @@ export function ModelControl({ chatId, onModelChange }: { chatId?: string; onMod
 				action="cycle-thinking"
 				side="top"
 			>
-				<button type="button" data-testid="stats-thinking" onClick={() => { if (entry === undefined) return; openMenu("thinking"); }} aria-expanded={open === "thinking"} className={cn("flex h-full items-center gap-1 rounded-full px-2 text-xs font-medium transition-all duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", open === "thinking" ? "bg-accent text-foreground shadow-xs" : "text-card-foreground hover:bg-muted/50 hover:text-foreground")}>
+				<button type="button" data-testid="stats-thinking" onClick={() => { if (entry === undefined) return; openMenu("thinking"); }} aria-expanded={open === "thinking"} className={cn("flex h-full items-center gap-1 rounded-full px-2 text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none", open === "thinking" ? "bg-accent text-foreground shadow-xs" : "text-card-foreground hover:bg-muted/50 hover:text-foreground")}>
 					<span>{effectiveLevel === undefined ? "—" : (THINKING_LABEL[effectiveLevel] ?? effectiveLevel)}</span>
-					<span aria-hidden className="text-[10px] text-muted-foreground/80">▾</span>
+					<span aria-hidden className="text-xs text-muted-foreground/80">▾</span>
 				</button>
 			</Hint>
 

@@ -620,7 +620,7 @@ export function ArchivePage({
 						</span>
 					</div>
 					{(Boolean(folder.archivedAt) || originPath) && (
-						<div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
+						<div className="flex items-center gap-2 text-xs text-muted-foreground/70">
 							{Boolean(folder.archivedAt) && <span>Archived {timeAgo(folder.archivedAt!)}</span>}
 							{Boolean(folder.archivedAt) && originPath && <span>·</span>}
 							{originPath && <span className="truncate font-mono">In: {originPath}</span>}
@@ -700,12 +700,12 @@ export function ArchivePage({
 							</span>
 						)}
 						{chat.kind === "workspace" && chat.availability !== "available" && (
-							<span className="rounded bg-warning/15 text-warning px-1.5 py-0.5 text-[9px] font-mono">
+							<span className="rounded bg-warning/15 text-warning px-1.5 py-0.5 text-xs font-mono">
 								{chat.availability}
 							</span>
 						)}
 					</div>
-					<div className="flex items-center gap-2 text-[10px] text-muted-foreground/70">
+					<div className="flex items-center gap-2 text-xs text-muted-foreground/70">
 						<span>Updated {timeAgo(chat.updatedAt)}</span>
 						{folderPath && (
 							<>
@@ -864,7 +864,7 @@ export function ArchivePage({
 										data-testid={`kind-filter-${k}`}
 										onClick={() => setKindFilter(k)}
 										className={cn(
-											"h-full rounded-full px-2.5 text-[10px] font-medium uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+											"h-full rounded-full px-2.5 text-xs font-medium transition-colors cursor-pointer flex items-center justify-center focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
 											kindFilter === k
 												? "bg-accent text-foreground font-semibold shadow-xs"
 												: "text-muted-foreground hover:text-foreground hover:bg-muted/30",
@@ -1054,7 +1054,7 @@ export function ArchivePage({
 												data-testid={`restore-folder-${selectedFolder.id}`}
 												aria-label={`Restore folder ${selectedFolder.name}`}
 												onClick={() => handleRestoreFolder(selectedFolder.id)}
-												className="flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground transition-all hover:bg-accent hover:text-foreground hover:border-border cursor-pointer shadow-2xs"
+												className="flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground hover:border-border cursor-pointer shadow-2xs"
 											>
 												<RotateCcwIcon className="size-3.5" />
 												<span>Restore folder</span>
@@ -1064,7 +1064,7 @@ export function ArchivePage({
 												data-testid={`archive-folder-options-${selectedFolder.id}`}
 												aria-label={`Options for archived folder ${selectedFolder.name}`}
 												onClick={(e) => openFolderContext(e, selectedFolder)}
-												className="flex size-7 items-center justify-center rounded-md border border-border/70 text-muted-foreground transition-all hover:border-border hover:bg-accent hover:text-foreground cursor-pointer shadow-2xs"
+												className="flex size-7 items-center justify-center rounded-md border border-border/70 text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground cursor-pointer shadow-2xs"
 											>
 												<MoreVerticalIcon className="size-4" />
 											</button>
@@ -1105,7 +1105,7 @@ export function ArchivePage({
 																		</span>
 																	</div>
 																	{childOriginPath && (
-																		<div className="text-[10px] text-muted-foreground/70 font-mono truncate">
+																		<div className="text-xs text-muted-foreground/70 font-mono truncate">
 																			In: {childOriginPath}
 																		</div>
 																	)}

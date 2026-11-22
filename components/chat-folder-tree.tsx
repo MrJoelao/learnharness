@@ -353,7 +353,7 @@ export function ChatFolderRow({
 				<span
 					data-testid={`folder-count-${folder.id}`}
 					aria-label={`${chatCount} ${chatCount === 1 ? "item" : "items"}`}
-					className="text-[10px] tabular-nums font-mono text-muted-foreground/60 shrink-0 select-none"
+					className="text-xs tabular-nums font-mono text-muted-foreground/60 shrink-0 select-none"
 				>
 					{chatCount}
 				</span>
@@ -434,7 +434,7 @@ export function CollapsibleFolderContent({
 	return (
 		<div
 			className={cn(
-				"overflow-hidden transition-all duration-180",
+				"overflow-hidden transition-[grid-template-rows,opacity] duration-180",
 				animating && open ? "lh-folder-expand" : "lh-folder-collapse",
 			)}
 		>
@@ -920,7 +920,7 @@ export function ChatFolderTree({
 						</button>
 						<span
 							aria-label={`${unorganizedItems.length} ${unorganizedItems.length === 1 ? "item" : "items"}`}
-							className="text-[10px] tabular-nums text-muted-foreground/60"
+							className="text-xs tabular-nums text-muted-foreground/60"
 						>
 							{unorganizedItems.length}
 						</span>
@@ -942,7 +942,7 @@ export function ChatFolderTree({
 					}}
 					onDrop={handleRootDrop}
 					className={cn(
-						"transition-all",
+						"transition-[border-color,background-color,color,min-height,opacity]",
 						draggedItem !== null || dropTarget?.id === "root"
 							? "mt-2 min-h-9 flex items-center justify-center rounded-md border-2 border-dashed border-border/80 bg-accent/20 px-3 py-2 text-center text-[11px] text-muted-foreground"
 							: "h-0 min-h-0 border-0 p-0 m-0 overflow-hidden opacity-0 pointer-events-none",
@@ -1032,7 +1032,7 @@ export function ArchiveView({
 
 					<span
 						aria-label={`${count} ${count === 1 ? "item" : "items"}`}
-						className="text-[10px] tabular-nums font-mono text-muted-foreground/60 shrink-0 select-none"
+						className="text-xs tabular-nums font-mono text-muted-foreground/60 shrink-0 select-none"
 					>
 						{count}
 					</span>
@@ -1048,7 +1048,7 @@ export function ArchiveView({
 										e.stopPropagation();
 										onRestoreFolder(folder.id);
 									}}
-									className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+									className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
 								>
 									<RotateCcwIcon className="size-3" />
 									<span>Restore</span>

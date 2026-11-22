@@ -54,7 +54,7 @@ function ContributionGrid({ grid }: { grid: StudySummary["grid"] }) {
 				return (
 					<span
 						key={`m${c}`}
-						className="whitespace-nowrap text-[10px] leading-4 text-muted-foreground"
+						className="whitespace-nowrap text-xs font-mono tabular-nums leading-4 text-muted-foreground"
 						style={{ gridRow: 1, gridColumn: c + 2 }}
 					>
 						{monthLabel.format(utcDate(first.date))}
@@ -67,7 +67,7 @@ function ContributionGrid({ grid }: { grid: StudySummary["grid"] }) {
 				return (
 					<span
 						key={`w${r}`}
-						className="pr-1 text-[10px] leading-none text-muted-foreground"
+						className="pr-1 text-xs font-mono leading-none text-muted-foreground"
 						style={{ gridRow: r + 2, gridColumn: 1, alignSelf: "center" }}
 					>
 						{weekdayLabel.format(utcDate(day.date))}
@@ -151,7 +151,7 @@ export function StudyTimeBody({
 							aria-pressed={range === r.key}
 							onClick={() => onRange(r.key)}
 							className={cn(
-								"flex h-full items-center justify-center rounded-full px-2.5 text-[10px] font-medium uppercase tracking-wider transition-all duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
+								"flex h-full items-center justify-center rounded-full px-2.5 text-xs font-medium transition-[background-color,color,box-shadow,transform] duration-150 ease-out active:scale-95 cursor-pointer focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
 								range === r.key
 									? "bg-accent text-foreground font-semibold shadow-xs"
 									: "text-muted-foreground hover:text-foreground hover:bg-muted/30",
@@ -163,7 +163,7 @@ export function StudyTimeBody({
 				</div>
 
 				<section>
-					<h3 className="mb-2 text-xs uppercase tracking-widest text-muted-foreground/70">By chat</h3>
+					<h3 className="mb-2 text-xs font-medium text-muted-foreground/70">By chat</h3>
 					{perChat.length === 0 ? (
 						<p className="text-sm text-muted-foreground">No study time in this period.</p>
 					) : (
@@ -184,7 +184,7 @@ export function StudyTimeBody({
 				</section>
 
 				<section>
-					<h3 className="mb-2 text-xs uppercase tracking-widest text-muted-foreground/70">Time of day</h3>
+					<h3 className="mb-2 text-xs font-medium text-muted-foreground/70">Time of day</h3>
 					{maxHour === 0 ? (
 						<p className="text-sm text-muted-foreground">No study time in this period.</p>
 					) : (
@@ -201,7 +201,7 @@ export function StudyTimeBody({
 								))}
 							</div>
 							{/* each label sits under its own bar's left edge (hour / 24) */}
-							<div className="relative mt-1 h-3 text-[10px] text-muted-foreground">
+							<div className="relative mt-1 h-3 text-xs font-mono tabular-nums text-muted-foreground">
 								{[0, 6, 12, 18].map((h) => (
 									<span key={h} className="absolute" style={{ left: `${(h / 24) * 100}%` }}>
 										{h}
@@ -213,7 +213,7 @@ export function StudyTimeBody({
 				</section>
 
 				<section>
-					<h3 className="mb-2 text-xs uppercase tracking-widest text-muted-foreground/70">Last 52 weeks</h3>
+					<h3 className="mb-2 text-xs font-medium text-muted-foreground/70">Last 52 weeks</h3>
 					<ContributionGrid grid={summary.grid} />
 				</section>
 			</div>

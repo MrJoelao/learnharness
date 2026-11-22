@@ -1184,7 +1184,7 @@ export function StudyHubCatalog({
 											<SlidersHorizontalIcon aria-hidden="true" className="size-3 text-muted-foreground" />
 											<span>Topic</span>
 											{selectedCategory === "all" ? (
-												<span className="text-[10px] opacity-60">({categories.length})</span>
+												<span className="text-xs opacity-60">({categories.length})</span>
 											) : (
 												<span className="font-semibold text-foreground truncate max-w-[120px]">{selectedCategory}</span>
 											)}
@@ -1230,7 +1230,7 @@ export function StudyHubCatalog({
 													)}
 												>
 													<span>All topics</span>
-													<span className="text-[10px] font-mono text-muted-foreground/70 tabular-nums">({activeModes.length})</span>
+													<span className="text-xs font-mono text-muted-foreground/70 tabular-nums">({activeModes.length})</span>
 												</button>
 
 												{categories.map(cat => {
@@ -1258,7 +1258,7 @@ export function StudyHubCatalog({
 																{isSelected && <CheckIcon className="size-3 text-primary shrink-0" />}
 																<span className="truncate">{cat}</span>
 															</div>
-															<span className="text-[10px] font-mono text-muted-foreground/70 tabular-nums shrink-0">
+															<span className="text-xs font-mono text-muted-foreground/70 tabular-nums shrink-0">
 																({count})
 															</span>
 														</button>
@@ -1343,7 +1343,7 @@ export function StudyHubCatalog({
 																{diff !== "all" && <DifficultyDots difficulty={diff} />}
 																<span>{diff === "all" ? "All levels" : diff}</span>
 															</div>
-															<span className="text-[10px] font-mono text-muted-foreground/70 tabular-nums">
+															<span className="text-xs font-mono text-muted-foreground/70 tabular-nums">
 																({count})
 															</span>
 														</button>
@@ -1400,7 +1400,7 @@ export function StudyHubCatalog({
 								<kbd
 									suppressHydrationWarning
 									data-testid="study-hub-search-shortcut"
-									className="hidden sm:inline-flex items-center rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground shrink-0 mr-1 select-none pointer-events-none"
+									className="hidden sm:inline-flex items-center rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 text-xs font-mono text-muted-foreground shrink-0 mr-1 select-none pointer-events-none"
 								>
 									{formatBinding("mod+k")}
 								</kbd>
@@ -1548,6 +1548,7 @@ export function StudyHubCatalog({
 								className={cn(
 									"pointer-events-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full text-xs sm:text-sm font-medium shadow-xl border border-foreground/10",
 									"bg-foreground text-background hover:bg-foreground/90 active:scale-[0.98]",
+									/* NON MODIFICARE QUESTA ANIMAZIONE: transition-all è necessaria qui per la fluidità e sincronia della pillola fluttuante ad auto-scomparsa (traslazione, opacità, background, pointer-events). Restringere le transizioni ha già rotto l'animazione più volte in passato. */
 									"transition-all duration-300 ease-out delay-[50ms] hover:delay-0 active:delay-0 active:duration-75 cursor-pointer select-none",
 									"disabled:opacity-50 disabled:pointer-events-none",
 									isLaunchPillVisible
