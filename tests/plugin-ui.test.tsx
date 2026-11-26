@@ -495,4 +495,23 @@ describe("controlled plugin UI", () => {
 		await assert.rejects(delivery.append(() => { throw failed; }, (error) => errors.push(error)), (error) => error === failed);
 		assert.deepEqual(errors, [failed, failed]);
 	});
+
+	it("mountDictation exposes getLevel and delivers onStateChange protected by scope signal", async () => withDom(async () => {
+		const store = createPluginUiStore(), scope = new AbortController();
+		const ui = store.createUi({ signal: scope.signal });
+		const root = createRoot(document.querySelector("#root")!);
+		const states: Array<{ active: boolean; phase: string; error: string | null }> = [];
+		try {
+			const handle = ui.mountDictation(document.querySelector("#target")!, {
+				onTranscript() {},
+				onStateChange: (state) => { states.push(state); },
+			}, { signal: scope.signal });
+			assert.equal(handle.getLevel(), 0);
+			await act(async () => { root.render(<PluginUiHost store={store} />); });
+			assert.deepEqual(states, [{ active: false, phase: "idle", error: null }]);
+			assert.equal(handle.getLevel(), 0);
+			await act(async () => { handle.dispose(); });
+			assert.equal(handle.getLevel(), 0);
+		} finally { await act(async () => { scope.abort(); root.unmount(); }); }
+	}));
 });

@@ -54,13 +54,21 @@ export function PluginComposer({ value, onChange, onSend, busy = false, onStop, 
 		placeholder={placeholder} autoFocus={autoFocus} defaultDropTarget={false} fileInsertion={false} />;
 }
 
-export function PluginDictation({ onTranscript, disabled, onError = reportDefault, actionRef, signal }: PluginDictationProps & Extra & { actionRef?: RefObject<Dictation | null> }) {
+export function PluginDictation({ onTranscript, onStateChange, disabled, onError = reportDefault, actionRef, signal }: PluginDictationProps & Extra & { actionRef?: RefObject<Dictation | null> }) {
 	const root = useRef<HTMLDivElement>(null);
 	const latest = useRef(onTranscript);
 	latest.current = onTranscript;
+	const latestStateChange = useRef(onStateChange);
+	latestStateChange.current = onStateChange;
 	const delivery = useRef(createTranscriptDelivery());
 	const dictation = usePluginDictation({ append: (text) => delivery.current.append(() => latest.current(text), onError), disabled });
 	useAbortDictation(signal, dictation.cancel);
+	useEffect(() => {
+		if (signal?.aborted) return;
+		const cb = latestStateChange.current;
+		if (!cb) return;
+		run(() => cb({ active: dictation.active, phase: dictation.phase, error: dictation.error }), onError);
+	}, [dictation.active, dictation.phase, dictation.error, signal, onError]);
 	useEffect(() => {
 		if (actionRef) actionRef.current = dictation;
 		const off = root.current ? claimPluginInputFocus(root.current, { toggleDictation: dictation.toggle }) : undefined;

@@ -75,34 +75,14 @@ async function startCallbackServer(state, complete, signal, port = CALLBACK_PORT
 	};
 }
 
-function availableModelsFromCatalog(models, core) {
+function availableModelsFromCatalog(models) {
 	const names = new Set();
 	for (const [key, entry] of Object.entries(models ?? {})) {
-		for (const value of [key, entry?.modelName]) {
-			if (typeof value !== "string") continue;
-			const normalized = value.toLowerCase().replace(/^models\//, "");
-			names.add(normalized);
-		}
+		const raw = typeof entry?.modelName === "string" && entry.modelName.trim() ? entry.modelName : key;
+		if (typeof raw !== "string" || !raw.trim()) continue;
+		names.add(raw.toLowerCase().replace(/^models\//, ""));
 	}
-	return MODEL_IDS.filter((id) => {
-		const aliases = new Set([id.replace(/^antigravity-/, "").toLowerCase()]);
-		for (const tier of ["low", "medium", "high"]) {
-			try {
-				const route = core.resolveAntigravityModel(`${id}-${tier}`).actualModel;
-				aliases.add(route.toLowerCase());
-				aliases.add(route.toLowerCase().replace(/-(?:extra-low|low|medium|high)$/, ""));
-			} catch { /* model has no tiered route */ }
-		}
-		// Add fallback mappings for Claude models to handle version differences
-		if (id.includes("claude-sonnet-5-5")) {
-			aliases.add("claude-sonnet-4-6");
-			aliases.add("claude-sonnet-4-6-medium");
-		}
-		if (id.includes("claude-opus-5-5")) {
-			aliases.add("claude-opus-4-6-thinking");
-		}
-		return [...aliases].some((alias) => names.has(alias));
-	});
+	return [...names];
 }
 
 async function fetchAccountModelIds(core, access, refresh) {
@@ -110,7 +90,7 @@ async function fetchAccountModelIds(core, access, refresh) {
 	const project = await core.ensureProjectContext(auth);
 	if (!project.effectiveProjectId) throw new Error("Google Antigravity did not provide a usable project context.");
 	const catalog = await core.fetchAvailableModels({ accessToken: access, projectId: project.effectiveProjectId, endpoints: core.ANTIGRAVITY_LOAD_ENDPOINTS });
-	return availableModelsFromCatalog(catalog.models, core);
+	return availableModelsFromCatalog(catalog.models);
 }
 
 function text(value) {
@@ -136,7 +116,7 @@ function buildRequest(context, core, requestModelId) {
 	const calls = new Map();
 	for (const message of context.messages ?? []) {
 		if (message?.role !== "assistant") continue;
-		for (const block of message.content ?? []) if (block.type === "toolCall") calls.set(block.id, message.provider === PROVIDER_ID && MODEL_IDS.includes(message.model));
+		for (const block of message.content ?? []) if (block.type === "toolCall") calls.set(block.id, message.provider === PROVIDER_ID && typeof message.model === "string" && message.model.length > 0);
 	}
 	for (const message of context.messages ?? []) {
 		if (!message) continue;
@@ -198,6 +178,23 @@ function createProvider(sdk, core, options = {}) {
 	sdkSystemPrompt = sdk.getCurrentSystemPrompt;
 	sdkTools = sdk.getCurrentTools;
 	requestSessions ??= new core.AgyRequestSessionStore("learnharness");
+	const syncDynamicModels = (discoveredIds) => {
+		if (!Array.isArray(discoveredIds)) return;
+		const existing = new Set(providerModels.map((m) => m.id));
+		for (const id of discoveredIds) {
+			if (existing.has(id)) continue;
+			existing.add(id);
+			providerModels.push({
+				id, name: id, api: API, provider: PROVIDER_ID,
+				baseUrl: core.ANTIGRAVITY_ENDPOINT,
+				reasoning: true,
+				input: ["text", "image"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 1048576, maxTokens: 65536,
+				thinkingLevelMap: { minimal: null, low: "low", medium: "medium", high: "high", xhigh: null, max: null },
+			});
+		}
+	};
 	const oauth = {
 		name: "Google Antigravity", isSubscription: true,
 		async login(interaction) {
@@ -209,7 +206,7 @@ function createProvider(sdk, core, options = {}) {
 				const result = await core.exchangeAntigravity(code, state, { signal: interaction.signal });
 				if (result.type !== "success") throw new Error("Google Antigravity sign-in could not be completed.");
 				let availableModelIds;
-				try { availableModelIds = await fetchAccountModelIds(core, result.access, result.refresh); } catch { /* a catalog outage must not invalidate a successful sign-in */ }
+				try { availableModelIds = await fetchAccountModelIds(core, result.access, result.refresh); syncDynamicModels(availableModelIds); } catch { /* a catalog outage must not invalidate a successful sign-in */ }
 				return { type: "oauth", access: result.access, refresh: result.refresh, expires: result.expires, ...(availableModelIds ? { availableModelIds } : {}), ...(result.email ? { email: result.email } : {}), ...(result.label ? { label: result.label } : {}) };
 			};
 			let callback;
@@ -242,7 +239,7 @@ function createProvider(sdk, core, options = {}) {
 			signal?.throwIfAborted();
 			const refresh = core.formatRefreshParts({ refreshToken: result.refresh, projectId: parts.projectId, managedProjectId: parts.managedProjectId });
 			let availableModelIds = credential.availableModelIds;
-			try { availableModelIds = await fetchAccountModelIds(core, result.access, refresh); } catch { /* preserve the last confirmed account catalog on transient discovery failures */ }
+			try { availableModelIds = await fetchAccountModelIds(core, result.access, refresh); syncDynamicModels(availableModelIds); } catch { /* preserve the last confirmed account catalog on transient discovery failures */ }
 			return { ...credential, access: result.access, refresh, expires: result.expires, availableModelIds };
 		},
 		async toAuth(credential) {
@@ -253,7 +250,7 @@ function createProvider(sdk, core, options = {}) {
 		id: PROVIDER_ID, name: "Google Antigravity", api: API,
 		baseUrl: core.ANTIGRAVITY_ENDPOINT, auth: options.authEnabled === false ? { apiKey: { name: "Google Antigravity subscription connection", resolve: async () => undefined } } : { oauth }, getModels: () => providerModels,
 		filterModels: (models, credential) => Array.isArray(credential?.availableModelIds) ? models.filter((model) => credential.availableModelIds.includes(model.id)) : models,
-		fetchAvailableModelIds: (credential) => fetchAccountModelIds(core, credential.access, credential.refresh),
+		fetchAvailableModelIds: async (credential) => { const ids = await fetchAccountModelIds(core, credential.access, credential.refresh); syncDynamicModels(ids); return ids; },
 		streamSimple(requestModel, context, options = {}) {
 			const stream = sdk.createAssistantMessageEventStream();
 			void (async () => {

@@ -49,6 +49,7 @@ export interface PluginComposerProps {
 export interface PluginDictationProps {
 	disabled?: boolean;
 	onTranscript: PluginUiCallback<string>;
+	onStateChange?: PluginUiCallback<{ active: boolean; phase: "idle" | "connecting" | "recording" | "stopping"; error: string | null }>;
 }
 export interface PluginDictationHandle extends PluginWidgetHandle<PluginDictationProps> {
 	/** Start recording when idle, or stop and keep speech when active. One recording
@@ -61,6 +62,8 @@ export interface PluginDictationHandle extends PluginWidgetHandle<PluginDictatio
 	/** Cancel capture and discard buffered speech rather than flushing it. Does not
 	 * undo text already delivered through onTranscript. Disposal/abort also cancels. */
 	cancel(): void;
+	/** Latest observed microphone RMS level in 0..1, or 0 when idle/unmounted. */
+	getLevel(): number;
 }
 export interface PluginStandardComposerProps {
 	composer: PluginComposerProps;

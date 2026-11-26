@@ -194,6 +194,7 @@ export function createPluginUiStore() {
 						toggle: () => { if (!lifetime.aborted && !options.signal.aborted) actions.current?.toggle(); },
 						cancel: () => actions.current?.cancel(),
 						finish: () => actions.current?.finish() ?? Promise.resolve(),
+						getLevel: () => actions.current?.levelRef.current ?? 0,
 						dispose: () => { actions.current?.cancel(); actions.current = null; handle.dispose(); },
 					};
 				},

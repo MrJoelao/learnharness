@@ -73,7 +73,7 @@ test("Antigravity provider registers the six requested models, capabilities, thi
 	});
 	assert.equal(credential.access, "access-fixture");
 	assert.equal(credential.refresh, "refresh-fixture|project-fixture");
-	assert.deepEqual(credential.availableModelIds, EXPECTED_MODELS);
+	assert.deepEqual(credential.availableModelIds, EXPECTED_MODELS.map((id) => id.replace(/^antigravity-/, "")));
 	assert.deepEqual(await provider.auth.oauth.refresh(credential, new AbortController().signal), { ...credential, access: "rotated-access", refresh: "rotated-refresh|project-fixture", expires: 20_000 });
 	let exchangeCalls = 0;
 	core.exchangeAntigravity = async () => { exchangeCalls++; return { type: "success" }; };
@@ -94,8 +94,8 @@ test("Antigravity OAuth stores only the model names returned by the connected ac
 	const { provider, core } = fixture();
 	core.fetchAvailableModels = async () => ({ models: { "gemini-3.8-flash": { modelName: "gemini-3.8-flash" }, "gemini-3.7-flash": { modelName: "gemini-3.7-flash" } } });
 	const credential = await provider.auth.oauth.login({ signal: new AbortController().signal, notify: () => {}, prompt: async () => "http://localhost:51121/oauth-callback?code=code-fixture&state=STATE" });
-	assert.deepEqual(credential.availableModelIds, ["antigravity-gemini-3.8-flash"]);
-	assert.deepEqual(provider.filterModels(provider.getModels(), credential).map((model: { id: string }) => model.id), ["antigravity-gemini-3.8-flash"]);
+	assert.deepEqual(credential.availableModelIds, ["gemini-3.8-flash", "gemini-3.7-flash"]);
+	assert.deepEqual(provider.filterModels(provider.getModels(), credential).map((model: { id: string }) => model.id), ["gemini-3.8-flash", "gemini-3.7-flash"]);
 });
 
 test("Antigravity local callback validates OAuth state and completes the browser response", async () => {
